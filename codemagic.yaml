@@ -1,13 +1,13 @@
 workflows:
-  ios-adhoc:
-    name: StarForge Staff - iPhone Ad Hoc IPA
+  ios-release:
+    name: StarForge Staff - iPhone Release IPA
     instance_type: mac_mini_m2
     max_build_duration: 60
     working_directory: app
 
     environment:
       ios_signing:
-        distribution_type: ad_hoc
+        distribution_type: development
         bundle_identifier: uz.starforge.starforgeEdu
       flutter: "3.44.6"
       xcode: "16.4"
@@ -78,7 +78,7 @@ workflows:
           /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices:0' "$verify_dir/profile.plist" >/dev/null
           codesign --verify --deep --strict --verbose=2 "$app_path"
 
-          final_ipa="build/ios/ipa/StarForge-Staff-ad-hoc.ipa"
+          final_ipa="build/ios/ipa/StarForge-Staff-release.ipa"
           if [[ "$ipa_path" != "$final_ipa" ]]; then
             mv "$ipa_path" "$final_ipa"
           fi
@@ -86,7 +86,7 @@ workflows:
           echo "Verified signed IPA: $final_ipa"
 
     artifacts:
-      - app/build/ios/ipa/StarForge-Staff-ad-hoc.ipa
-      - app/build/ios/ipa/StarForge-Staff-ad-hoc.ipa.sha256
+      - app/build/ios/ipa/StarForge-Staff-release.ipa
+      - app/build/ios/ipa/StarForge-Staff-release.ipa.sha256
       - app/build/ios/archive/Runner.xcarchive/dSYMs/*.dSYM
       - /tmp/xcodebuild_logs/*.log
