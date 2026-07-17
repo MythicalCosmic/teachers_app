@@ -50,8 +50,10 @@ class ScheduleScreen extends StatelessWidget {
                           height: 48,
                           padding: const EdgeInsets.only(top: 2, right: 4),
                           alignment: Alignment.topLeft,
-                          child: Text('$h:00',
-                              style: SfType.mono(size: 10, color: c.muted)),
+                          child: Text(
+                            '$h:00',
+                            style: SfType.mono(size: 10, color: c.muted),
+                          ),
                         ),
                     ],
                   ),
@@ -77,30 +79,48 @@ class ScheduleScreen extends StatelessWidget {
                                   Expanded(
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        border: Border(left: BorderSide(color: c.border)),
+                                        border: Border(
+                                          left: BorderSide(color: c.border),
+                                        ),
                                       ),
                                       child: Stack(
                                         children: [
-                                          for (final l in _lessons.where((x) => x[0] == d))
+                                          for (final l in _lessons.where(
+                                            (x) => x[0] == d,
+                                          ))
                                             Positioned(
                                               left: 2,
                                               right: 2,
                                               top: 4.0 + (l[1] as double) * 48,
-                                              height: ((l[2] as double) - (l[1] as double)) * 48 - 4,
+                                              height:
+                                                  ((l[2] as double) -
+                                                          (l[1] as double)) *
+                                                      48 -
+                                                  4,
                                               child: Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                    horizontal: 5, vertical: 4),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 5,
+                                                      vertical: 4,
+                                                    ),
                                                 decoration: BoxDecoration(
-                                                  color: _colorFor(l[3] as String, c),
-                                                  borderRadius: BorderRadius.circular(6),
+                                                  color: _colorFor(
+                                                    l[3] as String,
+                                                    c,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
                                                 ),
                                                 child: Text(
                                                   l[3] as String,
                                                   style: SfType.ui(
-                                                      size: 9,
-                                                      weight: FontWeight.w600,
-                                                      color: const Color(0xFFFFFCF5),
-                                                      height: 1.15),
+                                                    size: 9,
+                                                    weight: FontWeight.w600,
+                                                    color: const Color(
+                                                      0xFFFFFCF5,
+                                                    ),
+                                                    height: 1.15,
+                                                  ),
                                                 ),
                                               ),
                                             ),
@@ -134,10 +154,19 @@ class ScheduleScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text('Seshanba · bugun',
-                        style: SfType.ui(size: 14, weight: FontWeight.w700, color: c.ink)),
+                    Text(
+                      'Seshanba · bugun',
+                      style: SfType.ui(
+                        size: 14,
+                        weight: FontWeight.w700,
+                        color: c.ink,
+                      ),
+                    ),
                     const Spacer(),
-                    Text('5 ta dars', style: SfType.ui(size: 11, color: c.muted)),
+                    Text(
+                      '5 ta dars',
+                      style: SfType.ui(size: 11, color: c.muted),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -147,7 +176,7 @@ class ScheduleScreen extends StatelessWidget {
                   ('11:30', 'Geom · 10-V', ''),
                 ])
                   GestureDetector(
-                    onTap: () => context.go('/lesson'),
+                    onTap: () => context.push('/lesson'),
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border(top: BorderSide(color: c.border)),
@@ -157,16 +186,28 @@ class ScheduleScreen extends StatelessWidget {
                         children: [
                           SizedBox(
                             width: 38,
-                            child: Text(r.$1, style: SfType.mono(size: 12, color: c.muted)),
+                            child: Text(
+                              r.$1,
+                              style: SfType.mono(size: 12, color: c.muted),
+                            ),
                           ),
                           Expanded(
-                              child: Text(r.$2,
-                                  style: SfType.ui(
-                                      size: 13, weight: FontWeight.w600, color: c.ink))),
+                            child: Text(
+                              r.$2,
+                              style: SfType.ui(
+                                size: 13,
+                                weight: FontWeight.w600,
+                                color: c.ink,
+                              ),
+                            ),
+                          ),
                           if (r.$3.isNotEmpty)
                             SfPill(
-                                tone: r.$3 == 'Hozir' ? SfPillTone.primary : SfPillTone.accent,
-                                label: r.$3),
+                              tone: r.$3 == 'Hozir'
+                                  ? SfPillTone.primary
+                                  : SfPillTone.accent,
+                              label: r.$3,
+                            ),
                         ],
                       ),
                     ),
@@ -207,12 +248,15 @@ class _Top extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('May 2026', style: SfType.ui(size: 12, color: c.muted)),
-                  Text('19-hafta',
-                      style: SfType.ui(
-                          size: 24,
-                          weight: FontWeight.w800,
-                          color: c.ink,
-                          letterSpacing: -0.48)),
+                  Text(
+                    '19-hafta',
+                    style: SfType.ui(
+                      size: 24,
+                      weight: FontWeight.w800,
+                      color: c.ink,
+                      letterSpacing: -0.48,
+                    ),
+                  ),
                 ],
               ),
               const Spacer(),
@@ -220,17 +264,23 @@ class _Top extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 6),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: i == 1 ? c.ink : Colors.transparent,
                       borderRadius: BorderRadius.circular(999),
                       border: i == 1 ? null : Border.all(color: c.border),
                     ),
-                    child: Text(['Kun', 'Hafta', 'Oy'][i],
-                        style: SfType.ui(
-                            size: 12,
-                            weight: FontWeight.w600,
-                            color: i == 1 ? c.bg : c.muted)),
+                    child: Text(
+                      ['Kun', 'Hafta', 'Oy'][i],
+                      style: SfType.ui(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: i == 1 ? c.bg : c.muted,
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -249,17 +299,23 @@ class _Top extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        Text(ScheduleScreen._days[i].toUpperCase(),
-                            style: SfType.ui(
-                                size: 10,
-                                color: i == 1 ? c.bg : c.ink2,
-                                letterSpacing: 0.5)),
+                        Text(
+                          ScheduleScreen._days[i].toUpperCase(),
+                          style: SfType.ui(
+                            size: 10,
+                            color: i == 1 ? c.bg : c.ink2,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                         const SizedBox(height: 2),
-                        Text('${18 + i}',
-                            style: SfType.ui(
-                                size: 18,
-                                weight: FontWeight.w700,
-                                color: i == 1 ? c.bg : c.ink2)),
+                        Text(
+                          '${18 + i}',
+                          style: SfType.ui(
+                            size: 18,
+                            weight: FontWeight.w700,
+                            color: i == 1 ? c.bg : c.ink2,
+                          ),
+                        ),
                       ],
                     ),
                   ),

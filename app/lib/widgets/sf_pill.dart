@@ -57,7 +57,8 @@ class SfPill extends StatelessWidget {
         break;
     }
     return Container(
-      padding: padding ?? const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding:
+          padding ?? const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: SfRadius.pillAll,
@@ -65,7 +66,8 @@ class SfPill extends StatelessWidget {
       ),
       child: Text(
         label.toUpperCase(),
-        style: labelStyle ??
+        style:
+            labelStyle ??
             SfType.ui(
               size: 11,
               weight: FontWeight.w600,

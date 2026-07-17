@@ -1,0 +1,15 @@
+# Editors and local agent state
+.idea/
+.vscode/
+.agents/
+.codex/
+*.iml
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Release artifacts are published by CI, not committed.
+*.apk
+*.aab
+*.ipa

@@ -1,17 +1,30 @@
-# starforge_edu
+# StarForge EDU Staff Flutter app
 
-StarForge EDU · Teacher app
+The application is an Uzbek-first Flutter client for teachers, assistants,
+methodists, reception staff, and auditors. Its custom design system lives in
+`lib/theme` and `lib/widgets`; persisted domain state and the replaceable local
+repository live in `lib/app` and `lib/data`.
 
-## Getting Started
+## Development gates
 
-This project is a starting point for a Flutter application.
+```powershell
+flutter pub get
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+flutter build apk --debug
+```
 
-A few resources to get you started if this is your first Flutter project:
+The opt-in iPhone-sized visual catalogue is intentionally separate from the
+cross-platform test suite:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```powershell
+flutter test tool/visual_catalog_test.dart --update-goldens
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The demo credentials are documented in the repository root README. Do not add
+CEO, manager, parent, or student roles to this client.
+
+Release IPA signing is intentionally performed on a macOS GitHub runner. See
+`../docs/IOS_SIGNING.md` for the required encrypted repository secrets and the
+installable-development build flow.

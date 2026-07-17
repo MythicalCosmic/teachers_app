@@ -3,6 +3,7 @@ import '../theme/sf_theme.dart';
 import 'sf_star.dart';
 
 enum SfCardKind { up, down }
+
 enum SfCardSize { sm, md, lg }
 
 /// Physical "Up Card" / "Down Card" — the central artefact of the cards system.
@@ -30,7 +31,8 @@ class SfPhysicalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = typeName ?? (kind == SfCardKind.up ? 'Yulduz karta' : 'Ogohlantirish');
+    final name =
+        typeName ?? (kind == SfCardKind.up ? 'Yulduz karta' : 'Ogohlantirish');
     final scale = switch (size) {
       SfCardSize.sm => 0.62,
       SfCardSize.md => 0.82,
@@ -83,12 +85,18 @@ class SfPhysicalCard extends StatelessWidget {
             Positioned(
               right: -30 * scale,
               top: -30 * scale,
-              child: Opacity(opacity: 0.18, child: SfStar(size: 140 * scale, color: palette.accent)),
+              child: Opacity(
+                opacity: 0.18,
+                child: SfStar(size: 140 * scale, color: palette.accent),
+              ),
             ),
             Positioned(
               right: -20 * scale,
               bottom: -20 * scale,
-              child: Opacity(opacity: 0.08, child: SfStar(size: 100 * scale, color: palette.accent)),
+              child: Opacity(
+                opacity: 0.08,
+                child: SfStar(size: 100 * scale, color: palette.accent),
+              ),
             ),
             // Top inner highlight
             Positioned(
@@ -128,7 +136,10 @@ class SfPhysicalCard extends StatelessWidget {
                   ),
                   SizedBox(height: 10 * scale),
                   Container(
-                    padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8 * scale,
+                      vertical: 4 * scale,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0x99FFFCF5),
                       borderRadius: BorderRadius.circular(6 * scale),
@@ -167,11 +178,19 @@ class SfPhysicalCard extends StatelessWidget {
                     children: [
                       Text(
                         issuer,
-                        style: SfType.mono(size: 9 * scale, color: palette.accent, weight: FontWeight.w500),
+                        style: SfType.mono(
+                          size: 9 * scale,
+                          color: palette.accent,
+                          weight: FontWeight.w500,
+                        ),
                       ),
                       Text(
                         when,
-                        style: SfType.mono(size: 9 * scale, color: palette.accent, weight: FontWeight.w500),
+                        style: SfType.mono(
+                          size: 9 * scale,
+                          color: palette.accent,
+                          weight: FontWeight.w500,
+                        ),
                       ),
                     ],
                   ),
@@ -190,5 +209,10 @@ class _Pal {
   final Color border;
   final Color accent;
   final Color ink;
-  _Pal({required this.stops, required this.border, required this.accent, required this.ink});
+  _Pal({
+    required this.stops,
+    required this.border,
+    required this.accent,
+    required this.ink,
+  });
 }

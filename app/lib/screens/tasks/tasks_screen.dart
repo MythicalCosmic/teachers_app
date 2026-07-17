@@ -1,336 +1,310 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/models.dart';
+import '../../router.dart';
 import '../../theme/sf_theme.dart';
-import '../../widgets/sf_ai_badge.dart';
-import '../../widgets/sf_ai_surface.dart';
 import '../../widgets/sf_app_bar.dart';
 import '../../widgets/sf_button.dart';
 import '../../widgets/sf_card.dart';
+import '../../widgets/sf_hint_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_tab_bar.dart';
-import '../../router.dart';
+import '../../widgets/sf_toast.dart';
 
-class TasksScreen extends StatelessWidget {
+enum _TaskFilter { active, mine, completed, all }
+
+class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
 
   @override
+  State<TasksScreen> createState() => _TasksScreenState();
+}
+
+class _TasksScreenState extends State<TasksScreen> {
+  _TaskFilter _filter = _TaskFilter.active;
+
+  @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
     final c = SfTheme.colorsOf(context);
-    final tasks = [
-      _T('P1', 'doing', 'Bajarilmoqda', 'primary',
-          'May oyi yakuniy hisobotini topshirish', 'Hisobot', c.primary,
-          'Karimova R.', 'Erta · 18:00', subs: '2/4', mgmt: true, urgent: true),
-      _T('P2', 'todo', 'Boshlanmagan', 'neutral',
-          'Kvadrat tenglamalar · slaydlarni yangilash', 'Materiallar', c.accent,
-          'Men', 'Pen · 23:59', subs: '0/3'),
-      _T('P2', 'doing', 'Bajarilmoqda', 'primary',
-          'So‘rovnoma · AI sifat baholash', 'So‘rovnoma', c.ai,
-          'Metodist', '22.05', subs: '1/1', mgmt: true),
-      _T('P3', 'review', 'Tekshirishda', 'accent',
-          'Olimpiada tayyorgarligi · 11-B uchun reja', 'Tayyorlov', c.ink2,
-          'Yusupova N.', '25.05', mgmt: true),
-      _T('P3', 'done', 'Tugatildi', 'success',
-          'Yangi karta nomlarini ko‘rib chiqish', 'Markaz', c.success,
-          'Direktor', '18.05', mgmt: true),
-    ];
+    final userId = state.session?.userId;
+    final tasks =
+        state.tasks
+            .where((task) {
+              return switch (_filter) {
+                _TaskFilter.active => task.status != TaskStatus.done,
+                _TaskFilter.mine => task.assigneeId == userId,
+                _TaskFilter.completed => task.status == TaskStatus.done,
+                _TaskFilter.all => true,
+              };
+            })
+            .toList(growable: false)
+          ..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+    final canCreate = state.can(StaffCapability.createTasks);
 
     return SfScaffold(
       tab: SfTab.tasks,
-      onTabChanged: (t) => handleTab(context, SfTab.values.indexOf(t)),
-      top: Column(
-        children: [
-          SfLargeAppBar(
-            title: 'Vazifalar',
-            subtitle: '3 ta bugun · 2 ta direktordan',
-            actions: const [Icon(SfIcons.filter), SizedBox(width: 14), Icon(SfIcons.plus)],
-          ),
-          Container(
-            color: c.surface,
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-            child: Row(
-              children: [
-                for (final entry in [
-                  ('Hammasi', 12, true),
-                  ('Mendan', 7, false),
-                  ('Boshqaruv', 5, false),
-                  ('Tugatildi', 8, false),
-                ].asMap().entries)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: entry.value.$3 ? c.ink : Colors.transparent,
-                          border: entry.value.$3 ? null : Border.all(color: c.border),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text('${entry.value.$1} · ${entry.value.$2}',
-                            style: SfType.ui(
-                                size: 11,
-                                weight: FontWeight.w600,
-                                color: entry.value.$3 ? c.bg : c.muted)),
-                      ),
-                    ),
-                  ),
-              ],
+      onTabChanged: (tab) => handleTab(context, SfTab.values.indexOf(tab)),
+      top: SfLargeAppBar(
+        title: 'Vazifalar',
+        subtitle:
+            '${state.tasks.where((task) => task.status != TaskStatus.done).length} ta faol vazifa',
+        actions: [
+          if (canCreate)
+            IconButton(
+              tooltip: 'Yangi vazifa',
+              onPressed: () => context.push('/tasks/new'),
+              icon: const Icon(SfIcons.plus),
             ),
-          ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                Text('BUGUN · 3 TA', style: SfType.eyebrow(color: c.muted)),
-                const Spacer(),
-                _SegBtn(['List', 'Board']),
-              ],
-            ),
+          SegmentedButton<_TaskFilter>(
+            segments: const [
+              ButtonSegment(value: _TaskFilter.active, label: Text('Faol')),
+              ButtonSegment(value: _TaskFilter.mine, label: Text('Meniki')),
+              ButtonSegment(
+                value: _TaskFilter.completed,
+                label: Text('Tayyor'),
+              ),
+              ButtonSegment(value: _TaskFilter.all, label: Text('Barchasi')),
+            ],
+            selected: {_filter},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) =>
+                setState(() => _filter = selection.first),
           ),
-          const SizedBox(height: 8),
-          for (final t in tasks) ...[
-            GestureDetector(
-              onTap: () => context.go('/tasks/detail'),
-              child: _TaskCard(t),
+          const SizedBox(height: 12),
+          if (!state.can(StaffCapability.updateOwnTasks)) ...[
+            const SfHintCard(
+              message:
+                  'Siz vazifalarni ko‘rishingiz mumkin, ammo ularning holatini o‘zgartira olmaysiz.',
+              tone: SfHintTone.info,
+              compact: true,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
           ],
-          const SizedBox(height: 10),
-          SfAiSurface(
-            borderRadius: BorderRadius.circular(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SfAiBadge(label: 'Vazifa yordamchi'),
-                const SizedBox(height: 8),
-                Text(
-                  'May hisobotini yozish uchun ish boshlasangiz, AI o‘tkan oygi davomat va kartalardan jamlama tayyorlab beraman.',
-                  style: SfType.ui(size: 13, color: c.ink2, height: 1.4),
-                ),
-                const SizedBox(height: 10),
-                SfButton(
-                  kind: SfButtonKind.ink,
-                  label: 'Boshlash',
-                  trailing: SfIcons.arrowR,
-                  fontSize: 13,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                ),
-              ],
-            ),
-          ),
+          if (tasks.isEmpty)
+            SfEmptyState(
+              title: 'Bu ro‘yxat bo‘sh',
+              message: 'Filtrni almashtiring yoki yangi vazifa yarating.',
+              actionLabel: canCreate ? 'Yangi vazifa' : null,
+              onAction: canCreate ? () => context.push('/tasks/new') : null,
+            )
+          else
+            for (final task in tasks) ...[
+              _TaskCard(task: task),
+              const SizedBox(height: 9),
+            ],
         ],
       ),
-      bottom: Container(
-        padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-        decoration: BoxDecoration(
-          color: c.surface,
-          border: Border(top: BorderSide(color: c.border)),
-        ),
-        child: SfButton(
-          kind: SfButtonKind.primary,
-          block: true,
-          height: 48,
-          label: 'Yangi vazifa',
-          leading: SfIcons.plus,
-          onPressed: () => context.go('/tasks/new'),
-        ),
-      ),
-    );
-  }
-}
-
-class _SegBtn extends StatelessWidget {
-  final List<String> labels;
-  const _SegBtn(this.labels);
-  @override
-  Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    return Row(
-      children: [
-        for (final entry in labels.asMap().entries)
-          Padding(
-            padding: const EdgeInsets.only(left: 4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      bottom: canCreate
+          ? Container(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
               decoration: BoxDecoration(
-                color: entry.key == 0 ? c.ink : Colors.transparent,
-                border: entry.key == 0 ? null : Border.all(color: c.border),
-                borderRadius: BorderRadius.circular(6),
+                color: c.surface,
+                border: Border(top: BorderSide(color: c.border)),
               ),
-              child: Text(entry.value,
-                  style: SfType.ui(
-                      size: 11,
-                      weight: FontWeight.w600,
-                      color: entry.key == 0 ? c.bg : c.muted)),
-            ),
-          ),
-      ],
+              child: SfButton(
+                kind: SfButtonKind.primary,
+                block: true,
+                height: 48,
+                label: 'Yangi vazifa',
+                leading: SfIcons.plus,
+                onPressed: () => context.push('/tasks/new'),
+              ),
+            )
+          : null,
     );
   }
-}
-
-class _T {
-  final String pri;
-  final String state;
-  final String stateName;
-  final String stateTone;
-  final String t;
-  final String proj;
-  final Color projColor;
-  final String assigner;
-  final String deadline;
-  final String? subs;
-  final bool mgmt;
-  final bool urgent;
-  _T(this.pri, this.state, this.stateName, this.stateTone, this.t, this.proj,
-      this.projColor, this.assigner, this.deadline,
-      {this.subs, this.mgmt = false, this.urgent = false});
 }
 
 class _TaskCard extends StatelessWidget {
-  final _T t;
-  const _TaskCard(this.t);
+  const _TaskCard({required this.task});
+  final StaffTask task;
+
+  Future<void> _changeStatus(BuildContext context, TaskStatus status) async {
+    final old = task.status;
+    if (old == status) return;
+    try {
+      await AppScope.of(context).setTaskStatus(task.id, status);
+      if (!context.mounted) return;
+      SfToast.show(
+        context,
+        title: 'Vazifa yangilandi',
+        message: _statusLabel(status),
+        tone: status == TaskStatus.done
+            ? SfToastTone.success
+            : SfToastTone.info,
+        actionLabel: 'Bekor qilish',
+        onAction: () => AppScope.of(context).setTaskStatus(task.id, old),
+      );
+    } on Object catch (error) {
+      if (context.mounted) {
+        SfToast.show(context, message: '$error', tone: SfToastTone.error);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    Color sb, sf;
-    switch (t.stateTone) {
-      case 'primary':
-        sb = c.primarySoft;
-        sf = c.primaryInk;
-        break;
-      case 'accent':
-        sb = c.accentSoft;
-        sf = c.accentInk;
-        break;
-      case 'success':
-        sb = c.successSoft;
-        sf = c.success;
-        break;
-      default:
-        sb = c.surface2;
-        sf = c.muted;
-    }
-    return Opacity(
-      opacity: t.state == 'done' ? 0.65 : 1,
-      child: SfSurfaceCard(
-        padding: const EdgeInsets.all(14),
-        child: Stack(
-          children: [
-            Positioned(
-              left: -14,
-              top: 14,
-              bottom: 14,
-              child: Container(
-                width: 3,
+    final accent = _priorityColor(context, task.priority);
+    final canUpdate = AppScope.of(context).can(StaffCapability.updateOwnTasks);
+    return SfSurfaceCard(
+      padding: EdgeInsets.zero,
+      child: InkWell(
+        onTap: () => context.push(
+          '/tasks/detail?id=${Uri.encodeQueryComponent(task.id)}',
+        ),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 4,
+                height: 64,
                 decoration: BoxDecoration(
-                  color: t.urgent ? c.danger : t.projColor,
-                  borderRadius: BorderRadius.circular(3),
+                  color: accent,
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: t.state == 'done' ? c.success : Colors.transparent,
-                          border: t.state == 'done'
-                              ? null
-                              : Border.all(color: c.borderStrong, width: 1.5),
-                          borderRadius: BorderRadius.circular(5),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 5,
+                      children: [
+                        _StatusPill(status: task.status),
+                        Text(
+                          _priorityLabel(task.priority),
+                          style: SfType.eyebrow(color: accent, size: 10),
                         ),
-                        alignment: Alignment.center,
-                        child: t.state == 'done'
-                            ? const Icon(SfIcons.check, size: 12, color: Color(0xFFFFFCF5))
-                            : null,
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                            color: sb, borderRadius: BorderRadius.circular(4)),
-                        child: Text(t.stateName.toUpperCase(),
-                            style: SfType.eyebrow(color: sf, size: 10)),
-                      ),
-                      if (t.mgmt)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                              color: c.ink, borderRadius: BorderRadius.circular(4)),
-                          child: Text('BOSHQARUV',
-                              style: SfType.eyebrow(color: c.bg, size: 10)),
-                        ),
-                      Text(t.pri,
-                          style: SfType.mono(
-                              size: 10,
-                              weight: FontWeight.w700,
-                              color: t.pri == 'P1'
-                                  ? c.danger
-                                  : t.pri == 'P2'
-                                      ? c.warn
-                                      : c.muted)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    t.t,
-                    style: SfType.ui(
-                      size: 14,
-                      weight: FontWeight.w600,
-                      color: t.state == 'done' ? c.muted : c.ink,
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                              color: t.projColor, borderRadius: BorderRadius.circular(2))),
-                      const SizedBox(width: 4),
-                      Text(t.proj, style: SfType.ui(size: 11, color: c.muted)),
-                      if (t.subs != null) ...[
-                        const SizedBox(width: 12),
-                        Text('${t.subs!} subt',
-                            style: SfType.mono(size: 11, color: c.muted)),
                       ],
-                      const Spacer(),
-                      Text(t.deadline,
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      task.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: SfType.ui(
+                        size: 14,
+                        weight: FontWeight.w700,
+                        color: task.status == TaskStatus.done ? c.muted : c.ink,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.checklist_rounded, size: 14, color: c.muted),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${task.completedSteps}/${task.checklist.length}',
+                          style: SfType.mono(size: 10, color: c.muted),
+                        ),
+                        const Spacer(),
+                        Icon(Icons.schedule_rounded, size: 13, color: accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          _dateLabel(task.dueAt),
                           style: SfType.mono(
-                              size: 11,
-                              weight: t.urgent ? FontWeight.w700 : FontWeight.w500,
-                              color: t.urgent
-                                  ? c.danger
-                                  : t.state == 'done'
-                                      ? c.muted
-                                      : c.ink2)),
-                    ],
-                  ),
-                ],
+                            size: 10,
+                            weight: FontWeight.w700,
+                            color: accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              if (canUpdate)
+                PopupMenuButton<TaskStatus>(
+                  tooltip: 'Holatni o‘zgartirish',
+                  initialValue: task.status,
+                  onSelected: (status) => _changeStatus(context, status),
+                  itemBuilder: (_) => [
+                    for (final status in TaskStatus.values)
+                      PopupMenuItem(
+                        value: status,
+                        child: Text(_statusLabel(status)),
+                      ),
+                  ],
+                )
+              else
+                Icon(SfIcons.chevR, size: 17, color: c.muted),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status});
+  final TaskStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final color = switch (status) {
+      TaskStatus.todo => c.muted,
+      TaskStatus.inProgress => c.primary,
+      TaskStatus.inReview => c.warn,
+      TaskStatus.done => c.success,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Text(
+        _statusLabel(status).toUpperCase(),
+        style: SfType.eyebrow(color: color, size: 9),
+      ),
+    );
+  }
+}
+
+String _statusLabel(TaskStatus status) => switch (status) {
+  TaskStatus.todo => 'Boshlanmagan',
+  TaskStatus.inProgress => 'Bajarilmoqda',
+  TaskStatus.inReview => 'Tekshiruvda',
+  TaskStatus.done => 'Tugatildi',
+};
+
+String _priorityLabel(TaskPriority priority) => switch (priority) {
+  TaskPriority.low => 'PAST',
+  TaskPriority.medium => 'O‘RTA',
+  TaskPriority.high => 'YUQORI',
+  TaskPriority.urgent => 'SHOSHILINCH',
+};
+
+Color _priorityColor(BuildContext context, TaskPriority priority) {
+  final c = SfTheme.colorsOf(context);
+  return switch (priority) {
+    TaskPriority.low => c.muted,
+    TaskPriority.medium => c.primary,
+    TaskPriority.high => c.warn,
+    TaskPriority.urgent => c.danger,
+  };
+}
+
+String _dateLabel(DateTime value) {
+  final date = value.toLocal();
+  return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')} · ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 }

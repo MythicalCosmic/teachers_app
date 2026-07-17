@@ -6,12 +6,7 @@ class SfAvatar extends StatelessWidget {
   final double size;
   final Color? color;
 
-  const SfAvatar({
-    super.key,
-    required this.name,
-    this.size = 36,
-    this.color,
-  });
+  const SfAvatar({super.key, required this.name, this.size = 36, this.color});
 
   static const _palette = <Color>[
     Color(0xFFB85535),

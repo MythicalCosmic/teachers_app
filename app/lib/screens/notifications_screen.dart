@@ -1,203 +1,236 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
+import '../data/models.dart';
 import '../theme/sf_theme.dart';
+import '../utils/formatters.dart';
 import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_card.dart';
+import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_state_view.dart';
+import '../widgets/sf_toast.dart';
 
-class NotificationsScreen extends StatelessWidget {
+enum _NotificationFilter { all, message, print, work }
+
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  _NotificationFilter _filter = _NotificationFilter.all;
+
+  bool _matches(StaffNotification notification) => switch (_filter) {
+    _NotificationFilter.all => true,
+    _NotificationFilter.message =>
+      notification.category == NotificationCategory.message,
+    _NotificationFilter.print =>
+      notification.category == NotificationCategory.print,
+    _NotificationFilter.work =>
+      notification.category == NotificationCategory.task ||
+          notification.category == NotificationCategory.attendance ||
+          notification.category == NotificationCategory.survey ||
+          notification.category == NotificationCategory.audit,
+  };
+
+  @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final session = app.session;
     final c = SfTheme.colorsOf(context);
-    final groups = [
-      ('Bugun', [
-        _N('ai', 'AI', 'AI tavsiyasi',
-            '9-B uchun ertangi darsda kvadrat tenglamalarni qisqa qaytarish tavsiya etiladi.',
-            '08:42'),
-        _N('primary', null, 'Davomat saqlandi', 'Algebra Mid · 21/22 belgilandi.', '10:05',
-            icon: SfIcons.check),
-        _N('success', null, 'Print tayyor',
-            'Kvadrat tenglamalar · 24 nusxa · HP LaserJet · lobbi', '11:24',
-            icon: SfIcons.printer),
-        _N('accent', null, 'Ota-onadan xabar',
-            'Akbarova D. (Akmal ona) sizga yozdi · 9-B', '11:14',
-            icon: SfIcons.chat),
-        _N('warn', null, 'Eshmatov Otabek · 3-Down karta',
-            '9-B Algebra · ota-onaga avtomatik xabar yuborildi.', '11:42',
-            icon: SfIcons.flag),
-      ]),
-      ('Kecha', [
-        _N('success', null, 'Print tugadi',
-            'Yulduz karta · 12 nusxa · A5 rangli · Xerox WC Pro', 'Du · 16:50',
-            icon: SfIcons.printer),
-        _N('ai', 'AI', 'Suhbat · 10-V',
-            '"Trapetsiya mavzusi yaxshi tushunilgan. 11-misol uchun ekstra…"',
-            'Du · 15:20'),
-        _N('primary', null, 'O‘quvchidan savol',
-            'Halimova Zilola sizga yozdi · uy ishi', 'Du · 14:08',
-            icon: SfIcons.chat),
-        _N('neutral', null, 'Haftalik hisobot',
-            '14 May – 19 May · yuklab olishga tayyor.', 'Du · 09:00',
-            icon: SfIcons.upload),
-      ]),
-    ];
+    final allowed = app.notifications
+        .where((notification) {
+          if (notification.category != NotificationCategory.audit) return true;
+          return session?.can(StaffCapability.viewAuditWorkspace) ?? false;
+        })
+        .toList(growable: false);
+    final visible = allowed.where(_matches).toList(growable: false)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final unread = allowed.where((notification) => !notification.isRead).length;
+
     return SfScaffold(
       top: Column(
         children: [
           SfLargeAppBar(
             title: 'Bildirishnomalar',
-            subtitle: '9 ta · 4 ta yangi',
-            actions: const [Icon(SfIcons.filter), SizedBox(width: 14), Icon(SfIcons.check)],
+            subtitle: '${allowed.length} ta · $unread ta yangi',
+            leading: IconButton(
+              tooltip: 'Ortga',
+              onPressed: Navigator.of(context).canPop()
+                  ? () => Navigator.of(context).maybePop()
+                  : null,
+              icon: const Icon(SfIcons.arrowL),
+            ),
+            actions: [
+              IconButton(
+                tooltip: 'Hammasini o‘qilgan qilish',
+                onPressed: unread == 0
+                    ? null
+                    : () {
+                        app.markAllNotificationsRead();
+                        SfToast.show(
+                          context,
+                          message: 'Barcha bildirishnomalar o‘qildi',
+                          tone: SfToastTone.success,
+                          glassEnabled: app.settings.liquidGlass,
+                          motionEnabled: !app.settings.reducedMotion,
+                        );
+                      },
+                icon: const Icon(SfIcons.check),
+              ),
+            ],
           ),
           Container(
             color: c.surface,
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-            child: Row(
-              children: [
-                for (final entry in [
-                  ('Hammasi', 9, true),
-                  ('AI', 2, false),
-                  ('Print', 2, false),
-                  ('Xabar', 2, false),
-                  ('Markaz', 1, false),
-                ].asMap().entries)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: entry.value.$3 ? c.ink : Colors.transparent,
-                          border: entry.value.$3 ? null : Border.all(color: c.border),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text('${entry.value.$1} · ${entry.value.$2}',
-                            style: SfType.ui(
-                                size: 11,
-                                weight: FontWeight.w600,
-                                color: entry.value.$3 ? c.bg : c.muted)),
-                      ),
-                    ),
-                  ),
+            child: SfSegmentedControl<_NotificationFilter>(
+              expanded: true,
+              value: _filter,
+              onChanged: (value) => setState(() => _filter = value),
+              segments: const [
+                SfSegment(value: _NotificationFilter.all, label: 'Hammasi'),
+                SfSegment(value: _NotificationFilter.message, label: 'Xabar'),
+                SfSegment(value: _NotificationFilter.print, label: 'Print'),
+                SfSegment(value: _NotificationFilter.work, label: 'Ish'),
               ],
             ),
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(top: 14, bottom: 24),
-        children: [
-          for (final g in groups) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-              child: Text(g.$1.toUpperCase(), style: SfType.eyebrow(color: c.muted)),
+      body: visible.isEmpty
+          ? SfEmptyState(
+              title: 'Bildirishnoma yo‘q',
+              message: 'Tanlangan bo‘limda yangi xabar topilmadi.',
+              icon: SfIcons.bell,
+              actionLabel: _filter == _NotificationFilter.all
+                  ? null
+                  : 'Filtrni tozalash',
+              onAction: _filter == _NotificationFilter.all
+                  ? null
+                  : () => setState(() => _filter = _NotificationFilter.all),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+              itemCount: visible.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final notification = visible[index];
+                return _NotificationTile(
+                  notification: notification,
+                  onTap: () {
+                    if (!notification.isRead) {
+                      app.markNotificationRead(notification.id);
+                    }
+                    final route = notification.route;
+                    if (route != null && route.isNotEmpty) context.push(route);
+                  },
+                );
+              },
             ),
-            for (final n in g.$2)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-                child: _NotifTile(n),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ],
-      ),
     );
   }
 }
 
-class _N {
-  final String tone;
-  final String? aiText;
-  final String title;
-  final String body;
-  final String t;
-  final IconData? icon;
-  _N(this.tone, this.aiText, this.title, this.body, this.t, {this.icon});
-}
+class _NotificationTile extends StatelessWidget {
+  const _NotificationTile({required this.notification, required this.onTap});
 
-class _NotifTile extends StatelessWidget {
-  final _N n;
-  const _NotifTile(this.n);
+  final StaffNotification notification;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    Color bg, fg, border;
-    switch (n.tone) {
-      case 'ai':
-        bg = c.aiBg.first;
-        fg = c.ai;
-        border = c.aiBorder;
-        break;
-      case 'primary':
-        bg = c.primarySoft;
-        fg = c.primaryInk;
-        border = Colors.transparent;
-        break;
-      case 'accent':
-        bg = c.accentSoft;
-        fg = c.accentInk;
-        border = Colors.transparent;
-        break;
-      case 'success':
-        bg = c.successSoft;
-        fg = c.success;
-        border = Colors.transparent;
-        break;
-      case 'warn':
-        bg = c.warnSoft;
-        fg = c.warn;
-        border = Colors.transparent;
-        break;
-      default:
-        bg = c.surface2;
-        fg = c.ink2;
-        border = Colors.transparent;
-    }
-    return SfSurfaceCard(
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: bg,
-              border: Border.all(color: border),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            alignment: Alignment.center,
-            child: n.aiText != null
-                ? Text('Ai', style: SfType.display(size: 18, color: fg))
-                : Icon(n.icon ?? SfIcons.bell, size: 18, color: fg),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+    final style = switch (notification.category) {
+      NotificationCategory.message => (c.accent, c.accentSoft, SfIcons.chat),
+      NotificationCategory.print => (c.success, c.successSoft, SfIcons.printer),
+      NotificationCategory.attendance => (
+        c.primary,
+        c.primarySoft,
+        SfIcons.check,
+      ),
+      NotificationCategory.card => (c.warn, c.warnSoft, SfIcons.flag),
+      NotificationCategory.survey => (c.ai, c.aiBg.first, Icons.poll_outlined),
+      NotificationCategory.audit => (
+        c.danger,
+        c.dangerSoft,
+        Icons.fact_check_outlined,
+      ),
+      NotificationCategory.task => (c.primary, c.primarySoft, SfIcons.check),
+    };
+    return Semantics(
+      button: true,
+      readOnly: notification.isRead,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: SfSurfaceCard(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: style.$2,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(style.$3, size: 19, color: style.$1),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(n.title,
-                          style: SfType.ui(
-                              size: 13.5, weight: FontWeight.w700, color: c.ink)),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            notification.title,
+                            style: SfType.ui(
+                              size: 13.5,
+                              weight: notification.isRead
+                                  ? FontWeight.w600
+                                  : FontWeight.w800,
+                              color: c.ink,
+                            ),
+                          ),
+                        ),
+                        if (!notification.isRead)
+                          Container(
+                            width: 7,
+                            height: 7,
+                            margin: const EdgeInsets.only(top: 5, left: 7),
+                            decoration: BoxDecoration(
+                              color: c.primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
                     ),
-                    Text(n.t, style: SfType.mono(size: 10, color: c.muted)),
+                    const SizedBox(height: 3),
+                    Text(
+                      notification.body,
+                      style: SfType.ui(size: 12.5, color: c.muted, height: 1.4),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      SfFormatters.relativeUz(notification.createdAt),
+                      style: SfType.mono(size: 10, color: c.muted),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text(n.body,
-                    style: SfType.ui(size: 12.5, color: c.muted, height: 1.45)),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

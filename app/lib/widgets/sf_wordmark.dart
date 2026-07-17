@@ -20,25 +20,27 @@ class SfWordmark extends StatelessWidget {
         SfStar(size: size + 4, color: acc),
         SizedBox(width: size * 0.35),
         Text.rich(
-          TextSpan(children: [
-            TextSpan(
-              text: 'StarForge',
-              style: SfType.ui(
-                size: size,
-                weight: FontWeight.w700,
-                color: ink,
-                letterSpacing: -size * 0.02,
+          TextSpan(
+            children: [
+              TextSpan(
+                text: 'StarForge',
+                style: SfType.ui(
+                  size: size,
+                  weight: FontWeight.w700,
+                  color: ink,
+                  letterSpacing: -size * 0.02,
+                ),
               ),
-            ),
-            TextSpan(
-              text: ' · EDU',
-              style: SfType.ui(
-                size: size,
-                weight: FontWeight.w500,
-                color: c.muted,
+              TextSpan(
+                text: ' · EDU',
+                style: SfType.ui(
+                  size: size,
+                  weight: FontWeight.w500,
+                  color: c.muted,
+                ),
               ),
-            ),
-          ]),
+            ],
+          ),
         ),
       ],
     );

@@ -1,257 +1,260 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
-import '../../widgets/sf_ai_badge.dart';
-import '../../widgets/sf_ai_surface.dart';
+import '../../widgets/sf_app_bar.dart';
 import '../../widgets/sf_button.dart';
-import '../../widgets/sf_card.dart';
-import '../../widgets/sf_icons.dart';
+import '../../widgets/sf_form_controls.dart';
+import '../../widgets/sf_hint_card.dart';
 import '../../widgets/sf_scaffold.dart';
-import '../../widgets/sf_star.dart';
+import '../../widgets/sf_state_view.dart';
+import '../../widgets/sf_toast.dart';
 
-class CreateAssignmentScreen extends StatelessWidget {
+enum _ResponseType { text, file, photo }
+
+class CreateAssignmentScreen extends StatefulWidget {
   const CreateAssignmentScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    return SfScaffold(
-      top: Container(
-        color: c.surface,
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
-        child: SizedBox(
-          height: 44,
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () => context.pop(),
-                child: Text('Bekor',
-                    style: SfType.ui(size: 16, weight: FontWeight.w600, color: c.primary)),
+  State<CreateAssignmentScreen> createState() => _CreateAssignmentScreenState();
+}
+
+class _CreateAssignmentScreenState extends State<CreateAssignmentScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _title = TextEditingController();
+  final _instructions = TextEditingController();
+  String _cohort = '9-B Algebra';
+  _ResponseType _responseType = _ResponseType.file;
+  DateTime _dueAt = DateTime.now().add(const Duration(days: 3));
+  bool _publishing = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _instructions.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _dueAt,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 180)),
+      helpText: 'Topshirish muddatini tanlang',
+    );
+    if (value != null) {
+      setState(
+        () => _dueAt = DateTime(value.year, value.month, value.day, 23, 59),
+      );
+    }
+  }
+
+  Future<void> _publish() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Topshiriq e’lon qilinsinmi?'),
+            content: Text(
+              '$_cohort guruhiga ${_formatDate(_dueAt)} muddat bilan yuboriladi.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => dialogContext.pop(false),
+                child: const Text('Tekshirish'),
               ),
-              const Spacer(),
-              Column(
-                children: [
-                  Text('Yangi topshiriq',
-                      style: SfType.ui(size: 15, weight: FontWeight.w700, color: c.ink)),
-                  Text('Qoralama avtomatik saqlandi', style: SfType.ui(size: 11, color: c.muted)),
-                ],
+              FilledButton(
+                onPressed: () => dialogContext.pop(true),
+                child: const Text('E’lon qilish'),
               ),
-              const Spacer(),
-              Text('E‘lon',
-                  style: SfType.ui(size: 15, weight: FontWeight.w700, color: c.primary)),
             ],
           ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+    setState(() => _publishing = true);
+    try {
+      final task = await AppScope.of(context).createTask(
+        title: 'Topshiriq: ${_title.text.trim()}',
+        description:
+            '$_cohort · ${_responseLabel(_responseType)}\n${_instructions.text.trim()}',
+        priority: TaskPriority.high,
+        dueAt: _dueAt,
+        checklist: const [
+          'Topshiriqlarni kuzatish',
+          'Har bir ishga yozma fikr yuborish',
+        ],
+      );
+      if (!mounted) return;
+      SfToast.show(
+        context,
+        title: 'Topshiriq e’lon qilindi',
+        message: task.title.replaceFirst('Topshiriq: ', ''),
+        tone: SfToastTone.success,
+      );
+      context.pop();
+    } on Object catch (error) {
+      if (mounted) {
+        SfToast.show(context, message: '$error', tone: SfToastTone.error);
+      }
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final c = SfTheme.colorsOf(context);
+    if (!state.can(StaffCapability.teachLessons) ||
+        !state.can(StaffCapability.createTasks)) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const BackButton(),
+          title: const Text('Yangi topshiriq'),
+        ),
+        body: const SfEmptyState(
+          title: 'Ruxsat mavjud emas',
+          message: 'Topshiriq e’lon qilish o‘qituvchi ish maydoniga tegishli.',
+          icon: Icons.lock_outline_rounded,
+        ),
+      );
+    }
+    return SfScaffold(
+      top: SfNavBar(
+        title: 'Yangi topshiriq',
+        subtitle: 'Qoralama',
+        leading: IconButton(
+          tooltip: 'Bekor qilish',
+          onPressed: () => context.pop(),
+          icon: const Icon(Icons.close_rounded),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
-        children: [
-          Text('SARLAVHA', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 8),
-          SfSurfaceCard(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Kvadrat tenglamalar · Mashqlar 1–12',
-                    style: SfType.ui(size: 18, weight: FontWeight.w700, color: c.ink)),
-                const SizedBox(height: 4),
-                Text('Diskriminant va Viet formulasi orqali yechish',
-                    style: SfType.ui(size: 13, color: c.muted)),
-              ],
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 30),
+          children: [
+            const SfHintCard(
+              title: 'Bahodan ko‘ra foydali fikr',
+              message:
+                  'Topshiriq jarayoni “topshirildi”, “fikr kutilmoqda” va “fikr yuborildi” holatlari bilan kuzatiladi.',
+              tone: SfHintTone.info,
             ),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('GURUH', style: SfType.eyebrow(color: c.muted)),
-                    const SizedBox(height: 8),
-                    SfSurfaceCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                                color: c.primary, borderRadius: BorderRadius.circular(8)),
-                            alignment: Alignment.center,
-                            child: const SfStar(size: 16, color: Color(0xFFFFFCF5)),
-                          ),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('9-B Algebra',
-                                  style:
-                                      SfType.ui(size: 14, weight: FontWeight.w600, color: c.ink)),
-                              Text('24 o‘quvchi', style: SfType.ui(size: 10, color: c.muted)),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+            const SizedBox(height: 18),
+            SfTextField(
+              controller: _title,
+              label: 'Topshiriq nomi',
+              hint: 'Masalan: Kvadrat tenglamalar · mashqlar 1–12',
+              maxLength: 120,
+              textInputAction: TextInputAction.next,
+              validator: (value) => (value?.trim().length ?? 0) < 4
+                  ? 'Nomni aniqroq kiriting'
+                  : null,
+            ),
+            const SizedBox(height: 14),
+            SfTextField(
+              controller: _instructions,
+              label: 'Ko‘rsatma',
+              hint: 'Natija, material va topshirish usulini tushuntiring',
+              minLines: 4,
+              maxLines: 7,
+              maxLength: 1000,
+              validator: (value) => (value?.trim().length ?? 0) < 8
+                  ? 'Qisqa ko‘rsatma yozing'
+                  : null,
+            ),
+            const SizedBox(height: 16),
+            Text('GURUH', style: SfType.eyebrow(color: c.muted)),
+            const SizedBox(height: 7),
+            DropdownButtonFormField<String>(
+              initialValue: _cohort,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.groups_2_outlined),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('MUDDAT', style: SfType.eyebrow(color: c.muted)),
-                    const SizedBox(height: 8),
-                    SfSurfaceCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('23.05 · 23:59',
-                              style: SfType.mono(
-                                  size: 14, weight: FontWeight.w600, color: c.ink)),
-                          Text('Pen · ertaga emas',
-                              style: SfType.ui(size: 10, color: c.muted)),
-                        ],
-                      ),
-                    ),
-                  ],
+              items: const [
+                DropdownMenuItem(
+                  value: '9-B Algebra',
+                  child: Text('9-B Algebra'),
                 ),
+                DropdownMenuItem(
+                  value: '9-A Algebra',
+                  child: Text('9-A Algebra'),
+                ),
+                DropdownMenuItem(
+                  value: '11-B Tayyorlov',
+                  child: Text('11-B Tayyorlov'),
+                ),
+              ],
+              onChanged: (value) => setState(() => _cohort = value ?? _cohort),
+            ),
+            const SizedBox(height: 16),
+            Text('JAVOB TURI', style: SfType.eyebrow(color: c.muted)),
+            const SizedBox(height: 7),
+            SfSegmentedControl<_ResponseType>(
+              expanded: true,
+              value: _responseType,
+              segments: const [
+                SfSegment(
+                  value: _ResponseType.text,
+                  label: 'Matn',
+                  icon: Icons.text_fields_rounded,
+                ),
+                SfSegment(
+                  value: _ResponseType.file,
+                  label: 'Fayl',
+                  icon: Icons.attach_file_rounded,
+                ),
+                SfSegment(
+                  value: _ResponseType.photo,
+                  label: 'Rasm',
+                  icon: Icons.photo_camera_outlined,
+                ),
+              ],
+              onChanged: (value) => setState(() => _responseType = value),
+            ),
+            const SizedBox(height: 16),
+            Text('MUDDAT', style: SfType.eyebrow(color: c.muted)),
+            const SizedBox(height: 7),
+            OutlinedButton.icon(
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_month_rounded),
+              label: Text(_formatDate(_dueAt)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
               ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Text('TUR', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 8),
-          GridView.count(
-            crossAxisCount: 4,
-            mainAxisSpacing: 6,
-            crossAxisSpacing: 6,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.2,
-            children: [
-              for (final t in [
-                ('Yozma', SfIcons.edit, true),
-                ('Topshirish', SfIcons.upload, false),
-                ('Test', SfIcons.check, false),
-                ('Loyiha', SfIcons.folder, false),
-              ])
-                Container(
-                  decoration: BoxDecoration(
-                    color: t.$3 ? c.primary : c.surface,
-                    border: t.$3 ? null : Border.all(color: c.border),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  alignment: Alignment.center,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(t.$2, size: 20, color: t.$3 ? c.bg : c.ink2),
-                      const SizedBox(height: 6),
-                      Text(t.$1,
-                          style: SfType.ui(
-                              size: 11,
-                              weight: FontWeight.w600,
-                              color: t.$3 ? c.bg : c.ink2)),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SfAiSurface(
-            borderRadius: BorderRadius.circular(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SfAiBadge(label: 'Topshiriq generatori'),
-                const SizedBox(height: 8),
-                Text(
-                  '12 ta yangi mashq tayyorlandi — sinfning oldingi 3 darsiga moslashtirildi.',
-                  style: SfType.display(size: 17, color: c.ink, height: 1.3),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: c.surface,
-                    border: Border.all(color: c.aiBorder),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('1-MISOL · OSON', style: SfType.eyebrow(color: c.muted)),
-                      const SizedBox(height: 6),
-                      Text('x² − 5x + 6 = 0',
-                          style: SfType.mono(size: 14, color: c.ink)),
-                      const SizedBox(height: 4),
-                      Text('Diskriminantni hisoblang. Ildizlarni toping.',
-                          style: SfType.ui(size: 11, color: c.muted)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text.rich(TextSpan(children: [
-                        TextSpan(
-                            text: '~420 ',
-                            style: SfType.mono(
-                                size: 11, weight: FontWeight.w700, color: c.ai)),
-                        TextSpan(
-                            text: 'token · markaz limiti',
-                            style: SfType.ui(size: 11, color: c.muted)),
-                      ])),
-                    ),
-                    SfButton(
-                      kind: SfButtonKind.ink,
-                      label: '12 misolni kiritish',
-                      fontSize: 13,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    ),
-                  ],
-                ),
-              ],
             ),
-          ),
-          const SizedBox(height: 18),
-          Text('SOZLAMALAR', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 8),
-          SfSurfaceCard(
-            child: Column(
-              children: [
-                for (final s in [
-                  ('Maksimal baho', '5.0'),
-                  ('Kechikish · gracePeriod', '24 soat'),
-                  ('Qayta topshirish', '2 marta'),
-                  ('Ota-onaga xabar', 'E‘lon qilingach'),
-                ])
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(color: c.border)),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Expanded(child: Text(s.$1, style: SfType.ui(size: 13.5, color: c.ink))),
-                        Text(s.$2, style: SfType.ui(size: 13, color: c.muted)),
-                        const SizedBox(width: 6),
-                        Icon(SfIcons.chevR, size: 14, color: c.muted),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
+      ),
+      bottom: Container(
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+        decoration: BoxDecoration(
+          color: c.surface,
+          border: Border(top: BorderSide(color: c.border)),
+        ),
+        child: SfButton(
+          kind: SfButtonKind.primary,
+          block: true,
+          height: 50,
+          label: _publishing ? 'E’lon qilinmoqda…' : 'E’lon qilish',
+          trailing: Icons.send_rounded,
+          onPressed: _publishing ? null : _publish,
+        ),
       ),
     );
   }
 }
+
+String _responseLabel(_ResponseType type) => switch (type) {
+  _ResponseType.text => 'Matnli javob',
+  _ResponseType.file => 'Fayl yuklash',
+  _ResponseType.photo => 'Rasm yuklash',
+};
+
+String _formatDate(DateTime value) =>
+    '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}.${value.year} · ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';

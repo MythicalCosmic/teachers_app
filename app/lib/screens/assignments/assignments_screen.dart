@@ -1,205 +1,264 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/models.dart';
+import '../../router.dart';
 import '../../theme/sf_theme.dart';
-import '../../widgets/sf_ai_badge.dart';
 import '../../widgets/sf_app_bar.dart';
+import '../../widgets/sf_button.dart';
 import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pill.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_tab_bar.dart';
-import '../../router.dart';
 
-class AssignmentsScreen extends StatelessWidget {
+enum _SubmissionFilter { all, needsFeedback, collecting, complete }
+
+class AssignmentsScreen extends StatefulWidget {
   const AssignmentsScreen({super.key});
 
   @override
+  State<AssignmentsScreen> createState() => _AssignmentsScreenState();
+}
+
+class _AssignmentsScreenState extends State<AssignmentsScreen> {
+  _SubmissionFilter _filter = _SubmissionFilter.all;
+
+  static const _seed = [
+    _Assignment(
+      'Kvadrat tenglamalar',
+      '9-B Algebra',
+      24,
+      7,
+      _SubmissionState.needsFeedback,
+    ),
+    _Assignment(
+      'Funksiyalar grafigi',
+      '9-A Algebra',
+      22,
+      18,
+      _SubmissionState.collecting,
+    ),
+    _Assignment(
+      'Yozma ish · Geometriya',
+      '10-V',
+      19,
+      12,
+      _SubmissionState.collecting,
+    ),
+    _Assignment(
+      'Olimpiada mashqlari',
+      '11-B Tayyorlov',
+      13,
+      13,
+      _SubmissionState.feedbackShared,
+    ),
+  ];
+
+  @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
     final c = SfTheme.colorsOf(context);
-    final items = [
-      _A('Kvadrat tenglamalar', '9-B Algebra', 'Ertaga · 23:59', '24/24', 'review', cnt: 7, ai: true),
-      _A('Funksiyalar grafigi', '9-A Algebra', 'Pen · 23:59', '18/22', 'open'),
-      _A('Yozma ish · Geometriya', '10-V', 'Ju · 18:00', '12/19', 'open', ai: true),
-      _A('Olimpiada mashqlari', '11-B Tayyorlov', '20 May · 23:59', '13/13', 'graded'),
-      _A('Matematik induktsiya', '11-B Tayyorlov', 'Yopildi · 12 May', '13/13', 'closed'),
-    ];
+    final fromTasks = state.tasks
+        .where((task) => task.title.startsWith('Topshiriq: '))
+        .map(
+          (task) => _Assignment(
+            task.title.substring('Topshiriq: '.length),
+            task.description.isEmpty ? 'Mening guruhim' : task.description,
+            0,
+            0,
+            _SubmissionState.collecting,
+          ),
+        );
+    final all = [...fromTasks, ..._seed];
+    final visible = all
+        .where((item) {
+          return switch (_filter) {
+            _SubmissionFilter.all => true,
+            _SubmissionFilter.needsFeedback =>
+              item.state == _SubmissionState.needsFeedback,
+            _SubmissionFilter.collecting =>
+              item.state == _SubmissionState.collecting,
+            _SubmissionFilter.complete =>
+              item.state == _SubmissionState.feedbackShared,
+          };
+        })
+        .toList(growable: false);
+    final canTeach = state.can(StaffCapability.teachLessons);
     return SfScaffold(
       tab: SfTab.cohort,
-      onTabChanged: (t) => handleTab(context, SfTab.values.indexOf(t)),
-      top: Column(
-        children: [
-          SfLargeAppBar(
-            title: 'Topshiriqlar',
-            subtitle: '2 ta tekshirish kutmoqda',
-            actions: const [Icon(SfIcons.filter), SizedBox(width: 14), Icon(SfIcons.plus)],
+      onTabChanged: (tab) => handleTab(context, SfTab.values.indexOf(tab)),
+      top: SfLargeAppBar(
+        title: 'Topshiriqlar',
+        subtitle:
+            '${all.where((item) => item.state == _SubmissionState.needsFeedback).length} ta fikr kutmoqda',
+        actions: [
+          IconButton(
+            tooltip: 'Jarayon ko‘rinishi',
+            onPressed: () => context.push('/assignments/gradebook'),
+            icon: const Icon(Icons.view_kanban_outlined),
           ),
-          Container(
-            color: c.surface,
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-            child: SizedBox(
-              height: 30,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  for (final entry in [
-                    ('Hammasi', 12, true),
-                    ('Tekshirish', 2, false),
-                    ('Ochiq', 5, false),
-                    ('Yopiq', 5, false),
-                  ].asMap().entries)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: entry.value.$3 ? c.ink : Colors.transparent,
-                          border: entry.value.$3 ? null : Border.all(color: c.border),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(entry.value.$1,
-                                style: SfType.ui(
-                                    size: 12,
-                                    weight: FontWeight.w600,
-                                    color: entry.value.$3 ? c.bg : c.muted)),
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                              decoration: BoxDecoration(
-                                color: entry.value.$3
-                                    ? c.bg.withValues(alpha: 0.2)
-                                    : c.surface2,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text('${entry.value.$2}',
-                                  style: SfType.ui(
-                                      size: 10,
-                                      weight: FontWeight.w700,
-                                      color: entry.value.$3 ? c.bg : c.muted)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+          if (canTeach)
+            IconButton(
+              tooltip: 'Topshiriq yaratish',
+              onPressed: () => context.push('/assignments/new'),
+              icon: const Icon(SfIcons.plus),
             ),
-          ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
         children: [
-          for (final it in items) ...[
-            GestureDetector(
-              onTap: () => context.go('/assignments/grade'),
-              child: SfSurfaceCard(
-                padding: const EdgeInsets.all(14),
-                child: _AssignmentTile(it),
+          SegmentedButton<_SubmissionFilter>(
+            segments: const [
+              ButtonSegment(
+                value: _SubmissionFilter.all,
+                label: Text('Barchasi'),
               ),
-            ),
-            const SizedBox(height: 10),
-          ],
+              ButtonSegment(
+                value: _SubmissionFilter.needsFeedback,
+                label: Text('Fikr kerak'),
+              ),
+              ButtonSegment(
+                value: _SubmissionFilter.collecting,
+                label: Text('Jarayonda'),
+              ),
+              ButtonSegment(
+                value: _SubmissionFilter.complete,
+                label: Text('Yakun'),
+              ),
+            ],
+            selected: {_filter},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) =>
+                setState(() => _filter = selection.first),
+          ),
+          const SizedBox(height: 14),
+          if (visible.isEmpty)
+            const SfEmptyState(
+              title: 'Bu holatda topshiriq yo‘q',
+              message: 'Boshqa filtrni tanlang.',
+              compact: true,
+            )
+          else
+            for (final item in visible) ...[
+              _AssignmentCard(item: item, canOpen: canTeach),
+              const SizedBox(height: 9),
+            ],
         ],
       ),
+      bottom: canTeach
+          ? Container(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+              decoration: BoxDecoration(
+                color: c.surface,
+                border: Border(top: BorderSide(color: c.border)),
+              ),
+              child: SfButton(
+                kind: SfButtonKind.primary,
+                block: true,
+                height: 48,
+                label: 'Yangi topshiriq',
+                leading: SfIcons.plus,
+                onPressed: () => context.push('/assignments/new'),
+              ),
+            )
+          : null,
     );
   }
 }
 
-class _A {
-  final String t, cohort, deadline, sub, state;
-  final int? cnt;
-  final bool ai;
-  _A(this.t, this.cohort, this.deadline, this.sub, this.state, {this.cnt, this.ai = false});
+enum _SubmissionState { collecting, needsFeedback, feedbackShared }
+
+class _Assignment {
+  const _Assignment(
+    this.title,
+    this.cohort,
+    this.total,
+    this.submitted,
+    this.state,
+  );
+  final String title;
+  final String cohort;
+  final int total;
+  final int submitted;
+  final _SubmissionState state;
 }
 
-class _AssignmentTile extends StatelessWidget {
-  final _A it;
-  const _AssignmentTile(this.it);
+class _AssignmentCard extends StatelessWidget {
+  const _AssignmentCard({required this.item, required this.canOpen});
+  final _Assignment item;
+  final bool canOpen;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    final state = switch (it.state) {
-      'review' => (SfPillTone.primary, 'Tekshirish'),
-      'open' => (SfPillTone.accent, 'Ochiq'),
-      'graded' => (SfPillTone.success, 'Baholandi'),
-      _ => (SfPillTone.neutral, 'Yopiq'),
+    final status = switch (item.state) {
+      _SubmissionState.collecting => (
+        SfPillTone.primary,
+        'Javoblar kelmoqda',
+        c.primary,
+      ),
+      _SubmissionState.needsFeedback => (
+        SfPillTone.warn,
+        'Fikr kutilmoqda',
+        c.warn,
+      ),
+      _SubmissionState.feedbackShared => (
+        SfPillTone.success,
+        'Fikr yuborilgan',
+        c.success,
+      ),
     };
-    final parts = it.sub.split('/');
-    final pct = int.parse(parts[0]) / int.parse(parts[1]);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final progress = item.total == 0 ? 0.0 : item.submitted / item.total;
+    return SfSurfaceCard(
+      padding: EdgeInsets.zero,
+      child: InkWell(
+        onTap: canOpen ? () => context.push('/assignments/grade') : null,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      SfPill(tone: state.$1, label: state.$2),
-                      if (it.ai) const Padding(
-                          padding: EdgeInsets.only(left: 6),
-                          child: SfAiBadge(label: 'Yordam', compact: true)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(it.t,
+                  Expanded(
+                    child: Text(
+                      item.title,
                       style: SfType.ui(
-                          size: 16,
-                          weight: FontWeight.w700,
-                          color: c.ink,
-                          letterSpacing: -0.16,
-                          height: 1.2)),
-                  const SizedBox(height: 3),
-                  Text.rich(TextSpan(children: [
-                    TextSpan(text: '${it.cohort} · ', style: SfType.ui(size: 12, color: c.muted)),
-                    TextSpan(
-                        text: it.deadline,
-                        style:
-                            SfType.ui(size: 12, weight: FontWeight.w600, color: c.ink2)),
-                  ])),
+                        size: 14,
+                        weight: FontWeight.w800,
+                        color: c.ink,
+                      ),
+                    ),
+                  ),
+                  SfPill(label: status.$2, tone: status.$1),
                 ],
               ),
-            ),
-            if (it.state == 'review' && it.cnt != null)
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                    color: c.primary, borderRadius: BorderRadius.circular(12)),
-                alignment: Alignment.center,
-                child: Text('${it.cnt}',
-                    style: SfType.ui(
-                        size: 16, weight: FontWeight.w800, color: const Color(0xFFFFFCF5))),
+              const SizedBox(height: 4),
+              Text(item.cohort, style: SfType.ui(size: 11, color: c.muted)),
+              const SizedBox(height: 11),
+              LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(6),
+                color: status.$3,
+                backgroundColor: c.surface3,
               ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: pct,
-                  minHeight: 6,
-                  backgroundColor: c.surface2,
-                  valueColor:
-                      AlwaysStoppedAnimation(it.state == 'graded' ? c.success : c.primary),
-                ),
+              const SizedBox(height: 6),
+              Text(
+                item.total == 0
+                    ? 'Hali topshirilmagan'
+                    : '${item.submitted}/${item.total} ta topshirildi',
+                style: SfType.mono(size: 10, color: c.muted),
               ),
-            ),
-            const SizedBox(width: 10),
-            Text(it.sub, style: SfType.mono(size: 11, color: c.muted)),
-          ],
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }

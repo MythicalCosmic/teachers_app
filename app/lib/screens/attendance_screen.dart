@@ -1,102 +1,359 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
+import '../data/models.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_avatar.dart';
 import '../widgets/sf_button.dart';
+import '../widgets/sf_hint_card.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_state_view.dart';
+import '../widgets/sf_toast.dart';
 
 class AttendanceScreen extends StatelessWidget {
   const AttendanceScreen({super.key});
 
-  static const _students = <_Student>[
-    _Student('Akbarov Akmal', 'DEMO-2026-00042', 'present', null),
-    _Student('Azizova Madina', 'DEMO-2026-00043', 'present', null),
-    _Student('Bakirov Sherzod', 'DEMO-2026-00044', 'late', '8 daq'),
-    _Student('Davronova Sevinch', 'DEMO-2026-00045', 'present', null),
-    _Student('Eshmatov Otabek', 'DEMO-2026-00046', 'absent', 'Kasal'),
-    _Student('Fayzullayev Diyor', 'DEMO-2026-00047', 'present', null),
-    _Student('G‘aniyev Jasur', 'DEMO-2026-00048', 'present', null),
-    _Student('Halimova Zilola', 'DEMO-2026-00049', 'excused', 'Olimpiada'),
-    _Student('Ibragimov Sardor', 'DEMO-2026-00050', 'present', null),
-    _Student('Jo‘rayeva Nilufar', 'DEMO-2026-00051', 'present', null),
-    _Student('Karimov Rustam', 'DEMO-2026-00052', null, null),
-    _Student('Latipova Shahnoza', 'DEMO-2026-00053', null, null),
-  ];
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    if (state.attendanceSheets.isEmpty) {
+      return const Scaffold(
+        body: SfEmptyState(
+          title: 'Davomat varaqasi yo‘q',
+          message:
+              'Jadvaldagi dars boshlanganda varaq avtomatik paydo bo‘ladi.',
+        ),
+      );
+    }
+    final sheet = state.attendanceSheets.first;
+    final canEdit =
+        state.can(StaffCapability.takeAttendance) && !sheet.isSubmitted;
+    return SfScaffold(
+      top: _AttendanceHeader(sheet: sheet),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+        children: [
+          SfHintCard(
+            title: sheet.isSubmitted ? 'Davomat yuborilgan' : 'Tez belgilash',
+            message: sheet.isSubmitted
+                ? 'Bu varaq yakunlangan va endi o‘zgartirib bo‘lmaydi.'
+                : canEdit
+                ? 'Har bir o‘quvchi holatini tanlang. Yo‘q va sababli holatlar uchun izoh so‘raladi.'
+                : 'Sizning rolingiz davomatni o‘zgartirishga ruxsat bermaydi.',
+            tone: sheet.isSubmitted
+                ? SfHintTone.success
+                : canEdit
+                ? SfHintTone.info
+                : SfHintTone.danger,
+          ),
+          const SizedBox(height: 12),
+          for (final entry in sheet.entries) ...[
+            _AttendanceRow(sheet: sheet, entry: entry, enabled: canEdit),
+            const SizedBox(height: 7),
+          ],
+        ],
+      ),
+      bottom: _AttendanceFooter(sheet: sheet, enabled: canEdit),
+    );
+  }
+}
+
+class _AttendanceHeader extends StatelessWidget {
+  const _AttendanceHeader({required this.sheet});
+
+  final AttendanceSheet sheet;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return SfScaffold(
-      top: _Top(),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+    final counts = {
+      for (final status in AttendanceStatus.values)
+        status: sheet.entries.where((entry) => entry.status == status).length,
+    };
+    return Container(
+      color: c.surface,
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+      child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(14)),
+          SizedBox(
+            height: 46,
             child: Row(
               children: [
-                const Text('👈', style: TextStyle(fontSize: 18)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(
-                          text: 'Maslahat: ',
-                          style: SfType.ui(
-                              size: 12, weight: FontWeight.w700, color: c.ink2, height: 1.35)),
-                      TextSpan(
-                          text:
-                              'chapga suring — yo‘q · o‘ngga suring — bor · uzun bosing — sababli/kech.',
-                          style: SfType.ui(size: 12, color: c.ink2, height: 1.35)),
-                    ]),
-                  ),
+                IconButton(
+                  tooltip: 'Orqaga',
+                  onPressed: context.pop,
+                  icon: Icon(SfIcons.arrowL, color: c.primary),
                 ),
+                const Spacer(),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${sheet.cohortName} · ${sheet.lessonName}',
+                      style: SfType.ui(size: 11, color: c.muted),
+                    ),
+                    Text(
+                      'Davomat',
+                      style: SfType.ui(
+                        size: 15,
+                        weight: FontWeight.w800,
+                        color: c.ink,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                const SizedBox(width: 48),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          for (final s in _students) ...[
-            _StudentRow(s),
-            const SizedBox(height: 6),
-          ],
+          Row(
+            children: [
+              _Count(
+                label: 'Bor',
+                value: counts[AttendanceStatus.present]!,
+                color: c.success,
+              ),
+              _Count(
+                label: 'Yo‘q',
+                value: counts[AttendanceStatus.absent]!,
+                color: c.danger,
+              ),
+              _Count(
+                label: 'Kech',
+                value: counts[AttendanceStatus.late]!,
+                color: c.warn,
+              ),
+              _Count(
+                label: 'Sababli',
+                value: counts[AttendanceStatus.excused]!,
+                color: c.muted,
+              ),
+            ],
+          ),
         ],
       ),
-      bottom: Container(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+    );
+  }
+}
+
+class _Count extends StatelessWidget {
+  const _Count({required this.label, required this.value, required this.color});
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.symmetric(vertical: 7),
         decoration: BoxDecoration(
-          color: c.surface,
-          border: Border(top: BorderSide(color: c.border)),
+          color: c.surface2,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          children: [
+            Text(
+              '$value',
+              style: SfType.mono(
+                size: 20,
+                weight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            Text(
+              label.toUpperCase(),
+              style: SfType.eyebrow(color: c.muted, size: 9),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AttendanceRow extends StatelessWidget {
+  const _AttendanceRow({
+    required this.sheet,
+    required this.entry,
+    required this.enabled,
+  });
+
+  final AttendanceSheet sheet;
+  final AttendanceEntry entry;
+  final bool enabled;
+
+  Future<void> _select(BuildContext context, AttendanceStatus status) async {
+    final appState = AppScope.of(context);
+    String? note;
+    if (status == AttendanceStatus.absent ||
+        status == AttendanceStatus.excused) {
+      note = await _askReason(context, status);
+      if (note == null) return;
+    } else if (status == AttendanceStatus.late) {
+      note = 'Kechikdi';
+    }
+    final previous = entry.status;
+    final previousNote = entry.note;
+    try {
+      await appState.markAttendance(
+        sheetId: sheet.id,
+        studentId: entry.studentId,
+        status: status,
+        note: note,
+      );
+      if (!context.mounted) return;
+      SfToast.show(
+        context,
+        title: entry.studentName,
+        message: '${_statusLabel(status)} deb belgilandi.',
+        tone: SfToastTone.success,
+        actionLabel: previous == null ? null : 'Bekor qilish',
+        onAction: previous == null
+            ? null
+            : () => AppScope.of(context).markAttendance(
+                sheetId: sheet.id,
+                studentId: entry.studentId,
+                status: previous,
+                note: previousNote,
+              ),
+      );
+    } on Object catch (error) {
+      if (context.mounted) {
+        SfToast.show(context, message: '$error', tone: SfToastTone.error);
+      }
+    }
+  }
+
+  Future<String?> _askReason(
+    BuildContext context,
+    AttendanceStatus status,
+  ) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          status == AttendanceStatus.absent
+              ? 'Yo‘qlik sababi'
+              : 'Sababli holat',
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 120,
+          decoration: const InputDecoration(hintText: 'Qisqa sabab yozing'),
+        ),
+        actions: [
+          TextButton(onPressed: dialogContext.pop, child: const Text('Bekor')),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                dialogContext.pop(controller.text.trim());
+              }
+            },
+            child: const Text('Saqlash'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final tone = _statusColor(context, entry.status);
+    return Semantics(
+      label:
+          '${entry.studentName}, ${entry.status == null ? 'belgilanmagan' : _statusLabel(entry.status!)}',
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+        decoration: BoxDecoration(
+          color: entry.status == null ? c.surface : tone.withValues(alpha: .09),
+          border: Border.all(
+            color: entry.status == null
+                ? c.border
+                : tone.withValues(alpha: .25),
+          ),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           children: [
+            SfAvatar(name: entry.studentName, size: 36),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('10 / 12 belgilangan', style: SfType.mono(size: 11, color: c.muted)),
-                  const SizedBox(height: 4),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: 10 / 12,
-                      minHeight: 4,
-                      backgroundColor: c.surface3,
-                      valueColor: AlwaysStoppedAnimation(c.primary),
+                  Text(
+                    entry.studentName,
+                    style: SfType.ui(
+                      size: 13.5,
+                      weight: FontWeight.w700,
+                      color: c.ink,
+                    ),
+                  ),
+                  Text(
+                    entry.note ?? entry.studentId,
+                    style: SfType.mono(
+                      size: 10,
+                      color: entry.note == null ? c.muted : tone,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            SfButton(
-              kind: SfButtonKind.primary,
-              label: 'Saqlash',
-              trailing: SfIcons.arrowR,
-              onPressed: () => context.pop(),
-            ),
+            if (enabled)
+              PopupMenuButton<AttendanceStatus>(
+                tooltip: 'Holatni tanlash',
+                initialValue: entry.status,
+                onSelected: (value) => _select(context, value),
+                itemBuilder: (_) => [
+                  for (final status in AttendanceStatus.values)
+                    PopupMenuItem(
+                      value: status,
+                      child: Text(_statusLabel(status)),
+                    ),
+                ],
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 76,
+                    minHeight: 44,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    entry.status == null
+                        ? 'Tanlash'
+                        : _statusLabel(entry.status!),
+                    style: SfType.ui(
+                      size: 11,
+                      weight: FontWeight.w800,
+                      color: tone,
+                    ),
+                  ),
+                ),
+              )
+            else
+              Text(
+                entry.status == null ? '—' : _statusLabel(entry.status!),
+                style: SfType.ui(
+                  size: 11,
+                  weight: FontWeight.w800,
+                  color: tone,
+                ),
+              ),
           ],
         ),
       ),
@@ -104,207 +361,111 @@ class AttendanceScreen extends StatelessWidget {
   }
 }
 
-class _Top extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    return Container(
-      color: c.surface,
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
-      child: Column(
-        children: [
-          SizedBox(
-            height: 44,
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => context.pop(),
-                  child: Row(
-                    children: [
-                      Icon(SfIcons.x, size: 18, color: c.primary),
-                      const SizedBox(width: 4),
-                      Text('Bekor',
-                          style:
-                              SfType.ui(size: 16, weight: FontWeight.w600, color: c.primary)),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                Column(
-                  children: [
-                    Text('9-B · Algebra', style: SfType.ui(size: 11, color: c.muted)),
-                    Text('Davomat',
-                        style: SfType.ui(
-                            size: 15, weight: FontWeight.w700, color: c.ink, letterSpacing: -0.15)),
-                  ],
-                ),
-                const Spacer(),
-                Text('Saqlash',
-                    style: SfType.ui(size: 15, weight: FontWeight.w700, color: c.primary)),
-              ],
+class _AttendanceFooter extends StatelessWidget {
+  const _AttendanceFooter({required this.sheet, required this.enabled});
+  final AttendanceSheet sheet;
+  final bool enabled;
+
+  Future<void> _submit(BuildContext context) async {
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Davomatni yuborasizmi?'),
+            content: const Text(
+              'Yuborilgandan keyin bu varaqni tahrirlab bo‘lmaydi.',
             ),
+            actions: [
+              TextButton(
+                onPressed: () => dialogContext.pop(false),
+                child: const Text('Bekor'),
+              ),
+              FilledButton(
+                onPressed: () => dialogContext.pop(true),
+                child: const Text('Yuborish'),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Row(
-              children: [
-                for (final s in [
-                  (8, 'Bor', c.success),
-                  (1, 'Yo‘q', c.danger),
-                  (1, 'Kech', c.warn),
-                  (1, 'Sababli', c.muted),
-                ])
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
-                            color: c.surface2, borderRadius: BorderRadius.circular(10)),
-                        child: Column(
-                          children: [
-                            Text('${s.$1}',
-                                style: SfType.mono(
-                                    size: 22, weight: FontWeight.w700, color: s.$3, height: 1)),
-                            const SizedBox(height: 2),
-                            Text(s.$2.toUpperCase(),
-                                style: SfType.eyebrow(color: c.muted, size: 10)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Student {
-  final String name;
-  final String id;
-  final String? state;
-  final String? note;
-  const _Student(this.name, this.id, this.state, this.note);
-}
-
-class _StudentRow extends StatelessWidget {
-  final _Student s;
-  const _StudentRow(this.s);
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    Color bg = c.surface;
-    Color fg = c.ink;
-    Color dot = c.muted;
-    String? label;
-    if (s.state != null) {
-      switch (s.state) {
-        case 'present':
-          bg = c.successSoft;
-          fg = c.success;
-          dot = c.success;
-          label = 'Bor';
-          break;
-        case 'absent':
-          bg = c.dangerSoft;
-          fg = c.danger;
-          dot = c.danger;
-          label = 'Yo‘q';
-          break;
-        case 'late':
-          bg = c.warnSoft;
-          fg = c.warn;
-          dot = c.warn;
-          label = 'Kechikdi';
-          break;
-        case 'excused':
-          bg = c.surface3;
-          fg = c.ink2;
-          dot = c.muted;
-          label = 'Sababli';
-          break;
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return;
+    try {
+      await AppScope.of(context).submitAttendance(sheet.id);
+      if (!context.mounted) return;
+      SfToast.show(
+        context,
+        title: 'Davomat qabul qilindi',
+        message:
+            '${sheet.cohortName} uchun ${sheet.entries.length} ta holat yuborildi.',
+        tone: SfToastTone.success,
+      );
+    } on Object catch (error) {
+      if (context.mounted) {
+        SfToast.show(context, message: '$error', tone: SfToastTone.error);
       }
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final marked = sheet.entries.where((entry) => entry.status != null).length;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
       decoration: BoxDecoration(
-        color: bg,
-        border: Border.all(color: s.state == null ? c.border : Colors.transparent),
-        borderRadius: BorderRadius.circular(14),
+        color: c.surface,
+        border: Border(top: BorderSide(color: c.border)),
       ),
       child: Row(
         children: [
-          SfAvatar(name: s.name, size: 36),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(s.name,
-                    style: SfType.ui(size: 14, weight: FontWeight.w600, color: c.ink)),
-                Text.rich(TextSpan(children: [
-                  TextSpan(text: s.id, style: SfType.mono(size: 10, color: c.muted)),
-                  if (s.note != null)
-                    TextSpan(
-                        text: ' · ${s.note}',
-                        style: SfType.mono(
-                            size: 10, color: fg, weight: FontWeight.w600)),
-                ])),
+                Text(
+                  '$marked / ${sheet.entries.length} belgilangan',
+                  style: SfType.mono(size: 11, color: c.muted),
+                ),
+                const SizedBox(height: 5),
+                LinearProgressIndicator(
+                  value: marked / sheet.entries.length,
+                  minHeight: 5,
+                  borderRadius: BorderRadius.circular(5),
+                  color: c.primary,
+                  backgroundColor: c.surface3,
+                ),
               ],
             ),
           ),
-          if (label != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration:
-                  BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(999)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                  Text(label,
-                      style: SfType.ui(size: 11, weight: FontWeight.w700, color: fg)),
-                ],
-              ),
-            )
-          else
-            Row(
-              children: [
-                _OutlineAction(icon: SfIcons.check, color: c.success),
-                const SizedBox(width: 6),
-                _OutlineAction(icon: SfIcons.x, color: c.danger),
-              ],
-            ),
+          const SizedBox(width: 14),
+          SfButton(
+            kind: SfButtonKind.primary,
+            label: sheet.isSubmitted ? 'Yuborilgan' : 'Yuborish',
+            trailing: sheet.isSubmitted ? SfIcons.check : SfIcons.arrowR,
+            onPressed: enabled && sheet.isComplete
+                ? () => _submit(context)
+                : null,
+          ),
         ],
       ),
     );
   }
 }
 
-class _OutlineAction extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  const _OutlineAction({required this.icon, required this.color});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        border: Border.all(color: color, width: 1.5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      alignment: Alignment.center,
-      child: Icon(icon, size: 18, color: color),
-    );
-  }
+String _statusLabel(AttendanceStatus status) => switch (status) {
+  AttendanceStatus.present => 'Bor',
+  AttendanceStatus.absent => 'Yo‘q',
+  AttendanceStatus.late => 'Kech',
+  AttendanceStatus.excused => 'Sababli',
+};
+
+Color _statusColor(BuildContext context, AttendanceStatus? status) {
+  final c = SfTheme.colorsOf(context);
+  return switch (status) {
+    AttendanceStatus.present => c.success,
+    AttendanceStatus.absent => c.danger,
+    AttendanceStatus.late => c.warn,
+    AttendanceStatus.excused => c.muted,
+    null => c.primary,
+  };
 }

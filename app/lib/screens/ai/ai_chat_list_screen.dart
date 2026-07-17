@@ -18,12 +18,39 @@ class AiChatListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
     final groups = [
-      _G('9-B Algebra', '24 o‘quvchi · Mar/Yos/Ju', 'Bugun · 11:34', true,
-          '"Bu hafta sinf umuman barqaror. 2 ta o‘quvchi diqqat talab qiladi…"', 8, 2, 94, c.primary),
-      _G('Algebra · Mid', '21 o‘quvchi · Du/Cho/Pa', 'Bugun · 09:12', false,
-          '"Davronova Sevinch va Halimova Zilola olimpiada darajasi…"', 6, 0, 96, c.primary),
-      _G('10-V Geometriya', '19 o‘quvchi · Du/Pa', 'Kecha', false,
-          '"Trapetsiya mavzusi yaxshi tushunilgan. 11-misol uchun ekstra…"', 4, 1, 88, c.accent),
+      _G(
+        '9-B Algebra',
+        '24 o‘quvchi · Mar/Yos/Ju',
+        'Bugun · 11:34',
+        true,
+        '"Bu hafta sinf umuman barqaror. 2 ta o‘quvchi diqqat talab qiladi…"',
+        8,
+        2,
+        94,
+        c.primary,
+      ),
+      _G(
+        'Algebra · Mid',
+        '21 o‘quvchi · Du/Cho/Pa',
+        'Bugun · 09:12',
+        false,
+        '"Davronova Sevinch va Halimova Zilola olimpiada darajasi…"',
+        6,
+        0,
+        96,
+        c.primary,
+      ),
+      _G(
+        '10-V Geometriya',
+        '19 o‘quvchi · Du/Pa',
+        'Kecha',
+        false,
+        '"Trapetsiya mavzusi yaxshi tushunilgan. 11-misol uchun ekstra…"',
+        4,
+        1,
+        88,
+        c.accent,
+      ),
     ];
     return SfScaffold(
       tab: SfTab.ai,
@@ -39,7 +66,10 @@ class AiChatListScreen extends StatelessWidget {
             Positioned(
               right: -30,
               top: -30,
-              child: Opacity(opacity: 0.08, child: SfStar(size: 140, color: c.primary)),
+              child: Opacity(
+                opacity: 0.08,
+                child: SfStar(size: 140, color: c.primary),
+              ),
             ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,16 +80,21 @@ class AiChatListScreen extends StatelessWidget {
                     children: [
                       const SfAiBadge(label: 'Yordamchi'),
                       const SizedBox(height: 8),
-                      Text('Suhbat',
-                          style: SfType.ui(
-                              size: 28,
-                              weight: FontWeight.w800,
-                              color: c.ink,
-                              letterSpacing: -0.7,
-                              height: 1.05)),
+                      Text(
+                        'Suhbat',
+                        style: SfType.ui(
+                          size: 28,
+                          weight: FontWeight.w800,
+                          color: c.ink,
+                          letterSpacing: -0.7,
+                          height: 1.05,
+                        ),
+                      ),
                       const SizedBox(height: 2),
-                      Text('guruhlaringiz haqida',
-                          style: SfType.display(size: 16, color: c.muted)),
+                      Text(
+                        'guruhlaringiz haqida',
+                        style: SfType.display(size: 16, color: c.muted),
+                      ),
                     ],
                   ),
                 ),
@@ -67,7 +102,9 @@ class AiChatListScreen extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                      color: c.surface2, borderRadius: BorderRadius.circular(10)),
+                    color: c.surface2,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   alignment: Alignment.center,
                   child: Icon(SfIcons.search, size: 18, color: c.ink),
                 ),
@@ -84,14 +121,25 @@ class AiChatListScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('MARKAZ LIMITI · OY', style: SfType.eyebrow(color: c.muted)),
+                Text(
+                  'MARKAZ LIMITI · OY',
+                  style: SfType.eyebrow(color: c.muted),
+                ),
                 const SizedBox(height: 4),
-                Text.rich(TextSpan(children: [
+                Text.rich(
                   TextSpan(
-                      text: '4 320 / 50 000 ',
-                      style: SfType.mono(size: 14, color: c.ink2)),
-                  TextSpan(text: 'token', style: SfType.mono(size: 14, color: c.muted)),
-                ])),
+                    children: [
+                      TextSpan(
+                        text: '4 320 / 50 000 ',
+                        style: SfType.mono(size: 14, color: c.ink2),
+                      ),
+                      TextSpan(
+                        text: 'token',
+                        style: SfType.mono(size: 14, color: c.muted),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 6),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
@@ -110,7 +158,7 @@ class AiChatListScreen extends StatelessWidget {
           const SizedBox(height: 8),
           for (final g in groups) ...[
             GestureDetector(
-              onTap: () => context.go('/ai/chat'),
+              onTap: () => context.push('/ai/chat'),
               child: SfSurfaceCard(
                 padding: const EdgeInsets.all(14),
                 child: Stack(
@@ -118,7 +166,10 @@ class AiChatListScreen extends StatelessWidget {
                     Positioned(
                       right: -16,
                       top: -16,
-                      child: Opacity(opacity: 0.06, child: SfStar(size: 84, color: g.color)),
+                      child: Opacity(
+                        opacity: 0.06,
+                        child: SfStar(size: 84, color: g.color),
+                      ),
                     ),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -127,9 +178,14 @@ class AiChatListScreen extends StatelessWidget {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                              color: g.color, borderRadius: BorderRadius.circular(12)),
+                            color: g.color,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           alignment: Alignment.center,
-                          child: const SfStar(size: 22, color: Color(0xFFFFFCF5)),
+                          child: const SfStar(
+                            size: 22,
+                            color: Color(0xFFFFFCF5),
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -138,22 +194,37 @@ class AiChatListScreen extends StatelessWidget {
                             children: [
                               Row(
                                 children: [
-                                  Text(g.n,
-                                      style: SfType.ui(
-                                          size: 14.5,
-                                          weight: FontWeight.w700,
-                                          color: c.ink)),
+                                  Text(
+                                    g.n,
+                                    style: SfType.ui(
+                                      size: 14.5,
+                                      weight: FontWeight.w700,
+                                      color: c.ink,
+                                    ),
+                                  ),
                                   if (g.pinned) ...[
                                     const SizedBox(width: 6),
-                                    Icon(SfIcons.pin, size: 12, color: c.accent),
+                                    Icon(
+                                      SfIcons.pin,
+                                      size: 12,
+                                      color: c.accent,
+                                    ),
                                   ],
                                   const Spacer(),
-                                  Text(g.t,
-                                      style: SfType.mono(size: 10, color: c.muted)),
+                                  Text(
+                                    g.t,
+                                    style: SfType.mono(
+                                      size: 10,
+                                      color: c.muted,
+                                    ),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 2),
-                              Text(g.sub, style: SfType.ui(size: 11, color: c.muted)),
+                              Text(
+                                g.sub,
+                                style: SfType.ui(size: 11, color: c.muted),
+                              ),
                               const SizedBox(height: 8),
                               Container(
                                 padding: const EdgeInsets.all(10),
@@ -167,63 +238,106 @@ class AiChatListScreen extends StatelessWidget {
                                   children: [
                                     Row(
                                       children: [
-                                        Text('Ai',
-                                            style: SfType.display(
-                                                size: 12, color: c.ai)),
+                                        Text(
+                                          'Ai',
+                                          style: SfType.display(
+                                            size: 12,
+                                            color: c.ai,
+                                          ),
+                                        ),
                                         const SizedBox(width: 6),
-                                        Text('OXIRGI XULOSA',
-                                            style: SfType.eyebrow(
-                                                color: c.muted, size: 9.5)),
+                                        Text(
+                                          'OXIRGI XULOSA',
+                                          style: SfType.eyebrow(
+                                            color: c.muted,
+                                            size: 9.5,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(g.preview,
-                                        style: SfType.display(
-                                            size: 12,
-                                            color: c.ink2,
-                                            height: 1.4,
-                                            style: FontStyle.italic)),
+                                    Text(
+                                      g.preview,
+                                      style: SfType.display(
+                                        size: 12,
+                                        color: c.ink2,
+                                        height: 1.4,
+                                        style: FontStyle.italic,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Text.rich(TextSpan(children: [
+                                  Text.rich(
                                     TextSpan(
-                                        text: '↑${g.up}',
-                                        style: SfType.mono(
+                                      children: [
+                                        TextSpan(
+                                          text: '↑${g.up}',
+                                          style: SfType.mono(
                                             size: 11,
                                             weight: FontWeight.w700,
-                                            color: const Color(0xFF7A4F0E))),
-                                    TextSpan(
-                                        text: ' Up',
-                                        style: SfType.ui(size: 11, color: c.muted)),
-                                  ])),
+                                            color: const Color(0xFF7A4F0E),
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: ' Up',
+                                          style: SfType.ui(
+                                            size: 11,
+                                            color: c.muted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                   const SizedBox(width: 12),
-                                  Text.rich(TextSpan(children: [
+                                  Text.rich(
                                     TextSpan(
-                                        text: '↓${g.down}',
-                                        style: SfType.mono(
+                                      children: [
+                                        TextSpan(
+                                          text: '↓${g.down}',
+                                          style: SfType.mono(
                                             size: 11,
                                             weight: FontWeight.w700,
-                                            color: c.danger)),
-                                    TextSpan(
-                                        text: ' Down',
-                                        style: SfType.ui(size: 11, color: c.muted)),
-                                  ])),
+                                            color: c.danger,
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: ' Down',
+                                          style: SfType.ui(
+                                            size: 11,
+                                            color: c.muted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                   const SizedBox(width: 12),
-                                  Text.rich(TextSpan(children: [
+                                  Text.rich(
                                     TextSpan(
-                                        text: 'Davomat ',
-                                        style: SfType.ui(size: 11, color: c.muted)),
-                                    TextSpan(
-                                        text: '${g.attend}%',
-                                        style: SfType.mono(
+                                      children: [
+                                        TextSpan(
+                                          text: 'Davomat ',
+                                          style: SfType.ui(
+                                            size: 11,
+                                            color: c.muted,
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: '${g.attend}%',
+                                          style: SfType.mono(
                                             size: 11,
                                             weight: FontWeight.w700,
-                                            color: g.attend >= 92 ? c.success : c.warn)),
-                                  ])),
+                                            color: g.attend >= 92
+                                                ? c.success
+                                                : c.warn,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ],
@@ -238,7 +352,10 @@ class AiChatListScreen extends StatelessWidget {
             const SizedBox(height: 10),
           ],
           const SizedBox(height: 8),
-          Text('YOKI UMUMIY SAVOL BERING', style: SfType.eyebrow(color: c.muted)),
+          Text(
+            'YOKI UMUMIY SAVOL BERING',
+            style: SfType.eyebrow(color: c.muted),
+          ),
           const SizedBox(height: 8),
           for (final q in const [
             'Ushbu hafta eng yaxshi 5 o‘quvchini ko‘rsat',
@@ -258,7 +375,9 @@ class AiChatListScreen extends StatelessWidget {
                   children: [
                     Text('Ai', style: SfType.display(size: 14, color: c.ai)),
                     const SizedBox(width: 10),
-                    Expanded(child: Text(q, style: SfType.ui(size: 13, color: c.ink2))),
+                    Expanded(
+                      child: Text(q, style: SfType.ui(size: 13, color: c.ink2)),
+                    ),
                     Icon(SfIcons.arrowR, size: 14, color: c.muted),
                   ],
                 ),
@@ -280,6 +399,15 @@ class _G {
   final int down;
   final int attend;
   final Color color;
-  _G(this.n, this.sub, this.t, this.pinned, this.preview, this.up, this.down, this.attend,
-      this.color);
+  _G(
+    this.n,
+    this.sub,
+    this.t,
+    this.pinned,
+    this.preview,
+    this.up,
+    this.down,
+    this.attend,
+    this.color,
+  );
 }

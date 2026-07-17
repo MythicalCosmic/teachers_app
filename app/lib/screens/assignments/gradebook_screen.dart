@@ -1,187 +1,235 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
-import '../../widgets/sf_ai_badge.dart';
-import '../../widgets/sf_ai_surface.dart';
 import '../../widgets/sf_app_bar.dart';
-import '../../widgets/sf_icons.dart';
+import '../../widgets/sf_avatar.dart';
+import '../../widgets/sf_card.dart';
+import '../../widgets/sf_hint_card.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_state_view.dart';
+import '../../widgets/sf_toast.dart';
 
-class GradebookScreen extends StatelessWidget {
+enum _ProgressStatus { notSubmitted, submitted, feedbackNeeded, feedbackShared }
+
+class GradebookScreen extends StatefulWidget {
   const GradebookScreen({super.key});
 
-  static const _exams = ['M1', 'M2', 'M3', 'YI', 'M4', 'M5', 'M6', 'F'];
-  static const _students = <_Stu>[
-    _Stu('Akbarov A.', 4.8, [5, 5, 4, 5, 5, 4, 5, 5]),
-    _Stu('Azizova M.', 4.6, [5, 4, 5, 5, 4, 5, 4, 5]),
-    _Stu('Bakirov S.', 3.8, [4, 3, 4, 4, 3, 4, 4, 4]),
-    _Stu('Davronova S.', 4.2, [4, 5, 4, 4, 4, 4, 5, 4]),
-    _Stu('Eshmatov O.', 3.1, [3, 2, 3, 3, 0, 4, 3, 3]),
-    _Stu('Fayzullayev D.', 4.4, [4, 5, 4, 5, 4, 4, 5, 4]),
-    _Stu('G‘aniyev J.', 3.9, [4, 4, 3, 4, 4, 4, 4, 4]),
-    _Stu('Halimova Z.', 4.7, [5, 5, 5, 4, 5, 5, 4, 5]),
-    _Stu('Ibragimov S.', 4.0, [4, 4, 4, 4, 4, 4, 4, 4]),
+  @override
+  State<GradebookScreen> createState() => _GradebookScreenState();
+}
+
+class _GradebookScreenState extends State<GradebookScreen> {
+  _ProgressStatus? _filter;
+
+  static const _learners = [
+    _Learner('Akbarov Akmal', _ProgressStatus.feedbackNeeded, 'Bugun · 09:42'),
+    _Learner('Azizova Madina', _ProgressStatus.feedbackShared, 'Kecha · 18:10'),
+    _Learner('Bakirov Sherzod', _ProgressStatus.submitted, 'Bugun · 08:54'),
+    _Learner(
+      'Davronova Sevinch',
+      _ProgressStatus.feedbackShared,
+      'Kecha · 16:22',
+    ),
+    _Learner('Eshmatov Otabek', _ProgressStatus.notSubmitted, 'Muddat ertaga'),
+    _Learner(
+      'Halimova Zilola',
+      _ProgressStatus.feedbackNeeded,
+      'Bugun · 10:05',
+    ),
   ];
+
+  Future<void> _remind(BuildContext context, _Learner learner) async {
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Eslatma yuborilsinmi?'),
+            content: Text(
+              '${learner.name}ga topshiriq muddati haqida xabar yuboriladi.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => dialogContext.pop(false),
+                child: const Text('Bekor'),
+              ),
+              FilledButton(
+                onPressed: () => dialogContext.pop(true),
+                child: const Text('Yuborish'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (confirmed && context.mounted) {
+      SfToast.show(
+        context,
+        title: 'Eslatma yuborildi',
+        message: learner.name,
+        tone: SfToastTone.success,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
     final c = SfTheme.colorsOf(context);
+    if (!state.can(StaffCapability.teachLessons)) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const BackButton(),
+          title: const Text('Jarayon'),
+        ),
+        body: const SfEmptyState(
+          title: 'Ruxsat mavjud emas',
+          icon: Icons.lock_outline_rounded,
+        ),
+      );
+    }
+    final visible = _learners
+        .where((learner) => _filter == null || learner.status == _filter)
+        .toList();
+    final completed = _learners
+        .where((learner) => learner.status == _ProgressStatus.feedbackShared)
+        .length;
     return SfScaffold(
-      top: Column(
-        children: [
-          SfNavBar(
-            title: 'Baholar',
-            subtitle: 'II chorak · Algebra',
-            leading: GestureDetector(
-              onTap: () => context.pop(),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [Icon(SfIcons.arrowL, size: 18), SizedBox(width: 2), Text('9-B')],
-              ),
-            ),
-            actions: const [Icon(SfIcons.upload), SizedBox(width: 12), Icon(SfIcons.more)],
-          ),
-          Container(
-            color: c.surface,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
-              children: [
-                for (final entry in ['I', 'II', 'III', 'IV'].asMap().entries)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: entry.key == 1 ? c.ink : Colors.transparent,
-                          border: entry.key == 1 ? null : Border.all(color: c.border),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text('${entry.value} chorak',
-                            style: SfType.ui(
-                                size: 12,
-                                weight: FontWeight.w700,
-                                color: entry.key == 1 ? c.bg : c.muted)),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
+      top: SfNavBar(
+        title: 'Topshiriq jarayoni',
+        subtitle: '$completed/${_learners.length} ta fikr yakunlangan',
+        leading: IconButton(
+          tooltip: 'Orqaga',
+          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        ),
       ),
       body: ListView(
-        padding: const EdgeInsets.only(top: 12, bottom: 24),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
         children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          const SfHintCard(
+            title: 'Jarayon va fikr holati',
+            message:
+                'Bu ko‘rinish raqamli baho bermaydi. Kim topshirgani va kimga foydali fikr kerakligini ko‘rsatadi.',
+            tone: SfHintTone.info,
+          ),
+          const SizedBox(height: 14),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                SizedBox(
-                    width: 100,
-                    child: Text('O‘QUVCHI', style: SfType.eyebrow(color: c.muted, size: 10))),
-                for (final e in _exams)
-                  Expanded(
-                      child: Text(e,
-                          textAlign: TextAlign.center,
-                          style: SfType.eyebrow(color: c.muted, size: 10))),
-                SizedBox(
-                    width: 38,
-                    child: Text('O‘RT',
-                        textAlign: TextAlign.center,
-                        style: SfType.eyebrow(color: c.ink2, size: 10))),
+                ChoiceChip(
+                  label: const Text('Hammasi'),
+                  selected: _filter == null,
+                  onSelected: (_) => setState(() => _filter = null),
+                ),
+                const SizedBox(width: 6),
+                for (final status in _ProgressStatus.values) ...[
+                  ChoiceChip(
+                    label: Text(_statusLabel(status)),
+                    selected: _filter == status,
+                    onSelected: (_) => setState(() => _filter = status),
+                  ),
+                  const SizedBox(width: 6),
+                ],
               ],
             ),
           ),
-          for (int i = 0; i < _students.length; i++)
-            Container(
-              color: i.isOdd ? Colors.transparent : c.surface,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 100,
-                    child: Text(_students[i].n,
-                        overflow: TextOverflow.ellipsis,
-                        style: SfType.ui(size: 12, weight: FontWeight.w600, color: c.ink)),
-                  ),
-                  for (final g in _students[i].grades)
+          const SizedBox(height: 14),
+          if (visible.isEmpty)
+            const SfEmptyState(title: 'Bu holatda o‘quvchi yo‘q', compact: true)
+          else
+            for (final learner in visible) ...[
+              SfSurfaceCard(
+                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                child: Row(
+                  children: [
+                    SfAvatar(name: learner.name, size: 38),
+                    const SizedBox(width: 11),
                     Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 1),
-                        child: Container(
-                          height: 30,
-                          decoration: BoxDecoration(
-                            color: _cellColor(g, c).$1,
-                            borderRadius: BorderRadius.circular(6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            learner.name,
+                            style: SfType.ui(
+                              size: 13.5,
+                              weight: FontWeight.w700,
+                              color: c.ink,
+                            ),
                           ),
-                          alignment: Alignment.center,
-                          child: Text(g == 0 ? '·' : '$g',
-                              style: SfType.mono(
-                                  size: 12,
-                                  weight: FontWeight.w700,
-                                  color: _cellColor(g, c).$2)),
+                          Text(
+                            learner.detail,
+                            style: SfType.ui(size: 10.5, color: c.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _statusColor(
+                          context,
+                          learner.status,
+                        ).withValues(alpha: .11),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _statusLabel(learner.status),
+                        style: SfType.ui(
+                          size: 10,
+                          weight: FontWeight.w800,
+                          color: _statusColor(context, learner.status),
                         ),
                       ),
                     ),
-                  SizedBox(
-                    width: 38,
-                    child: Container(
-                      height: 30,
-                      decoration: BoxDecoration(
-                          color: c.ink, borderRadius: BorderRadius.circular(6)),
-                      alignment: Alignment.center,
-                      child: Text('${_students[i].avg}',
-                          style: SfType.mono(
-                              size: 12, weight: FontWeight.w700, color: c.bg)),
-                    ),
-                  ),
-                ],
+                    if (learner.status == _ProgressStatus.notSubmitted)
+                      IconButton(
+                        tooltip: 'Eslatma yuborish',
+                        onPressed: () => _remind(context, learner),
+                        icon: const Icon(Icons.notifications_active_outlined),
+                      )
+                    else
+                      IconButton(
+                        tooltip: 'Ishni ochish',
+                        onPressed: () => context.push('/assignments/grade'),
+                        icon: const Icon(Icons.chevron_right_rounded),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SfAiSurface(
-              borderRadius: BorderRadius.circular(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SfAiBadge(label: 'Tahlil'),
-                  const SizedBox(height: 8),
-                  Text.rich(TextSpan(children: [
-                    TextSpan(
-                        text: 'Eshmatov Otabek',
-                        style: SfType.ui(
-                            size: 13, weight: FontWeight.w700, color: c.ink2, height: 1.4)),
-                    TextSpan(
-                        text:
-                            'ning 4-yarim-yillik imtihonida baho yo‘q. Davomati ham 72%. Yo‘qlama sababli bo‘lishi mumkin.',
-                        style: SfType.ui(size: 13, color: c.ink2, height: 1.4)),
-                  ])),
-                ],
-              ),
-            ),
-          ),
+              const SizedBox(height: 8),
+            ],
         ],
       ),
     );
   }
-
-  (Color, Color) _cellColor(int g, dynamic c) {
-    if (g == 0) return (c.surface3, c.muted);
-    if (g == 5) return (c.successSoft, c.success);
-    if (g == 4) return (c.accentSoft, c.accentInk);
-    if (g == 3) return (c.warnSoft, c.warn);
-    return (c.dangerSoft, c.danger);
-  }
 }
 
-class _Stu {
-  final String n;
-  final double avg;
-  final List<int> grades;
-  const _Stu(this.n, this.avg, this.grades);
+class _Learner {
+  const _Learner(this.name, this.status, this.detail);
+  final String name;
+  final _ProgressStatus status;
+  final String detail;
+}
+
+String _statusLabel(_ProgressStatus status) => switch (status) {
+  _ProgressStatus.notSubmitted => 'Topshirmagan',
+  _ProgressStatus.submitted => 'Topshirildi',
+  _ProgressStatus.feedbackNeeded => 'Fikr kerak',
+  _ProgressStatus.feedbackShared => 'Fikr yuborildi',
+};
+
+Color _statusColor(BuildContext context, _ProgressStatus status) {
+  final c = SfTheme.colorsOf(context);
+  return switch (status) {
+    _ProgressStatus.notSubmitted => c.danger,
+    _ProgressStatus.submitted => c.primary,
+    _ProgressStatus.feedbackNeeded => c.warn,
+    _ProgressStatus.feedbackShared => c.success,
+  };
 }

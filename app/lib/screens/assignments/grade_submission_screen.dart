@@ -1,282 +1,229 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_ai_badge.dart';
 import '../../widgets/sf_ai_surface.dart';
 import '../../widgets/sf_app_bar.dart';
-import '../../widgets/sf_avatar.dart';
 import '../../widgets/sf_button.dart';
 import '../../widgets/sf_card.dart';
-import '../../widgets/sf_icons.dart';
-import '../../widgets/sf_pill.dart';
+import '../../widgets/sf_form_controls.dart';
+import '../../widgets/sf_hint_card.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_state_view.dart';
+import '../../widgets/sf_toast.dart';
 
-class GradeSubmissionScreen extends StatelessWidget {
+enum _FeedbackStatus { ready, revise, conference }
+
+class GradeSubmissionScreen extends StatefulWidget {
   const GradeSubmissionScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    return SfScaffold(
-      top: SfNavBar(
-        title: 'Akmal Akbarov',
-        subtitle: 'Kvadrat tenglamalar',
-        leading: GestureDetector(
-          onTap: () => context.pop(),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(SfIcons.arrowL, size: 18),
-              SizedBox(width: 2),
-              Text('Ortga'),
+  State<GradeSubmissionScreen> createState() => _GradeSubmissionScreenState();
+}
+
+class _GradeSubmissionScreenState extends State<GradeSubmissionScreen> {
+  final _feedback = TextEditingController();
+  _FeedbackStatus _status = _FeedbackStatus.ready;
+  bool _sent = false;
+
+  @override
+  void dispose() {
+    _feedback.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (_feedback.text.trim().length < 8) {
+      SfToast.show(
+        context,
+        message: 'Fikrni aniqroq yozing.',
+        tone: SfToastTone.warning,
+      );
+      return;
+    }
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Fikr yuborilsinmi?'),
+            content: const Text(
+              'O‘quvchi ushbu fikr va keyingi qadamni darhol ko‘radi.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => dialogContext.pop(false),
+                child: const Text('Tekshirish'),
+              ),
+              FilledButton(
+                onPressed: () => dialogContext.pop(true),
+                child: const Text('Yuborish'),
+              ),
             ],
           ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+    setState(() => _sent = true);
+    SfToast.show(
+      context,
+      title: 'Fikr yuborildi',
+      message: 'Akbarov Akmal · ${_statusLabel(_status)}',
+      tone: SfToastTone.success,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final c = SfTheme.colorsOf(context);
+    if (!state.can(StaffCapability.teachLessons)) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const BackButton(),
+          title: const Text('Topshiriq fikri'),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Text('5 / 24', style: SfType.ui(size: 12, color: c.muted)),
-          ),
-          const Icon(SfIcons.more),
-        ],
+        body: const SfEmptyState(
+          title: 'Ruxsat mavjud emas',
+          icon: Icons.lock_outline_rounded,
+        ),
+      );
+    }
+    return SfScaffold(
+      top: SfNavBar(
+        title: 'Topshiriq fikri',
+        subtitle: 'Akbarov Akmal · 9-B Algebra',
+        leading: IconButton(
+          tooltip: 'Orqaga',
+          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
         children: [
-          SfSurfaceCard(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                SfAvatar(name: 'Akmal Akbarov', size: 44, color: c.primary),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Akbarov Akmal',
-                          style: SfType.ui(size: 15, weight: FontWeight.w700, color: c.ink)),
-                      Text.rich(TextSpan(children: [
-                        TextSpan(text: 'Topshirildi: ', style: SfType.ui(size: 11, color: c.muted)),
-                        TextSpan(
-                            text: '16.05 14:23',
-                            style: SfType.mono(size: 11, color: c.ink2)),
-                      ])),
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                      color: c.surface2, borderRadius: BorderRadius.circular(10)),
-                  alignment: Alignment.center,
-                  child: Icon(SfIcons.arrowL, size: 16, color: c.ink2),
-                ),
-                const SizedBox(width: 4),
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                      color: c.surface2, borderRadius: BorderRadius.circular(10)),
-                  alignment: Alignment.center,
-                  child: Icon(SfIcons.arrowR, size: 16, color: c.ink2),
-                ),
-              ],
+          if (_sent) ...[
+            const SfHintCard(
+              title: 'Fikr yuborilgan',
+              message: 'Bu ish bo‘yicha keyingi qadam o‘quvchiga yetkazildi.',
+              tone: SfHintTone.success,
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 14),
+          ],
           SfSurfaceCard(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(15),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Text('1-MISOL · X² − 5X + 6 = 0', style: SfType.eyebrow(color: c.muted)),
-                    const Spacer(),
-                    const SfPill(tone: SfPillTone.success, label: 'To‘g‘ri'),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'D = 25 − 24 = 1\nx₁ = (5+1)/2 = 3\nx₂ = (5−1)/2 = 2',
-                  style: SfType.mono(size: 14, color: c.ink2, height: 1.7),
-                ),
-                const SizedBox(height: 14),
-                Container(height: 1, color: c.border),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Text('2-MISOL · 2X² + 3X − 5 = 0', style: SfType.eyebrow(color: c.muted)),
-                    const Spacer(),
-                    const SfPill(tone: SfPillTone.danger, label: 'Xato'),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text.rich(TextSpan(children: [
-                  TextSpan(
-                      text: 'D = 9 + 40 = 49\n',
-                      style: SfType.mono(size: 14, color: c.ink2, height: 1.7)),
-                  WidgetSpan(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      color: c.dangerSoft,
-                      child: Text(
-                        'x₁ = (−3 + 7) / 2 = 4',
-                        style: SfType.mono(
-                            size: 14,
-                            color: c.ink2,
-                            height: 1.7,
-                            letterSpacing: 0),
-                      ),
+                    Text(
+                      'TOPSHIRILGAN ISH',
+                      style: SfType.eyebrow(color: c.muted),
                     ),
+                    const Spacer(),
+                    Text(
+                      'Bugun · 09:42',
+                      style: SfType.mono(size: 10, color: c.muted),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: c.surface2,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  TextSpan(
-                      text: '  ← 2 bo‘lishi kerak edi',
-                      style: SfType.display(
-                          size: 12, color: c.muted, style: FontStyle.italic)),
-                ])),
+                  child: Text(
+                    'Diskriminant usuli to‘g‘ri qo‘llangan. 4-misolda ishora almashganda izoh yetishmaydi; yechim qadamlari ilova qilingan.',
+                    style: SfType.ui(size: 13, color: c.ink2, height: 1.5),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => SfToast.show(
+                    context,
+                    message: 'Ish varaqasi ko‘rish rejimida ochildi.',
+                    tone: SfToastTone.info,
+                  ),
+                  icon: const Icon(Icons.description_outlined),
+                  label: const Text('Biriktirilgan ishni ko‘rish'),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          SfAiSurface(
-            borderRadius: BorderRadius.circular(18),
+          const SfAiSurface(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(child: SfAiBadge(label: 'Taklif qilingan baho')),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text('4',
-                            style: SfType.mono(
-                                size: 30, weight: FontWeight.w700, color: c.ai)),
-                        Text(' / 5', style: SfType.ui(size: 12, color: c.muted)),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
+                SfAiBadge(label: 'Fikr yordamchisi'),
+                SizedBox(height: 8),
                 Text(
-                  '"11 ta misol to‘g‘ri yechilgan. 2-misolda maxraj xatosi — diskriminant ishini takrorlash tavsiya etiladi."',
-                  style: SfType.display(size: 16, color: c.ink, height: 1.4),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: c.surface,
-                    border: Border.all(color: c.aiBorder),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('TAVSIYA ETILGAN IZOH',
-                          style: SfType.eyebrow(color: c.muted, size: 11)),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Akmal, juda yaxshi ish! Faqat 2-misolda formula yozishda ikkiga bo‘lishni unutibsiz. Keyingi darsda biror misolda yana mashq qilamiz.',
-                        style: SfType.ui(size: 13, color: c.ink2, height: 1.5),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SfButton(
-                        kind: SfButtonKind.ink,
-                        label: 'Qabul qilish',
-                        leading: SfIcons.check,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SfButton(
-                      kind: SfButtonKind.ghost,
-                      label: 'O‘zgartirish',
-                      fontSize: 13,
-                    ),
-                  ],
+                  'Kuchli tomonni ayting, bitta aniq tuzatishni ko‘rsating va keyingi qadamni bering.',
                 ),
               ],
             ),
           ),
           const SizedBox(height: 18),
-          Text('SIZNING BAHOYINGIZ', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 8),
-          SfSurfaceCard(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    for (final g in ['2', '3', '4', '5'])
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Container(
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: g == '4' ? c.primarySoft : c.surface,
-                              border: Border.all(
-                                  color: g == '4' ? c.primary : c.border,
-                                  width: g == '4' ? 2 : 1),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(g,
-                                style: SfType.mono(
-                                    size: 22,
-                                    weight: FontWeight.w700,
-                                    color: g == '4' ? c.primary : c.ink2)),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration:
-                      BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(12)),
-                  child: Text('Izoh yozing yoki AI tavsiyasini ishlating...',
-                      style: SfType.ui(size: 13, color: c.muted, height: 1.4)),
-                ),
-              ],
-            ),
+          Text('KEYINGI HOLAT', style: SfType.eyebrow(color: c.muted)),
+          const SizedBox(height: 7),
+          SfSegmentedControl<_FeedbackStatus>(
+            expanded: true,
+            value: _status,
+            segments: const [
+              SfSegment(value: _FeedbackStatus.ready, label: 'Tayyor'),
+              SfSegment(value: _FeedbackStatus.revise, label: 'Tuzatish'),
+              SfSegment(value: _FeedbackStatus.conference, label: 'Suhbat'),
+            ],
+            onChanged: _sent
+                ? (_) {}
+                : (value) => setState(() => _status = value),
+          ),
+          const SizedBox(height: 16),
+          SfTextField(
+            controller: _feedback,
+            enabled: !_sent,
+            label: 'Foydali fikr',
+            hint: 'Kuchli tomon, tuzatish va keyingi qadam…',
+            minLines: 4,
+            maxLines: 7,
+            maxLength: 800,
+          ),
+          const SizedBox(height: 10),
+          const SfHintCard(
+            message:
+                'Bu jarayonda raqamli baho ishlatilmaydi; rivojlanish yozma fikr va holat bilan kuzatiladi.',
+            tone: SfHintTone.info,
+            compact: true,
           ),
         ],
       ),
       bottom: Container(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
         decoration: BoxDecoration(
           color: c.surface,
           border: Border(top: BorderSide(color: c.border)),
         ),
-        child: Row(
-          children: [
-            Expanded(child: SfButton(kind: SfButtonKind.soft, label: 'Qoldirish')),
-            const SizedBox(width: 8),
-            Expanded(
-              flex: 2,
-              child: SfButton(
-                  kind: SfButtonKind.primary,
-                  label: 'Saqlash va keyingi',
-                  trailing: SfIcons.arrowR,
-                  onPressed: () => context.pop()),
-            ),
-          ],
+        child: SfButton(
+          kind: SfButtonKind.primary,
+          block: true,
+          height: 50,
+          label: _sent ? 'Fikr yuborilgan' : 'Fikrni yuborish',
+          leading: _sent ? Icons.check_circle_rounded : Icons.send_rounded,
+          onPressed: _sent ? null : _send,
         ),
       ),
     );
   }
 }
+
+String _statusLabel(_FeedbackStatus value) => switch (value) {
+  _FeedbackStatus.ready => 'Tayyor',
+  _FeedbackStatus.revise => 'Tuzatish kerak',
+  _FeedbackStatus.conference => 'Qisqa suhbat',
+};

@@ -30,14 +30,17 @@ class AiChatScreen extends StatelessWidget {
               child: Row(
                 children: [
                   GestureDetector(
-                      onTap: () => context.pop(),
-                      child: Icon(SfIcons.arrowL, size: 18, color: c.primary)),
+                    onTap: () => context.pop(),
+                    child: Icon(SfIcons.arrowL, size: 18, color: c.primary),
+                  ),
                   const SizedBox(width: 10),
                   Container(
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                        color: c.primary, borderRadius: BorderRadius.circular(10)),
+                      color: c.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     alignment: Alignment.center,
                     child: const SfStar(size: 18, color: Color(0xFFFFFCF5)),
                   ),
@@ -48,17 +51,22 @@ class AiChatScreen extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text('9-B Algebra',
-                                style: SfType.ui(
-                                    size: 14,
-                                    weight: FontWeight.w700,
-                                    color: c.ink)),
+                            Text(
+                              '9-B Algebra',
+                              style: SfType.ui(
+                                size: 14,
+                                weight: FontWeight.w700,
+                                color: c.ink,
+                              ),
+                            ),
                             const SizedBox(width: 6),
                             const SfAiBadge(label: 'guruh', compact: true),
                           ],
                         ),
-                        Text('24 o‘quvchi · sizning ma‘lumotlaringiz asosida',
-                            style: SfType.ui(size: 10.5, color: c.muted)),
+                        Text(
+                          '24 o‘quvchi · sizning ma‘lumotlaringiz asosida',
+                          style: SfType.ui(size: 10.5, color: c.muted),
+                        ),
                       ],
                     ),
                   ),
@@ -76,22 +84,28 @@ class AiChatScreen extends StatelessWidget {
                     'Haftalik xulosa',
                     'Kim qiynalmoqda?',
                     'Up karta nomzodlari',
-                    'Ota-ona uchun xat'
+                    'Ota-ona uchun xat',
                   ])
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           gradient: c.aiGradient,
                           border: Border.all(color: c.aiBorder),
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: Text(p,
-                            style: SfType.ui(
-                                size: 11.5,
-                                weight: FontWeight.w600,
-                                color: c.ai)),
+                        child: Text(
+                          p,
+                          style: SfType.ui(
+                            size: 11.5,
+                            weight: FontWeight.w600,
+                            color: c.ai,
+                          ),
+                        ),
                       ),
                     ),
                 ],
@@ -121,15 +135,25 @@ class AiChatScreen extends StatelessWidget {
                       bottomRight: Radius.circular(18),
                     ),
                   ),
-                  child: Text.rich(TextSpan(children: [
+                  child: Text.rich(
                     TextSpan(
-                        text: 'Umuman barqaror. ',
-                        style: SfType.display(size: 15, color: c.ink)),
-                    TextSpan(
-                        text:
-                            '24 o‘quvchidan 18 nafari mavzuni mustaqil yechmoqda. 4 nafari diskriminant formulasida kichik xatolarga yo‘l qo‘ydi.',
-                        style: SfType.ui(size: 13.5, color: c.ink, height: 1.5)),
-                  ])),
+                      children: [
+                        TextSpan(
+                          text: 'Umuman barqaror. ',
+                          style: SfType.display(size: 15, color: c.ink),
+                        ),
+                        TextSpan(
+                          text:
+                              '24 o‘quvchidan 18 nafari mavzuni mustaqil yechmoqda. 4 nafari diskriminant formulasida kichik xatolarga yo‘l qo‘ydi.',
+                          style: SfType.ui(
+                            size: 13.5,
+                            color: c.ink,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 SfSurfaceCard(
@@ -147,15 +171,23 @@ class AiChatScreen extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(s.$1,
-                                      style: SfType.mono(
-                                          size: 22,
-                                          weight: FontWeight.w700,
-                                          color: s.$3,
-                                          height: 1)),
+                                  Text(
+                                    s.$1,
+                                    style: SfType.mono(
+                                      size: 22,
+                                      weight: FontWeight.w700,
+                                      color: s.$3,
+                                      height: 1,
+                                    ),
+                                  ),
                                   const SizedBox(height: 4),
-                                  Text(s.$2.toUpperCase(),
-                                      style: SfType.eyebrow(color: c.muted, size: 10)),
+                                  Text(
+                                    s.$2.toUpperCase(),
+                                    style: SfType.eyebrow(
+                                      color: c.muted,
+                                      size: 10,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -168,9 +200,18 @@ class AiChatScreen extends StatelessWidget {
                           height: 6,
                           child: Row(
                             children: [
-                              Expanded(flex: 75, child: Container(color: c.success)),
-                              Expanded(flex: 17, child: Container(color: c.warn)),
-                              Expanded(flex: 8, child: Container(color: c.danger)),
+                              Expanded(
+                                flex: 75,
+                                child: Container(color: c.success),
+                              ),
+                              Expanded(
+                                flex: 17,
+                                child: Container(color: c.warn),
+                              ),
+                              Expanded(
+                                flex: 8,
+                                child: Container(color: c.danger),
+                              ),
                             ],
                           ),
                         ),
@@ -179,8 +220,10 @@ class AiChatScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text('Diqqat qaratish kerak bo‘lganlar:',
-                    style: SfType.ui(size: 13.5, color: c.ink2, height: 1.5)),
+                Text(
+                  'Diqqat qaratish kerak bo‘lganlar:',
+                  style: SfType.ui(size: 13.5, color: c.ink2, height: 1.5),
+                ),
                 const SizedBox(height: 6),
                 for (final s in [
                   ('Eshmatov Otabek', 'Diskriminant ishorasi · 2 marta xato'),
@@ -189,9 +232,14 @@ class AiChatScreen extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
-                          color: c.warnSoft, borderRadius: BorderRadius.circular(10)),
+                        color: c.warnSoft,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       child: Row(
                         children: [
                           SfAvatar(name: s.$1, size: 26),
@@ -200,13 +248,18 @@ class AiChatScreen extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(s.$1,
-                                    style: SfType.ui(
-                                        size: 12.5,
-                                        weight: FontWeight.w600,
-                                        color: c.ink2)),
-                                Text(s.$2,
-                                    style: SfType.ui(size: 10.5, color: c.warn)),
+                                Text(
+                                  s.$1,
+                                  style: SfType.ui(
+                                    size: 12.5,
+                                    weight: FontWeight.w600,
+                                    color: c.ink2,
+                                  ),
+                                ),
+                                Text(
+                                  s.$2,
+                                  style: SfType.ui(size: 10.5, color: c.warn),
+                                ),
                               ],
                             ),
                           ),
@@ -215,16 +268,30 @@ class AiChatScreen extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: 8),
-                Text.rich(TextSpan(children: [
-                  TextSpan(text: 'Tavsiya: ', style: SfType.display(size: 13.5, color: c.ink2)),
+                Text.rich(
                   TextSpan(
-                      text:
-                          'ertangi darsda 5 daqiqalik takrorlash + Eshmatov va Bakirov bilan qisqa individual ish.',
-                      style: SfType.ui(size: 13.5, color: c.ink2, height: 1.5)),
-                ])),
+                    children: [
+                      TextSpan(
+                        text: 'Tavsiya: ',
+                        style: SfType.display(size: 13.5, color: c.ink2),
+                      ),
+                      TextSpan(
+                        text:
+                            'ertangi darsda 5 daqiqalik takrorlash + Eshmatov va Bakirov bilan qisqa individual ish.',
+                        style: SfType.ui(
+                          size: 13.5,
+                          color: c.ink2,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text('Sizning davomat va karta ma‘lumotlaringiz · 14 May–19 May',
-                    style: SfType.mono(size: 9.5, color: c.muted)),
+                Text(
+                  'Sizning davomat va karta ma‘lumotlaringiz · 14 May–19 May',
+                  style: SfType.mono(size: 9.5, color: c.muted),
+                ),
               ],
             ),
           ),
@@ -254,7 +321,9 @@ class AiChatScreen extends StatelessWidget {
                         width: 6,
                         height: 6,
                         decoration: BoxDecoration(
-                            color: c.ai.withValues(alpha: 0.6), shape: BoxShape.circle),
+                          color: c.ai.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                 ],
@@ -273,7 +342,10 @@ class AiChatScreen extends StatelessWidget {
           children: [
             Expanded(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: c.surface2,
                   borderRadius: BorderRadius.circular(22),
@@ -281,10 +353,15 @@ class AiChatScreen extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text('9-B haqida savol bering...',
-                          style: SfType.ui(size: 13, color: c.muted)),
+                      child: Text(
+                        '9-B haqida savol bering...',
+                        style: SfType.ui(size: 13, color: c.muted),
+                      ),
                     ),
-                    Text('~120 token', style: SfType.mono(size: 10, color: c.muted)),
+                    Text(
+                      '~120 token',
+                      style: SfType.mono(size: 10, color: c.muted),
+                    ),
                   ],
                 ),
               ),
@@ -293,9 +370,16 @@ class AiChatScreen extends StatelessWidget {
             Container(
               width: 40,
               height: 40,
-              decoration: BoxDecoration(color: c.primary, borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(
+                color: c.primary,
+                borderRadius: BorderRadius.circular(12),
+              ),
               alignment: Alignment.center,
-              child: const Icon(SfIcons.send, size: 18, color: Color(0xFFFFFCF5)),
+              child: const Icon(
+                SfIcons.send,
+                size: 18,
+                color: Color(0xFFFFFCF5),
+              ),
             ),
           ],
         ),
@@ -325,8 +409,10 @@ class _UserBubble extends StatelessWidget {
               bottomRight: Radius.circular(4),
             ),
           ),
-          child: Text(text,
-              style: SfType.ui(size: 13.5, color: c.bg, height: 1.4)),
+          child: Text(
+            text,
+            style: SfType.ui(size: 13.5, color: c.bg, height: 1.4),
+          ),
         ),
       ),
     );

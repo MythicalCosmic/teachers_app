@@ -38,7 +38,7 @@ class CohortDetailScreen extends StatelessWidget {
       top: SfNavBar(
         title: '9-B Algebra',
         leading: GestureDetector(
-          onTap: () => context.go('/cohorts'),
+          onTap: () => context.pop(),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: const [
@@ -60,36 +60,57 @@ class CohortDetailScreen extends StatelessWidget {
                 Positioned(
                   right: -30,
                   top: -30,
-                  child: Opacity(opacity: 0.08, child: SfStar(size: 140, color: c.primary)),
+                  child: Opacity(
+                    opacity: 0.08,
+                    child: SfStar(size: 140, color: c.primary),
+                  ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: const [
-                        SfPill(tone: SfPillTone.primary, label: 'Algebra · Daraja II'),
+                        SfPill(
+                          tone: SfPillTone.primary,
+                          label: 'Algebra · Daraja II',
+                        ),
                         SizedBox(width: 8),
                         SfPill(label: '2025–2026'),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Text('9-B · 24 o‘quvchi',
-                        style: SfType.ui(
-                            size: 22,
-                            weight: FontWeight.w800,
-                            color: c.ink,
-                            letterSpacing: -0.44)),
+                    Text(
+                      '9-B · 24 o‘quvchi',
+                      style: SfType.ui(
+                        size: 22,
+                        weight: FontWeight.w800,
+                        color: c.ink,
+                        letterSpacing: -0.44,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text.rich(TextSpan(children: [
+                    Text.rich(
                       TextSpan(
-                          text: 'Asosiy o‘qituvchi: ',
-                          style: SfType.ui(size: 13, color: c.muted)),
-                      TextSpan(
-                          text: 'Nigora Karimova',
-                          style: SfType.ui(
-                              size: 13, weight: FontWeight.w600, color: c.ink2)),
-                      TextSpan(text: ' · Xona 304', style: SfType.ui(size: 13, color: c.muted)),
-                    ])),
+                        children: [
+                          TextSpan(
+                            text: 'Asosiy o‘qituvchi: ',
+                            style: SfType.ui(size: 13, color: c.muted),
+                          ),
+                          TextSpan(
+                            text: 'Nigora Karimova',
+                            style: SfType.ui(
+                              size: 13,
+                              weight: FontWeight.w600,
+                              color: c.ink2,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' · Xona 304',
+                            style: SfType.ui(size: 13, color: c.muted),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -101,34 +122,52 @@ class CohortDetailScreen extends StatelessWidget {
                         ])
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
-                                    color: c.surface2,
-                                    borderRadius: BorderRadius.circular(10)),
+                                  color: c.surface2,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                                 child: Column(
                                   children: [
                                     Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.baseline,
                                       textBaseline: TextBaseline.alphabetic,
                                       children: [
-                                        Text(s.$1,
-                                            style: SfType.mono(
-                                                size: 18,
-                                                weight: FontWeight.w700,
-                                                color: s.$4)),
-                                        Text(s.$2,
-                                            style: SfType.ui(
-                                                size: 10,
-                                                color: c.muted,
-                                                weight: FontWeight.w600)),
+                                        Text(
+                                          s.$1,
+                                          style: SfType.mono(
+                                            size: 18,
+                                            weight: FontWeight.w700,
+                                            color: s.$4,
+                                          ),
+                                        ),
+                                        Text(
+                                          s.$2,
+                                          style: SfType.ui(
+                                            size: 10,
+                                            color: c.muted,
+                                            weight: FontWeight.w600,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 2),
-                                    Text(s.$3.toUpperCase(),
-                                        style: SfType.eyebrow(color: c.muted, size: 9)),
+                                    Text(
+                                      s.$3.toUpperCase(),
+                                      style: SfType.eyebrow(
+                                        color: c.muted,
+                                        size: 9,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -140,25 +179,30 @@ class CohortDetailScreen extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                            child: SfButton(
-                                kind: SfButtonKind.primary,
-                                label: 'Davomat',
-                                leading: SfIcons.check,
-                                fontSize: 13,
-                                onPressed: () => context.go('/attendance'))),
+                          child: SfButton(
+                            kind: SfButtonKind.primary,
+                            label: 'Davomat',
+                            leading: SfIcons.check,
+                            fontSize: 13,
+                            onPressed: () => context.push('/attendance'),
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                            child: SfButton(
-                                kind: SfButtonKind.soft,
-                                label: 'Xabar',
-                                leading: SfIcons.chat,
-                                fontSize: 13,
-                                onPressed: () => context.go('/messages'))),
+                          child: SfButton(
+                            kind: SfButtonKind.soft,
+                            label: 'Xabar',
+                            leading: SfIcons.chat,
+                            fontSize: 13,
+                            onPressed: () => context.push('/messages'),
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         SfButton(
-                            kind: SfButtonKind.ghost,
-                            child: const Icon(SfIcons.more, size: 18),
-                            padding: const EdgeInsets.all(12)),
+                          kind: SfButtonKind.ghost,
+                          padding: const EdgeInsets.all(12),
+                          child: const Icon(SfIcons.more, size: 18),
+                        ),
                       ],
                     ),
                   ],
@@ -169,13 +213,18 @@ class CohortDetailScreen extends StatelessWidget {
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(4),
-            decoration:
-                BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: c.surface2,
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Row(
               children: [
-                for (final tEntry in ['O‘quvchilar', 'Kartalar', 'Topshiriqlar', 'Jadval']
-                    .asMap()
-                    .entries)
+                for (final tEntry in [
+                  'O‘quvchilar',
+                  'Kartalar',
+                  'Topshiriqlar',
+                  'Jadval',
+                ].asMap().entries)
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -183,12 +232,15 @@ class CohortDetailScreen extends StatelessWidget {
                         color: tEntry.key == 0 ? c.surface : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(tEntry.value,
-                          textAlign: TextAlign.center,
-                          style: SfType.ui(
-                              size: 12,
-                              weight: FontWeight.w600,
-                              color: tEntry.key == 0 ? c.ink : c.muted)),
+                      child: Text(
+                        tEntry.value,
+                        textAlign: TextAlign.center,
+                        style: SfType.ui(
+                          size: 12,
+                          weight: FontWeight.w600,
+                          color: tEntry.key == 0 ? c.ink : c.muted,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -201,8 +253,14 @@ class CohortDetailScreen extends StatelessWidget {
               const Spacer(),
               Row(
                 children: [
-                  Text('Saralash: Familiya',
-                      style: SfType.ui(size: 12, weight: FontWeight.w600, color: c.ink2)),
+                  Text(
+                    'Saralash: Familiya',
+                    style: SfType.ui(
+                      size: 12,
+                      weight: FontWeight.w600,
+                      color: c.ink2,
+                    ),
+                  ),
                   Icon(SfIcons.chevD, size: 12, color: c.ink2),
                 ],
               ),
@@ -214,7 +272,7 @@ class CohortDetailScreen extends StatelessWidget {
               children: [
                 for (int i = 0; i < _roster.length; i++)
                   GestureDetector(
-                    onTap: () => context.go('/student'),
+                    onTap: () => context.push('/student'),
                     behavior: HitTestBehavior.opaque,
                     child: Container(
                       decoration: BoxDecoration(
@@ -222,7 +280,10 @@ class CohortDetailScreen extends StatelessWidget {
                             ? Border(bottom: BorderSide(color: c.border))
                             : null,
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 11,
+                      ),
                       child: Row(
                         children: [
                           SfAvatar(name: _roster[i].n, size: 36),
@@ -233,9 +294,14 @@ class CohortDetailScreen extends StatelessWidget {
                               children: [
                                 Row(
                                   children: [
-                                    Text(_roster[i].n,
-                                        style: SfType.ui(
-                                            size: 14, weight: FontWeight.w600, color: c.ink)),
+                                    Text(
+                                      _roster[i].n,
+                                      style: SfType.ui(
+                                        size: 14,
+                                        weight: FontWeight.w600,
+                                        color: c.ink,
+                                      ),
+                                    ),
                                     if (_roster[i].t == 'top') ...[
                                       const SizedBox(width: 6),
                                       SfStar(size: 10, color: c.accent),
@@ -243,40 +309,57 @@ class CohortDetailScreen extends StatelessWidget {
                                     if (_roster[i].t == 'warn') ...[
                                       const SizedBox(width: 6),
                                       Container(
-                                          width: 6,
-                                          height: 6,
-                                          decoration: BoxDecoration(
-                                              color: c.danger, shape: BoxShape.circle)),
+                                        width: 6,
+                                        height: 6,
+                                        decoration: BoxDecoration(
+                                          color: c.danger,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
                                     ],
                                   ],
                                 ),
                                 const SizedBox(height: 2),
                                 Row(
                                   children: [
-                                    Text('${_roster[i].att}%',
-                                        style: SfType.mono(
-                                            size: 11,
-                                            weight: FontWeight.w600,
-                                            color: _roster[i].att >= 92
-                                                ? c.success
-                                                : _roster[i].att >= 85
-                                                    ? c.warn
-                                                    : c.danger)),
-                                    Text(' · ',
-                                        style: SfType.ui(size: 11, color: c.muted)),
-                                    Text('↑${_roster[i].up}',
-                                        style: SfType.mono(
-                                            size: 11,
-                                            weight: FontWeight.w700,
-                                            color: const Color(0xFF7A4F0E))),
+                                    Text(
+                                      '${_roster[i].att}%',
+                                      style: SfType.mono(
+                                        size: 11,
+                                        weight: FontWeight.w600,
+                                        color: _roster[i].att >= 92
+                                            ? c.success
+                                            : _roster[i].att >= 85
+                                            ? c.warn
+                                            : c.danger,
+                                      ),
+                                    ),
+                                    Text(
+                                      ' · ',
+                                      style: SfType.ui(
+                                        size: 11,
+                                        color: c.muted,
+                                      ),
+                                    ),
+                                    Text(
+                                      '↑${_roster[i].up}',
+                                      style: SfType.mono(
+                                        size: 11,
+                                        weight: FontWeight.w700,
+                                        color: const Color(0xFF7A4F0E),
+                                      ),
+                                    ),
                                     const SizedBox(width: 6),
-                                    Text('↓${_roster[i].down}',
-                                        style: SfType.mono(
-                                            size: 11,
-                                            weight: FontWeight.w700,
-                                            color: _roster[i].down > 0
-                                                ? c.danger
-                                                : c.muted)),
+                                    Text(
+                                      '↓${_roster[i].down}',
+                                      style: SfType.mono(
+                                        size: 11,
+                                        weight: FontWeight.w700,
+                                        color: _roster[i].down > 0
+                                            ? c.danger
+                                            : c.muted,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
@@ -300,7 +383,10 @@ class CohortDetailScreen extends StatelessWidget {
                   children: [
                     const SfAiBadge(label: 'Sinf hisoboti'),
                     const Spacer(),
-                    Text('Bu hafta', style: SfType.ui(size: 11, color: c.muted)),
+                    Text(
+                      'Bu hafta',
+                      style: SfType.ui(size: 11, color: c.muted),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),

@@ -1,159 +1,232 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
+import '../data/models.dart';
 import '../theme/sf_theme.dart';
-import '../widgets/sf_ai_badge.dart';
-import '../widgets/sf_ai_surface.dart';
+import '../utils/formatters.dart';
+import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_avatar.dart';
+import '../widgets/sf_button.dart';
+import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_state_view.dart';
+import '../widgets/sf_toast.dart';
 
-class ChatScreen extends StatelessWidget {
-  const ChatScreen({super.key});
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key, this.managementMode = false});
+
+  final bool managementMode;
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final _composer = TextEditingController();
+  final _focus = FocusNode();
+  final _scroll = ScrollController();
+  String? _markedThreadId;
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _composer.dispose();
+    _focus.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  MessageThread? _resolveThread(BuildContext context) {
+    final app = AppScope.of(context);
+    final requested = GoRouterState.of(context).uri.queryParameters['thread'];
+    for (final thread in app.messageThreads) {
+      if (thread.id == requested) return thread;
+    }
+    final session = app.session;
+    return app.messageThreads
+        .where(
+          (thread) =>
+              session == null || thread.participantIds.contains(session.userId),
+        )
+        .firstOrNull;
+  }
+
+  void _markRead(MessageThread thread) {
+    if (_markedThreadId == thread.id) return;
+    _markedThreadId = thread.id;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppScope.of(context).markThreadRead(thread.id);
+    });
+  }
+
+  Future<void> _send(MessageThread thread) async {
+    if (_sending || _composer.text.trim().isEmpty) return;
+    final app = AppScope.of(context);
+    setState(() => _sending = true);
+    try {
+      await app.sendMessage(thread.id, _composer.text);
+      _composer.clear();
+      if (!mounted) return;
+      _focus.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _scrollToEnd(app.settings.reducedMotion),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      SfToast.show(
+        context,
+        message: error.toString(),
+        tone: SfToastTone.error,
+        glassEnabled: app.settings.liquidGlass,
+        motionEnabled: !app.settings.reducedMotion,
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _scrollToEnd(bool reducedMotion) {
+    if (!_scroll.hasClients) return;
+    if (reducedMotion) {
+      _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    } else {
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final session = app.session;
+    final thread = _resolveThread(context);
     final c = SfTheme.colorsOf(context);
+    if (session == null || !session.can(StaffCapability.useStaffMessaging)) {
+      return const SfScaffold(
+        body: SfErrorState(title: 'Xabarlarga ruxsat yo‘q'),
+      );
+    }
+    if (thread == null) {
+      return SfScaffold(
+        top: SfNavBar(
+          title: 'Suhbat',
+          leading: IconButton(
+            tooltip: 'Ortga',
+            onPressed: () => context.pop(),
+            icon: const Icon(SfIcons.arrowL),
+          ),
+        ),
+        body: const SfEmptyState(title: 'Suhbat topilmadi', icon: SfIcons.chat),
+      );
+    }
+    _markRead(thread);
+
     return SfScaffold(
-      top: Container(
-        color: c.surface,
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-        decoration: BoxDecoration(
-          color: c.surface,
-          border: Border(bottom: BorderSide(color: c.border)),
+      dismissKeyboardOnTap: false,
+      top: SfNavBar(
+        title: thread.title,
+        subtitle: widget.managementMode
+            ? 'Xodimlar koordinatsiyasi'
+            : 'Xodimlar suhbati',
+        leading: IconButton(
+          tooltip: 'Ortga',
+          onPressed: () => context.pop(),
+          icon: const Icon(SfIcons.arrowL),
         ),
-        child: SizedBox(
-          height: 44,
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () => context.pop(),
-                child: Icon(SfIcons.arrowL, size: 18, color: c.primary),
-              ),
-              const SizedBox(width: 10),
-              const SfAvatar(name: 'Akbarova Dilnoza', size: 36),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Akbarova Dilnoza',
-                        style: SfType.ui(size: 14, weight: FontWeight.w700, color: c.ink)),
-                    Row(
-                      children: [
-                        Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                                color: c.success, shape: BoxShape.circle)),
-                        const SizedBox(width: 4),
-                        Text('onlayn · Akmal ona · 9-B',
-                            style: SfType.ui(size: 10.5, color: c.success)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Icon(SfIcons.more, size: 22, color: c.primary),
-            ],
-          ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-        children: [
-          Center(child: Text('BUGUN', style: SfType.eyebrow(color: c.muted))),
-          const SizedBox(height: 10),
-          _Incoming(
-              'Assalomu alaykum, Nigora opa. Akmal bugun darsda nima yangilik qildi?', '09:42'),
-          const SizedBox(height: 10),
-          _Outgoing(
-              'Va alaykum assalom! Akmal bugun yaxshi ishladi — kvadrat tenglamani mustaqil yechib berdi. Faqat 2-misolda formuladagi kichik xato bo‘ldi, biz birga ko‘rib chiqdik.',
-              '09:48'),
-          const SizedBox(height: 12),
-          SfAiSurface(
-            borderRadius: BorderRadius.circular(16),
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const SfAiBadge(label: 'Javob taklifi', compact: true),
-                    const Spacer(),
-                    Text('uz · 3 variant', style: SfType.ui(size: 10, color: c.muted)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                for (final t in const [
-                  'Bugungi mavzu — kvadrat tenglamalar, Akmal yaxshi ishladi.',
-                  'Akmalning bugungi natijasi · 4 baho. Uy ishini topshirsa, qoldirgan misolni qaytaramiz.',
-                  'Akmal hozir o‘rta darajada. Qisqa konsultatsiya yordam beradi.',
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: c.surface,
-                        border: Border.all(color: c.aiBorder),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                              child:
-                                  Text(t, style: SfType.ui(size: 12.5, color: c.ink2, height: 1.4))),
-                          Icon(SfIcons.arrowR, size: 14, color: c.ai),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
+        actions: [
+          IconButton(
+            tooltip: 'Suhbat ma’lumoti',
+            onPressed: () => SfToast.show(
+              context,
+              message:
+                  '${thread.participantIds.length} nafar xodim qatnashmoqda',
+              glassEnabled: app.settings.liquidGlass,
+              motionEnabled: !app.settings.reducedMotion,
             ),
+            icon: const Icon(Icons.info_outline_rounded),
           ),
-          const SizedBox(height: 10),
-          _Incoming('Rahmat, ustoz! Ertaga albatta mashqlarni qilamiz.', '14:42'),
         ],
       ),
+      body: thread.messages.isEmpty
+          ? const SfEmptyState(
+              title: 'Suhbatni boshlang',
+              message: 'Birinchi xabarni quyidagi maydonga yozing.',
+              icon: SfIcons.chat,
+            )
+          : ListView.separated(
+              controller: _scroll,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+              itemCount: thread.messages.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final message = thread.messages[index];
+                final mine = message.senderId == session.userId;
+                return _MessageBubble(message: message, mine: mine);
+              },
+            ),
       bottom: Container(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
         decoration: BoxDecoration(
           color: c.surface,
           border: Border(top: BorderSide(color: c.border)),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration:
-                  BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(12)),
-              alignment: Alignment.center,
-              child: Icon(SfIcons.attach, size: 18, color: c.ink2),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                    color: c.surface2, borderRadius: BorderRadius.circular(22)),
-                child: Row(
-                  children: [
-                    Expanded(child: Text('Yozish...', style: SfType.ui(size: 13, color: c.muted))),
-                    const SfAiBadge(label: '↺', compact: true),
-                  ],
+            SizedBox.square(
+              dimension: 44,
+              child: SfButton(
+                kind: SfButtonKind.soft,
+                semanticLabel: 'Fayl biriktirish',
+                tooltip: 'Fayl biriktirish',
+                padding: EdgeInsets.zero,
+                child: const Icon(SfIcons.attach),
+                onPressed: () => SfToast.show(
+                  context,
+                  message:
+                      'Fayl biriktirish keyingi sinxronizatsiya bilan ishlaydi.',
+                  glassEnabled: app.settings.liquidGlass,
+                  motionEnabled: !app.settings.reducedMotion,
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            Container(
-              width: 38,
-              height: 38,
-              decoration:
-                  BoxDecoration(color: c.primary, borderRadius: BorderRadius.circular(12)),
-              alignment: Alignment.center,
-              child: const Icon(SfIcons.send, size: 18, color: Color(0xFFFFFCF5)),
+            Expanded(
+              child: SfTextField(
+                controller: _composer,
+                focusNode: _focus,
+                hint: 'Xabar yozing…',
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.newline,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox.square(
+              dimension: 44,
+              child: SfButton(
+                semanticLabel: 'Yuborish',
+                tooltip: 'Yuborish',
+                padding: EdgeInsets.zero,
+                haptic: app.settings.haptics,
+                motionEnabled: !app.settings.reducedMotion,
+                onPressed: _sending || _composer.text.trim().isEmpty
+                    ? null
+                    : () => _send(thread),
+                child: _sending
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(SfIcons.send),
+              ),
             ),
           ],
         ),
@@ -162,87 +235,85 @@ class ChatScreen extends StatelessWidget {
   }
 }
 
-class _Incoming extends StatelessWidget {
-  final String text, t;
-  const _Incoming(this.text, this.t);
-  @override
-  Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        const SfAvatar(name: 'Akbarova Dilnoza', size: 28),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 280),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: c.surface,
-              border: Border.all(color: c.border),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(4),
-                topRight: Radius.circular(18),
-                bottomLeft: Radius.circular(18),
-                bottomRight: Radius.circular(18),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(text, style: SfType.ui(size: 13.5, color: c.ink, height: 1.4)),
-                const SizedBox(height: 6),
-                Text(t, style: SfType.ui(size: 9.5, color: c.muted)),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({required this.message, required this.mine});
 
-class _Outgoing extends StatelessWidget {
-  final String text, t;
-  const _Outgoing(this.text, this.t);
+  final ChatMessage message;
+  final bool mine;
+
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return Align(
-      alignment: Alignment.centerRight,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 280),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: c.primary,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(18),
-              topRight: Radius.circular(18),
-              bottomLeft: Radius.circular(18),
-              bottomRight: Radius.circular(4),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(text,
-                  style: SfType.ui(
-                      size: 13.5, color: const Color(0xFFFFFCF5), height: 1.4)),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(t,
-                      style: SfType.ui(
-                          size: 9.5,
-                          color: const Color(0xFFFFFCF5).withValues(alpha: 0.8))),
-                  const SizedBox(width: 4),
-                  const Icon(SfIcons.check, size: 12, color: Color(0xFFFFFCF5)),
-                ],
-              ),
+    return Semantics(
+      label:
+          '${message.senderName}. ${message.body}. ${SfFormatters.time(message.sentAt)}',
+      child: Align(
+        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!mine) ...[
+              SfAvatar(name: message.senderName, size: 28),
+              const SizedBox(width: 7),
             ],
-          ),
+            Flexible(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 320),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: mine ? c.primary : c.surface,
+                  border: mine ? null : Border.all(color: c.border),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(mine ? 18 : 5),
+                    bottomRight: Radius.circular(mine ? 5 : 18),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: mine
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+                  children: [
+                    if (!mine)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          message.senderName,
+                          style: SfType.ui(
+                            size: 10.5,
+                            weight: FontWeight.w700,
+                            color: c.primary,
+                          ),
+                        ),
+                      ),
+                    Text(
+                      message.body,
+                      style: SfType.ui(
+                        size: 13.5,
+                        color: mine ? c.surface : c.ink,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      SfFormatters.time(message.sentAt),
+                      style: SfType.mono(
+                        size: 9.5,
+                        color: mine
+                            ? c.surface.withValues(alpha: 0.72)
+                            : c.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

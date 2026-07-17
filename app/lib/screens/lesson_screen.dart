@@ -26,7 +26,7 @@ class LessonScreen extends StatelessWidget {
       top: SfNavBar(
         title: 'Algebra · Daraja II',
         leading: GestureDetector(
-          onTap: () => context.go('/schedule'),
+          onTap: () => context.pop(),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: const [
@@ -46,9 +46,13 @@ class LessonScreen extends StatelessWidget {
             child: Stack(
               children: [
                 Positioned(
-                    right: -20,
-                    top: -20,
-                    child: Opacity(opacity: 0.08, child: SfStar(size: 130, color: c.primary))),
+                  right: -20,
+                  top: -20,
+                  child: Opacity(
+                    opacity: 0.08,
+                    child: SfStar(size: 130, color: c.primary),
+                  ),
+                ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -56,30 +60,51 @@ class LessonScreen extends StatelessWidget {
                       children: [
                         const SfPill(tone: SfPillTone.primary, label: 'Hozir'),
                         const SizedBox(width: 8),
-                        Text('L-204', style: SfType.mono(size: 11, color: c.muted)),
+                        Text(
+                          'L-204',
+                          style: SfType.mono(size: 11, color: c.muted),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
                     Text.rich(
-                      TextSpan(children: [
-                        TextSpan(
+                      TextSpan(
+                        children: [
+                          TextSpan(
                             text: 'Algebra · ',
                             style: SfType.ui(
-                                size: 24,
-                                weight: FontWeight.w800,
-                                color: c.ink,
-                                letterSpacing: -0.48)),
-                        TextSpan(text: 'Daraja II', style: SfType.display(size: 24, color: c.ink)),
-                      ]),
+                              size: 24,
+                              weight: FontWeight.w800,
+                              color: c.ink,
+                              letterSpacing: -0.48,
+                            ),
+                          ),
+                          TextSpan(
+                            text: 'Daraja II',
+                            style: SfType.display(size: 24, color: c.ink),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Text.rich(TextSpan(children: [
-                      TextSpan(text: 'Mavzu: ', style: SfType.ui(size: 13.5, color: c.muted)),
+                    Text.rich(
                       TextSpan(
-                          text: 'Kvadrat tenglamalarni yechish',
-                          style: SfType.ui(
-                              size: 13.5, weight: FontWeight.w600, color: c.ink2)),
-                    ])),
+                        children: [
+                          TextSpan(
+                            text: 'Mavzu: ',
+                            style: SfType.ui(size: 13.5, color: c.muted),
+                          ),
+                          TextSpan(
+                            text: 'Kvadrat tenglamalarni yechish',
+                            style: SfType.ui(
+                              size: 13.5,
+                              weight: FontWeight.w600,
+                              color: c.ink2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 14),
                     Row(
                       children: [
@@ -90,7 +115,9 @@ class LessonScreen extends StatelessWidget {
                         ])
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
                               child: Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
@@ -104,17 +131,25 @@ class LessonScreen extends StatelessWidget {
                                       children: [
                                         Icon(x.$3, size: 12, color: c.muted),
                                         const SizedBox(width: 4),
-                                        Text(x.$1.toUpperCase(),
-                                            style: SfType.eyebrow(color: c.muted, size: 10)),
+                                        Text(
+                                          x.$1.toUpperCase(),
+                                          style: SfType.eyebrow(
+                                            color: c.muted,
+                                            size: 10,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(x.$2,
-                                        style: SfType.ui(
-                                            size: 12,
-                                            weight: FontWeight.w700,
-                                            color: c.ink,
-                                            height: 1.2)),
+                                    Text(
+                                      x.$2,
+                                      style: SfType.ui(
+                                        size: 12,
+                                        weight: FontWeight.w700,
+                                        color: c.ink,
+                                        height: 1.2,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -130,14 +165,14 @@ class LessonScreen extends StatelessWidget {
                             kind: SfButtonKind.primary,
                             label: 'Davomatni boshlash',
                             leading: SfIcons.check,
-                            onPressed: () => context.go('/attendance'),
+                            onPressed: () => context.push('/attendance'),
                           ),
                         ),
                         const SizedBox(width: 8),
                         SfButton(
                           kind: SfButtonKind.ghost,
-                          child: const Icon(SfIcons.edit, size: 18),
                           padding: const EdgeInsets.all(12),
+                          child: const Icon(SfIcons.edit, size: 18),
                         ),
                       ],
                     ),
@@ -151,8 +186,14 @@ class LessonScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Row(
               children: [
-                Text('Dars rejasi',
-                    style: SfType.ui(size: 13, weight: FontWeight.w700, color: c.ink)),
+                Text(
+                  'Dars rejasi',
+                  style: SfType.ui(
+                    size: 13,
+                    weight: FontWeight.w700,
+                    color: c.ink,
+                  ),
+                ),
                 const Spacer(),
                 Text('4 bosqich', style: SfType.ui(size: 11, color: c.muted)),
               ],
@@ -165,9 +206,14 @@ class LessonScreen extends StatelessWidget {
                 for (int i = 0; i < 4; i++)
                   Container(
                     decoration: BoxDecoration(
-                      border: i < 3 ? Border(bottom: BorderSide(color: c.border)) : null,
+                      border: i < 3
+                          ? Border(bottom: BorderSide(color: c.border))
+                          : null,
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Row(
                       children: [
                         Container(
@@ -182,7 +228,11 @@ class LessonScreen extends StatelessWidget {
                           ),
                           alignment: Alignment.center,
                           child: i == 0
-                              ? const Icon(SfIcons.check, size: 14, color: Color(0xFFFFFCF5))
+                              ? const Icon(
+                                  SfIcons.check,
+                                  size: 14,
+                                  color: Color(0xFFFFFCF5),
+                                )
                               : null,
                         ),
                         const SizedBox(width: 12),
@@ -202,8 +252,10 @@ class LessonScreen extends StatelessWidget {
                             ),
                           ),
                         ),
-                        Text(['5 daq', '15 daq', '20 daq', '5 daq'][i],
-                            style: SfType.mono(size: 11, color: c.muted)),
+                        Text(
+                          ['5 daq', '15 daq', '20 daq', '5 daq'][i],
+                          style: SfType.mono(size: 11, color: c.muted),
+                        ),
                       ],
                     ),
                   ),
@@ -215,12 +267,23 @@ class LessonScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Row(
               children: [
-                Text('Materiallar',
-                    style: SfType.ui(size: 13, weight: FontWeight.w700, color: c.ink)),
+                Text(
+                  'Materiallar',
+                  style: SfType.ui(
+                    size: 13,
+                    weight: FontWeight.w700,
+                    color: c.ink,
+                  ),
+                ),
                 const Spacer(),
-                Text('+ qo‘shish',
-                    style:
-                        SfType.ui(size: 11, color: c.primary, weight: FontWeight.w600)),
+                Text(
+                  '+ qo‘shish',
+                  style: SfType.ui(
+                    size: 11,
+                    color: c.primary,
+                    weight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -231,7 +294,12 @@ class LessonScreen extends StatelessWidget {
               scrollDirection: Axis.horizontal,
               children: [
                 for (final f in [
-                  ('Kvadrat tenglama.pdf', '2.1 MB · 8 bet', SfIcons.pdf, c.danger),
+                  (
+                    'Kvadrat tenglama.pdf',
+                    '2.1 MB · 8 bet',
+                    SfIcons.pdf,
+                    c.danger,
+                  ),
                   ('Mashq · 12 ta', 'Interaktiv', SfIcons.doc, c.primary),
                   ('Video tushuntirish', '6:42', SfIcons.video, c.accent),
                 ])
@@ -252,14 +320,27 @@ class LessonScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               alignment: Alignment.center,
-                              child: Icon(f.$3, size: 18, color: const Color(0xFFFFFCF5)),
+                              child: Icon(
+                                f.$3,
+                                size: 18,
+                                color: const Color(0xFFFFFCF5),
+                              ),
                             ),
                             const SizedBox(height: 8),
-                            Text(f.$1,
-                                style: SfType.ui(
-                                    size: 12.5, weight: FontWeight.w600, color: c.ink, height: 1.2)),
+                            Text(
+                              f.$1,
+                              style: SfType.ui(
+                                size: 12.5,
+                                weight: FontWeight.w600,
+                                color: c.ink,
+                                height: 1.2,
+                              ),
+                            ),
                             const SizedBox(height: 2),
-                            Text(f.$2, style: SfType.ui(size: 10, color: c.muted)),
+                            Text(
+                              f.$2,
+                              style: SfType.ui(size: 10, color: c.muted),
+                            ),
                           ],
                         ),
                       ),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../theme/sf_theme.dart';
-import '../theme/tokens.dart';
 import '../widgets/sf_ai_badge.dart';
 import '../widgets/sf_ai_surface.dart';
 import '../widgets/sf_avatar.dart';
@@ -29,25 +28,42 @@ class TodayScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
         children: [
-          _SurveyBanner(onTap: () => context.go('/surveys/form')),
+          _SurveyBanner(onTap: () => context.push('/surveys/form')),
           const SizedBox(height: 14),
-          _NextLessonHero(onAttendance: () => context.go('/attendance')),
+          _NextLessonHero(onAttendance: () => context.push('/attendance')),
           const SizedBox(height: 16),
           _QuickStats(),
           const SizedBox(height: 16),
           _AiPanel(),
           const SizedBox(height: 22),
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
             children: [
-              Text('Bugungi jadval',
-                  style: SfType.ui(size: 16, weight: FontWeight.w700, color: c.ink, letterSpacing: -0.16)),
-              const Spacer(),
+              Text(
+                'Bugungi jadval',
+                style: SfType.ui(
+                  size: 16,
+                  weight: FontWeight.w700,
+                  color: c.ink,
+                  letterSpacing: -0.16,
+                ),
+              ),
               GestureDetector(
-                onTap: () => context.go('/schedule'),
+                onTap: () => context.push('/schedule'),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Hammasi',
-                        style: SfType.ui(size: 12, weight: FontWeight.w600, color: c.primary)),
+                    Text(
+                      'Hammasi',
+                      style: SfType.ui(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: c.primary,
+                      ),
+                    ),
                     Icon(SfIcons.chevR, size: 12, color: c.primary),
                   ],
                 ),
@@ -57,17 +73,34 @@ class TodayScreen extends StatelessWidget {
           const SizedBox(height: 10),
           _ScheduleList(),
           const SizedBox(height: 20),
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 4,
             children: [
-              Text('So‘nggi kartalar',
-                  style: SfType.ui(size: 16, weight: FontWeight.w700, color: c.ink, letterSpacing: -0.16)),
-              const Spacer(),
+              Text(
+                'So‘nggi kartalar',
+                style: SfType.ui(
+                  size: 16,
+                  weight: FontWeight.w700,
+                  color: c.ink,
+                  letterSpacing: -0.16,
+                ),
+              ),
               GestureDetector(
-                onTap: () => context.go('/cards'),
+                onTap: () => context.push('/cards'),
                 child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('10 ta',
-                        style: SfType.ui(size: 12, weight: FontWeight.w600, color: c.primary)),
+                    Text(
+                      '10 ta',
+                      style: SfType.ui(
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: c.primary,
+                      ),
+                    ),
                     Icon(SfIcons.chevR, size: 12, color: c.primary),
                   ],
                 ),
@@ -111,7 +144,7 @@ class TodayScreen extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           GestureDetector(
-            onTap: () => context.go('/print'),
+            onTap: () => context.push('/print'),
             child: SfSurfaceCard(
               padding: const EdgeInsets.all(14),
               child: Row(
@@ -127,18 +160,29 @@ class TodayScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         alignment: Alignment.center,
-                        child: Icon(SfIcons.printer, size: 22, color: c.primary),
+                        child: Icon(
+                          SfIcons.printer,
+                          size: 22,
+                          color: c.primary,
+                        ),
                       ),
                       Positioned(
                         top: -6,
                         right: -6,
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5),
-                          decoration:
-                              BoxDecoration(color: c.primary, borderRadius: BorderRadius.circular(10)),
-                          child: Text('2',
-                              style: SfType.mono(
-                                  size: 10, weight: FontWeight.w700, color: const Color(0xFFFFFCF5))),
+                          decoration: BoxDecoration(
+                            color: c.primary,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '2',
+                            style: SfType.mono(
+                              size: 10,
+                              weight: FontWeight.w700,
+                              color: const Color(0xFFFFFCF5),
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -148,18 +192,33 @@ class TodayScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Print navbatim · 2 ta',
-                            style: SfType.ui(size: 13.5, weight: FontWeight.w700, color: c.ink)),
+                        Text(
+                          'Print navbatim · 2 ta',
+                          style: SfType.ui(
+                            size: 13.5,
+                            weight: FontWeight.w700,
+                            color: c.ink,
+                          ),
+                        ),
                         const SizedBox(height: 2),
-                        Text.rich(TextSpan(children: [
+                        Text.rich(
                           TextSpan(
-                              text: 'Kvadrat tenglamalar · ',
-                              style: SfType.ui(size: 11, color: c.muted)),
-                          TextSpan(
-                              text: '64% tugadi',
-                              style: SfType.ui(
-                                  size: 11, color: c.success, weight: FontWeight.w600)),
-                        ])),
+                            children: [
+                              TextSpan(
+                                text: 'Kvadrat tenglamalar · ',
+                                style: SfType.ui(size: 11, color: c.muted),
+                              ),
+                              TextSpan(
+                                text: '64% tugadi',
+                                style: SfType.ui(
+                                  size: 11,
+                                  color: c.success,
+                                  weight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -187,7 +246,7 @@ class _Header extends StatelessWidget {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => context.go('/settings'),
+            onTap: () => context.push('/settings'),
             child: const SfAvatar(name: 'Nigora Karimova', size: 36),
           ),
           const SizedBox(width: 10),
@@ -195,15 +254,24 @@ class _Header extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Seshanba · 19 May', style: SfType.ui(size: 12, color: c.muted)),
-                Text('Bugun, Nigora opa',
-                    style:
-                        SfType.ui(size: 16, weight: FontWeight.w700, color: c.ink, letterSpacing: -0.16)),
+                Text(
+                  'Seshanba · 19 May',
+                  style: SfType.ui(size: 12, color: c.muted),
+                ),
+                Text(
+                  'Bugun, Nigora opa',
+                  style: SfType.ui(
+                    size: 16,
+                    weight: FontWeight.w700,
+                    color: c.ink,
+                    letterSpacing: -0.16,
+                  ),
+                ),
               ],
             ),
           ),
           GestureDetector(
-            onTap: () => context.go('/notifications'),
+            onTap: () => context.push('/notifications'),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -235,7 +303,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           GestureDetector(
-            onTap: () => context.go('/search'),
+            onTap: () => context.push('/search'),
             child: Container(
               width: 38,
               height: 38,
@@ -273,7 +341,11 @@ class _SurveyBanner extends StatelessWidget {
           border: Border.all(color: c.accent, width: 1.5),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
-            BoxShadow(color: c.accent.withValues(alpha: 0.2), blurRadius: 24, offset: const Offset(0, 8)),
+            BoxShadow(
+              color: c.accent.withValues(alpha: 0.2),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
           ],
         ),
         child: Stack(
@@ -281,28 +353,44 @@ class _SurveyBanner extends StatelessWidget {
             Positioned(
               right: -20,
               top: -20,
-              child: Opacity(opacity: 0.18, child: SfStar(size: 100, color: const Color(0xFF7A4F0E))),
+              child: Opacity(
+                opacity: 0.18,
+                child: SfStar(size: 100, color: const Color(0xFF7A4F0E)),
+              ),
             ),
             Row(
               children: [
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: BoxDecoration(color: c.danger, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: c.danger,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('So‘rovnoma · 2 kun 14 soat qoldi'.toUpperCase(),
-                          style: SfType.eyebrow(color: c.danger, size: 11)),
+                      Text(
+                        'So‘rovnoma · 2 kun 14 soat qoldi'.toUpperCase(),
+                        style: SfType.eyebrow(color: c.danger, size: 11),
+                      ),
                       const SizedBox(height: 2),
-                      Text('Oylik o‘qituvchi qoniqishi',
-                          style: SfType.ui(size: 14, weight: FontWeight.w700, color: c.ink)),
+                      Text(
+                        'Oylik o‘qituvchi qoniqishi',
+                        style: SfType.ui(
+                          size: 14,
+                          weight: FontWeight.w700,
+                          color: c.ink,
+                        ),
+                      ),
                       const SizedBox(height: 2),
-                      Text('12 savol · ~4 daq · 33% tugatildi',
-                          style: SfType.ui(size: 11, color: c.ink2)),
+                      Text(
+                        '12 savol · ~4 daq · 33% tugatildi',
+                        style: SfType.ui(size: 11, color: c.ink2),
+                      ),
                     ],
                   ),
                 ),
@@ -311,7 +399,10 @@ class _SurveyBanner extends StatelessWidget {
                   label: 'Davom',
                   trailing: SfIcons.arrowR,
                   fontSize: 12,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   onPressed: onTap,
                 ),
               ],
@@ -331,7 +422,7 @@ class _NextLessonHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
     return GestureDetector(
-      onTap: () => context.go('/lesson'),
+      onTap: () => context.push('/lesson'),
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -348,7 +439,9 @@ class _NextLessonHero extends StatelessWidget {
               right: -30,
               top: -30,
               child: Opacity(
-                  opacity: 0.18, child: const SfStar(size: 160, color: Color(0xFFFFFCF5))),
+                opacity: 0.18,
+                child: const SfStar(size: 160, color: Color(0xFFFFFCF5)),
+              ),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,35 +453,52 @@ class _NextLessonHero extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Keyingi dars · 14 daqiqa'.toUpperCase(),
-                              style: SfType.ui(
-                                  size: 11,
-                                  weight: FontWeight.w600,
-                                  color: const Color(0xFFFFFCF5).withValues(alpha: 0.85),
-                                  letterSpacing: 0.14 * 11)),
+                          Text(
+                            'Keyingi dars · 14 daqiqa'.toUpperCase(),
+                            style: SfType.ui(
+                              size: 11,
+                              weight: FontWeight.w600,
+                              color: const Color(
+                                0xFFFFFCF5,
+                              ).withValues(alpha: 0.85),
+                              letterSpacing: 0.14 * 11,
+                            ),
+                          ),
                           const SizedBox(height: 6),
-                          const Text('Algebra · Daraja II',
-                              style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFFFFFCF5),
-                                  letterSpacing: -0.48,
-                                  height: 1.1)),
+                          const Text(
+                            'Algebra · Daraja II',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFFFFCF5),
+                              letterSpacing: -0.48,
+                              height: 1.1,
+                            ),
+                          ),
                           const SizedBox(height: 4),
                           Text.rich(
-                            TextSpan(children: [
-                              const TextSpan(text: 'Guruh '),
-                              TextSpan(
+                            TextSpan(
+                              children: [
+                                const TextSpan(text: 'Guruh '),
+                                TextSpan(
                                   text: '9-B',
                                   style: SfType.ui(
-                                      size: 14,
-                                      weight: FontWeight.w700,
-                                      color: const Color(0xFFFFFCF5))),
-                              const TextSpan(text: ' · 24 o‘quvchi · 304-xona'),
-                            ]),
+                                    size: 14,
+                                    weight: FontWeight.w700,
+                                    color: const Color(0xFFFFFCF5),
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: ' · 24 o‘quvchi · 304-xona',
+                                ),
+                              ],
+                            ),
                             style: SfType.ui(
-                                size: 14,
-                                color: const Color(0xFFFFFCF5).withValues(alpha: 0.9)),
+                              size: 14,
+                              color: const Color(
+                                0xFFFFFCF5,
+                              ).withValues(alpha: 0.9),
+                            ),
                           ),
                         ],
                       ),
@@ -396,15 +506,23 @@ class _NextLessonHero extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('09:00',
-                            style: SfType.mono(
-                                size: 22,
-                                weight: FontWeight.w600,
-                                color: const Color(0xFFFFFCF5))),
-                        Text('– 09:45',
-                            style: SfType.ui(
-                                size: 11,
-                                color: const Color(0xFFFFFCF5).withValues(alpha: 0.85))),
+                        Text(
+                          '09:00',
+                          style: SfType.mono(
+                            size: 22,
+                            weight: FontWeight.w600,
+                            color: const Color(0xFFFFFCF5),
+                          ),
+                        ),
+                        Text(
+                          '– 09:45',
+                          style: SfType.ui(
+                            size: 11,
+                            color: const Color(
+                              0xFFFFFCF5,
+                            ).withValues(alpha: 0.85),
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -434,7 +552,11 @@ class _NextLessonHero extends StatelessWidget {
                         borderRadius: BorderRadius.circular(999),
                       ),
                       alignment: Alignment.center,
-                      child: const Icon(SfIcons.more, size: 18, color: Color(0xFFFFFCF5)),
+                      child: const Icon(
+                        SfIcons.more,
+                        size: 18,
+                        color: Color(0xFFFFFCF5),
+                      ),
                     ),
                   ],
                 ),
@@ -456,42 +578,66 @@ class _QuickStats extends StatelessWidget {
       ('94', '%', 'Davomat', c.success, false),
       ('↑8 ↓2', 'bugun', 'Kartalar', c.accentInk, true),
     ];
-    return Row(
-      children: [
-        for (final s in items)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: SfSurfaceCard(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(s.$1,
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Preserve the three-up rhythm on regular phones. Compact screens and
+        // accessibility text get two columns so values never become cramped.
+        final compact = constraints.maxWidth < 330 || textScale > 1.15;
+        final columns = compact ? 2 : 3;
+        const gap = 8.0;
+        final cardWidth =
+            (constraints.maxWidth - (gap * (columns - 1))) / columns;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final s in items)
+              SizedBox(
+                width: cardWidth,
+                child: SfSurfaceCard(
+                  padding: EdgeInsets.all(cardWidth < 104 ? 10 : 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 3,
+                        runSpacing: 2,
+                        crossAxisAlignment: WrapCrossAlignment.end,
+                        children: [
+                          Text(
+                            s.$1,
                             style: SfType.mono(
-                                size: s.$5 ? 16 : 22,
-                                weight: FontWeight.w700,
-                                color: s.$4,
-                                height: 1)),
-                        const SizedBox(width: 3),
-                        Text(s.$2,
+                              size: s.$5 ? 16 : 22,
+                              weight: FontWeight.w700,
+                              color: s.$4,
+                              height: 1,
+                            ),
+                          ),
+                          Text(
+                            s.$2,
                             style: SfType.ui(
-                                size: 10, weight: FontWeight.w600, color: c.muted)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(s.$3.toUpperCase(),
-                        style: SfType.eyebrow(color: c.muted, size: 11)),
-                  ],
+                              size: 10,
+                              weight: FontWeight.w600,
+                              color: c.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        s.$3.toUpperCase(),
+                        style: SfType.eyebrow(color: c.muted, size: 11),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -500,18 +646,35 @@ class _AiPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
     return SfAiSurface(
       borderRadius: BorderRadius.circular(22),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const SfAiBadge(label: 'Ko‘rib chiqing'),
-              const Spacer(),
-              Text('3 dona', style: SfType.ui(size: 11, color: c.muted)),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 280 || textScale > 1.15;
+              return Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  SfAiBadge(
+                    label: compact ? null : 'Ko‘rib chiqing',
+                    compact: compact,
+                  ),
+                  if (compact)
+                    Text(
+                      'KO‘RIB CHIQING',
+                      style: SfType.eyebrow(color: c.ai, size: 10),
+                    ),
+                  Text('3 dona', style: SfType.ui(size: 11, color: c.muted)),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 10),
           Text(
@@ -519,21 +682,28 @@ class _AiPanel extends StatelessWidget {
             style: SfType.display(size: 19, color: c.ink, height: 1.3),
           ),
           const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               SfButton(
                 kind: SfButtonKind.ink,
                 label: 'Tavsiyani ko‘rish',
                 trailing: SfIcons.arrowR,
                 fontSize: 13,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
               ),
-              const SizedBox(width: 8),
               SfButton(
                 kind: SfButtonKind.ghost,
                 label: 'Keyinroq',
                 fontSize: 13,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
               ),
             ],
           ),
@@ -572,8 +742,14 @@ class _ScheduleList extends StatelessWidget {
                   children: [
                     SizedBox(
                       width: 46,
-                      child: Text(rows[i].$1,
-                          style: SfType.mono(size: 13, weight: FontWeight.w600, color: c.ink2)),
+                      child: Text(
+                        rows[i].$1,
+                        style: SfType.mono(
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: c.ink2,
+                        ),
+                      ),
                     ),
                     Container(
                       width: 3,
@@ -582,8 +758,8 @@ class _ScheduleList extends StatelessWidget {
                         color: rows[i].$4 == 'now'
                             ? c.primary
                             : rows[i].$4 == 'gap'
-                                ? c.borderStrong
-                                : c.accent,
+                            ? c.borderStrong
+                            : c.accent,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -592,15 +768,28 @@ class _ScheduleList extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(rows[i].$2,
-                              style: SfType.ui(size: 14, weight: FontWeight.w600, color: c.ink)),
-                          Text('Xona ${rows[i].$3}',
-                              style: SfType.ui(size: 11.5, color: c.muted)),
+                          Text(
+                            rows[i].$2,
+                            style: SfType.ui(
+                              size: 14,
+                              weight: FontWeight.w600,
+                              color: c.ink,
+                            ),
+                          ),
+                          Text(
+                            'Xona ${rows[i].$3}',
+                            style: SfType.ui(size: 11.5, color: c.muted),
+                          ),
                         ],
                       ),
                     ),
-                    if (rows[i].$4 == 'now') SfPill(tone: SfPillTone.primary, label: 'Hozir · ${rows[i].$5}'),
-                    if (rows[i].$4 == 'next') const SfPill(tone: SfPillTone.accent, label: 'Keyingi'),
+                    if (rows[i].$4 == 'now')
+                      SfPill(
+                        tone: SfPillTone.primary,
+                        label: 'Hozir · ${rows[i].$5}',
+                      ),
+                    if (rows[i].$4 == 'next')
+                      const SfPill(tone: SfPillTone.accent, label: 'Keyingi'),
                   ],
                 ),
               ),

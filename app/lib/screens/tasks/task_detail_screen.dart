@@ -1,278 +1,367 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
-import '../../widgets/sf_ai_badge.dart';
-import '../../widgets/sf_ai_surface.dart';
-import '../../widgets/sf_avatar.dart';
+import '../../widgets/sf_app_bar.dart';
 import '../../widgets/sf_button.dart';
-import '../../widgets/sf_icons.dart';
-import '../../widgets/sf_pill.dart';
+import '../../widgets/sf_card.dart';
+import '../../widgets/sf_hint_card.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_state_view.dart';
+import '../../widgets/sf_toast.dart';
 
 class TaskDetailScreen extends StatelessWidget {
   const TaskDetailScreen({super.key});
 
+  StaffTask? _resolveTask(BuildContext context) {
+    final tasks = AppScope.of(context).tasks;
+    final id = GoRouterState.of(context).uri.queryParameters['id'];
+    if (id != null) {
+      final matches = tasks.where((task) => task.id == id);
+      if (matches.isNotEmpty) return matches.first;
+    }
+    return tasks.firstOrNull;
+  }
+
+  Future<void> _setStatus(
+    BuildContext context,
+    StaffTask task,
+    TaskStatus status,
+  ) async {
+    if (status == TaskStatus.done &&
+        task.checklist.any((item) => !item.isDone)) {
+      SfToast.show(
+        context,
+        title: 'Hali qadamlar bor',
+        message: 'Vazifani tugatishdan oldin barcha qadamlarni belgilang.',
+        tone: SfToastTone.warning,
+      );
+      return;
+    }
+    final previous = task.status;
+    try {
+      await AppScope.of(context).setTaskStatus(task.id, status);
+      if (!context.mounted) return;
+      SfToast.show(
+        context,
+        title: status == TaskStatus.done
+            ? 'Vazifa tugatildi'
+            : 'Holat saqlandi',
+        message: _statusLabel(status),
+        tone: status == TaskStatus.done
+            ? SfToastTone.success
+            : SfToastTone.info,
+        actionLabel: 'Bekor qilish',
+        onAction: () => AppScope.of(context).setTaskStatus(task.id, previous),
+      );
+    } on Object catch (error) {
+      if (context.mounted) {
+        SfToast.show(context, message: '$error', tone: SfToastTone.error);
+      }
+    }
+  }
+
+  Future<void> _toggleStep(
+    BuildContext context,
+    StaffTask task,
+    TaskChecklistItem item,
+  ) async {
+    try {
+      await AppScope.of(context).toggleTaskChecklistItem(task.id, item.id);
+      if (!context.mounted) return;
+      SfToast.show(
+        context,
+        message: item.isDone ? 'Qadam qayta ochildi.' : 'Qadam bajarildi.',
+        tone: item.isDone ? SfToastTone.info : SfToastTone.success,
+        actionLabel: 'Bekor qilish',
+        onAction: () =>
+            AppScope.of(context).toggleTaskChecklistItem(task.id, item.id),
+      );
+    } on Object catch (error) {
+      if (context.mounted) {
+        SfToast.show(context, message: '$error', tone: SfToastTone.error);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final task = _resolveTask(context);
     final c = SfTheme.colorsOf(context);
-    return SfScaffold(
-      top: Container(
-        color: c.surface,
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
-        child: SizedBox(
-          height: 44,
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () => context.pop(),
-                child: Row(
-                  children: [
-                    Icon(SfIcons.arrowL, size: 18, color: c.primary),
-                    const SizedBox(width: 2),
-                    Text('Vazifalar',
-                        style: SfType.ui(size: 15, weight: FontWeight.w600, color: c.primary)),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              Icon(SfIcons.printer, size: 18, color: c.ink2),
-              const SizedBox(width: 12),
-              Icon(SfIcons.more, size: 22, color: c.ink2),
-            ],
-          ),
+    if (task == null) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const BackButton(),
+          title: const Text('Vazifa'),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        children: [
-          Wrap(
-            spacing: 6,
-            children: [
-              const SfPill(tone: SfPillTone.primary, label: 'BAJARILMOQDA'),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: c.ink, borderRadius: BorderRadius.circular(4)),
-                child: Text('BOSHQARUV', style: SfType.eyebrow(color: c.bg, size: 10)),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text('P1',
-                    style: SfType.mono(size: 10, weight: FontWeight.w700, color: c.danger)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text.rich(
-            TextSpan(children: [
-              TextSpan(
-                  text: 'May oyi yakuniy ',
-                  style: SfType.ui(
-                      size: 26,
-                      weight: FontWeight.w800,
-                      color: c.ink,
-                      letterSpacing: -0.65)),
-              TextSpan(text: 'hisobotini ', style: SfType.display(size: 26, color: c.ink)),
-              TextSpan(
-                  text: 'topshirish',
-                  style: SfType.ui(
-                      size: 26,
-                      weight: FontWeight.w800,
-                      color: c.ink,
-                      letterSpacing: -0.65)),
-            ]),
-          ),
-          const SizedBox(height: 18),
-          for (final p in [
-            ('Loyiha', 'Hisobot · oylik', SfIcons.brand, c.primary, false),
-            ('Bergan', 'Karimova R. · Direktor', SfIcons.user, c.muted, false),
-            ('Muddat', 'Ertaga · 18:00', SfIcons.cal, c.muted, true),
-            ('Sub-vazifa', '2 / 4 bajarildi', SfIcons.check, c.muted, false),
-            ('Tag', 'Markaz · Yarim oy · Mat', SfIcons.brand, c.muted, false),
-          ])
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 90,
-                    child: Row(
-                      children: [
-                        Icon(p.$3, size: 13, color: c.muted),
-                        const SizedBox(width: 6),
-                        Text(p.$1, style: SfType.ui(size: 12, color: c.muted)),
-                      ],
-                    ),
+        body: SfEmptyState(
+          title: 'Vazifa topilmadi',
+          actionLabel: 'Orqaga',
+          onAction: () => context.pop(),
+        ),
+      );
+    }
+    final canUpdate = state.can(StaffCapability.updateOwnTasks);
+    final progress = task.checklist.isEmpty
+        ? 0.0
+        : task.completedSteps / task.checklist.length;
+    return SfScaffold(
+      top: SfNavBar(
+        title: 'Vazifa',
+        subtitle: _statusLabel(task.status),
+        leading: IconButton(
+          tooltip: 'Orqaga',
+          onPressed: () => context.pop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        ),
+        actions: [
+          if (canUpdate)
+            PopupMenuButton<TaskStatus>(
+              tooltip: 'Holatni o‘zgartirish',
+              initialValue: task.status,
+              onSelected: (status) => _setStatus(context, task, status),
+              itemBuilder: (_) => [
+                for (final status in TaskStatus.values)
+                  PopupMenuItem(
+                    value: status,
+                    child: Text(_statusLabel(status)),
                   ),
-                  Text(p.$2,
-                      style: SfType.ui(
-                          size: 12,
-                          weight: p.$5 ? FontWeight.w700 : FontWeight.w600,
-                          color: p.$5 ? c.danger : c.ink2)),
-                ],
-              ),
-            ),
-          Container(height: 1, color: c.border, margin: const EdgeInsets.symmetric(vertical: 18)),
-          Text(
-            'May oyi bo‘yicha yakuniy hisobotni tayyorlash. Hisobotda quyidagilar bo‘lishi kerak:',
-            style: SfType.ui(size: 14, color: c.ink, height: 1.6),
-          ),
-          const SizedBox(height: 14),
-          for (final s in [
-            ('Davomat statistikasi · 3 guruh', true, false),
-            ('Up/Down kartalar tahlili', true, false),
-            ('AI suhbat asosida tavsiyalar', false, true),
-            ('Yakuniy xulosa · 1 sahifa', false, false),
-          ])
-            Container(
-              decoration: BoxDecoration(
-                color: s.$3 ? c.primarySoft : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-              margin: const EdgeInsets.only(bottom: 2),
-              child: Row(
-                children: [
-                  Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: s.$2 ? c.success : Colors.transparent,
-                      border: s.$2
-                          ? null
-                          : Border.all(
-                              color: s.$3 ? c.primary : c.borderStrong, width: 1.5),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    alignment: Alignment.center,
-                    child: s.$2
-                        ? const Icon(SfIcons.check, size: 12, color: Color(0xFFFFFCF5))
-                        : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(s.$1,
-                        style: SfType.ui(
-                            size: 14,
-                            weight: s.$3 ? FontWeight.w700 : FontWeight.w400,
-                            color: s.$2 ? c.muted : c.ink)),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration:
-                BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('# Hisobot shabloni', style: SfType.mono(size: 12, color: c.muted)),
-                Text('1. Yunusobod filiali · 3 guruh', style: SfType.mono(size: 12, color: c.ink2, height: 1.6)),
-                Text('2. Davomat: 94% (+2 → o‘sib)', style: SfType.mono(size: 12, color: c.ink2, height: 1.6)),
-                Text.rich(TextSpan(children: [
-                  TextSpan(text: '3. Up kartalar: ', style: SfType.mono(size: 12, color: c.ink2)),
-                  TextSpan(text: '↑ 18', style: SfType.mono(size: 12, weight: FontWeight.w700, color: const Color(0xFF7A4F0E))),
-                ])),
-                Text.rich(TextSpan(children: [
-                  TextSpan(text: '4. Down kartalar: ', style: SfType.mono(size: 12, color: c.ink2)),
-                  TextSpan(text: '↓ 4', style: SfType.mono(size: 12, weight: FontWeight.w700, color: c.danger)),
-                ])),
               ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          SfAiSurface(
-            borderRadius: BorderRadius.circular(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SfAiBadge(label: 'Hisobot yordamchi'),
-                const SizedBox(height: 8),
-                Text(
-                  '"Sizning 9-B, Algebra Mid va 10-V ma‘lumotlaringizdan yarim avtomatik hisobot tuzdim. Ko‘rib chiqing va kerakli joylarga qo‘l tegdiring."',
-                  style: SfType.display(size: 15, color: c.ink2, height: 1.35),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  children: const [
-                    SfPill(tone: SfPillTone.ai, label: 'Qoralama tayyor'),
-                    SfPill(tone: SfPillTone.ai, label: '3 sahifa · PDF'),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 22),
-          Text('FAOLLIK · 4 TA', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 10),
-          for (final a in [
-            ('Karimova R.', 'vazifani sizga biriktirdi', '17 May · 14:08', false),
-            ('Siz', '"Davomat statistikasi"ni tugatdingiz', '18 May · 10:22', false),
-            ('Siz', '"Up/Down kartalar tahlili"ni tugatdingiz', '19 May · 09:42', false),
-            ('AI', 'qoralama tayyorladi', 'Hozir', true),
-          ])
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (a.$4)
-                    Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        gradient: c.aiGradient,
-                        border: Border.all(color: c.aiBorder),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text('Ai', style: SfType.display(size: 11, color: c.ai)),
-                    )
-                  else
-                    SfAvatar(name: a.$1, size: 24),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text.rich(TextSpan(children: [
-                          TextSpan(text: a.$1,
-                              style: SfType.ui(size: 12, weight: FontWeight.w700, color: c.ink)),
-                          TextSpan(text: ' ${a.$2}', style: SfType.ui(size: 12, color: c.muted, height: 1.4)),
-                        ])),
-                        const SizedBox(height: 2),
-                        Text(a.$3, style: SfType.mono(size: 10, color: c.muted)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
             ),
         ],
       ),
-      bottom: Container(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
-        decoration: BoxDecoration(
-          color: c.surface,
-          border: Border(top: BorderSide(color: c.border)),
-        ),
-        child: Row(
-          children: [
-            Expanded(child: SfButton(kind: SfButtonKind.soft, label: 'Qoldirish', onPressed: () => context.pop())),
-            const SizedBox(width: 8),
-            Expanded(
-                child: SfButton(
-              kind: SfButtonKind.primary,
-              label: 'Tugatish',
-              leading: SfIcons.check,
-              onPressed: () => context.pop(),
-            )),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 30),
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Tag(
+                label: _priorityLabel(task.priority),
+                color: _priorityColor(context, task.priority),
+              ),
+              _Tag(
+                label: _statusLabel(task.status),
+                color: _statusColor(context, task.status),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            task.title,
+            style: SfType.display(size: 27, color: c.ink, height: 1.14),
+          ),
+          if (task.description.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              task.description,
+              style: SfType.ui(size: 14, color: c.ink2, height: 1.5),
+            ),
           ],
-        ),
+          const SizedBox(height: 16),
+          SfSurfaceCard(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                _MetaRow(
+                  icon: Icons.person_outline_rounded,
+                  label: 'Mas’ul',
+                  value: task.assigneeName,
+                ),
+                const Divider(height: 22),
+                _MetaRow(
+                  icon: Icons.schedule_rounded,
+                  label: 'Muddat',
+                  value: _dateLabel(task.dueAt),
+                ),
+                const Divider(height: 22),
+                _MetaRow(
+                  icon: Icons.account_circle_outlined,
+                  label: 'Yaratgan',
+                  value: task.creatorName,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Text('QADAMLAR', style: SfType.eyebrow(color: c.muted)),
+              const Spacer(),
+              Text(
+                '${task.completedSteps}/${task.checklist.length}',
+                style: SfType.mono(size: 11, color: c.muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(6),
+            color: progress == 1 ? c.success : c.primary,
+            backgroundColor: c.surface3,
+          ),
+          const SizedBox(height: 9),
+          if (task.checklist.isEmpty)
+            const SfHintCard(
+              message: 'Bu vazifa uchun alohida qadamlar belgilanmagan.',
+              compact: true,
+            )
+          else
+            SfSurfaceCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  for (final entry in task.checklist.asMap().entries)
+                    CheckboxListTile(
+                      value: entry.value.isDone,
+                      onChanged: canUpdate
+                          ? (_) => _toggleStep(context, task, entry.value)
+                          : null,
+                      title: Text(
+                        entry.value.title,
+                        style:
+                            SfType.ui(
+                              size: 13,
+                              color: entry.value.isDone ? c.muted : c.ink,
+                              weight: FontWeight.w600,
+                            ).copyWith(
+                              decoration: entry.value.isDone
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                      ),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      shape: entry.key == task.checklist.length - 1
+                          ? null
+                          : Border(bottom: BorderSide(color: c.border)),
+                    ),
+                ],
+              ),
+            ),
+          if (!canUpdate) ...[
+            const SizedBox(height: 14),
+            const SfHintCard(
+              message: 'Bu vazifa siz uchun faqat ko‘rish rejimida.',
+              tone: SfHintTone.info,
+              compact: true,
+            ),
+          ],
+        ],
       ),
+      bottom: canUpdate && task.status != TaskStatus.done
+          ? Container(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+              decoration: BoxDecoration(
+                color: c.surface,
+                border: Border(top: BorderSide(color: c.border)),
+              ),
+              child: SfButton(
+                kind: SfButtonKind.primary,
+                block: true,
+                height: 50,
+                label: task.checklist.any((item) => !item.isDone)
+                    ? 'Qadamlarni yakunlang'
+                    : 'Vazifani tugatish',
+                leading: Icons.check_circle_outline_rounded,
+                onPressed: task.checklist.any((item) => !item.isDone)
+                    ? null
+                    : () => _setStatus(context, task, TaskStatus.done),
+              ),
+            )
+          : null,
     );
   }
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag({required this.label, required this.color});
+  final String label;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Text(
+      label.toUpperCase(),
+      style: SfType.eyebrow(color: color, size: 10),
+    ),
+  );
+}
+
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: c.primary),
+        const SizedBox(width: 10),
+        Text(label, style: SfType.ui(size: 12, color: c.muted)),
+        const Spacer(),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: SfType.ui(size: 12, weight: FontWeight.w700, color: c.ink),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _statusLabel(TaskStatus status) => switch (status) {
+  TaskStatus.todo => 'Boshlanmagan',
+  TaskStatus.inProgress => 'Bajarilmoqda',
+  TaskStatus.inReview => 'Tekshiruvda',
+  TaskStatus.done => 'Tugatildi',
+};
+
+String _priorityLabel(TaskPriority priority) => switch (priority) {
+  TaskPriority.low => 'Past',
+  TaskPriority.medium => 'O‘rta',
+  TaskPriority.high => 'Yuqori',
+  TaskPriority.urgent => 'Shoshilinch',
+};
+
+Color _statusColor(BuildContext context, TaskStatus status) {
+  final c = SfTheme.colorsOf(context);
+  return switch (status) {
+    TaskStatus.todo => c.muted,
+    TaskStatus.inProgress => c.primary,
+    TaskStatus.inReview => c.warn,
+    TaskStatus.done => c.success,
+  };
+}
+
+Color _priorityColor(BuildContext context, TaskPriority priority) {
+  final c = SfTheme.colorsOf(context);
+  return switch (priority) {
+    TaskPriority.low => c.muted,
+    TaskPriority.medium => c.primary,
+    TaskPriority.high => c.warn,
+    TaskPriority.urgent => c.danger,
+  };
+}
+
+String _dateLabel(DateTime value) {
+  final date = value.toLocal();
+  return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year} · ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
 }

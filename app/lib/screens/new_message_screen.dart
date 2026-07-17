@@ -1,168 +1,175 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
+import '../data/models.dart';
 import '../theme/sf_theme.dart';
-import '../widgets/sf_ai_badge.dart';
-import '../widgets/sf_ai_surface.dart';
-import '../widgets/sf_avatar.dart';
+import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_button.dart';
 import '../widgets/sf_card.dart';
+import '../widgets/sf_form_controls.dart';
+import '../widgets/sf_hint_card.dart';
 import '../widgets/sf_icons.dart';
-import '../widgets/sf_pill.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_state_view.dart';
+import '../widgets/sf_toast.dart';
 
-class NewMessageScreen extends StatelessWidget {
+class NewMessageScreen extends StatefulWidget {
   const NewMessageScreen({super.key});
 
   @override
+  State<NewMessageScreen> createState() => _NewMessageScreenState();
+}
+
+class _NewMessageScreenState extends State<NewMessageScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _body = TextEditingController();
+  String? _threadId;
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _body.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (_sending || !(_formKey.currentState?.validate() ?? false)) return;
+    final threadId = _threadId;
+    if (threadId == null) return;
+    final app = AppScope.of(context);
+    setState(() => _sending = true);
+    try {
+      await app.sendMessage(threadId, _body.text);
+      if (!mounted) return;
+      SfToast.show(
+        context,
+        message: 'Xabar yuborildi',
+        tone: SfToastTone.success,
+        glassEnabled: app.settings.liquidGlass,
+        motionEnabled: !app.settings.reducedMotion,
+      );
+      context.pop();
+    } on Object catch (error) {
+      if (!mounted) return;
+      SfToast.show(
+        context,
+        message: error.toString(),
+        tone: SfToastTone.error,
+        glassEnabled: app.settings.liquidGlass,
+        motionEnabled: !app.settings.reducedMotion,
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final session = app.session;
     final c = SfTheme.colorsOf(context);
-    final suggestions = [
-      ('Akbarova Dilnoza', '9-B · Akmal ona'),
-      ('Eshmatova Gulnora', '9-B · Otabek ona'),
-      ('Karimova Rano', 'Direktor'),
-      ('9-B ota-onalar', 'Guruh chat · 24 azo'),
-    ];
+    if (session == null || !session.can(StaffCapability.useStaffMessaging)) {
+      return const SfScaffold(
+        body: SfErrorState(title: 'Xabar yuborishga ruxsat yo‘q'),
+      );
+    }
+    final threads = app.messageThreads
+        .where((thread) => thread.participantIds.contains(session.userId))
+        .toList(growable: false);
+    if (threads.isNotEmpty &&
+        !threads.any((thread) => thread.id == _threadId)) {
+      _threadId = threads.first.id;
+    }
+
     return SfScaffold(
-      top: Container(
-        color: c.surface,
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 0),
-        child: SizedBox(
-          height: 44,
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: () => context.pop(),
-                child: Text('Bekor',
-                    style: SfType.ui(size: 16, weight: FontWeight.w600, color: c.primary)),
-              ),
-              const Spacer(),
-              Text('Yangi xabar',
-                  style: SfType.ui(size: 15, weight: FontWeight.w700, color: c.ink)),
-              const Spacer(),
-              Text('Yuborish',
-                  style: SfType.ui(
-                      size: 15,
-                      weight: FontWeight.w700,
-                      color: c.primary.withValues(alpha: 0.5))),
-            ],
-          ),
+      dismissKeyboardOnTap: true,
+      top: SfNavBar(
+        title: 'Yangi xabar',
+        leading: TextButton(
+          onPressed: () => context.pop(),
+          child: const Text('Bekor'),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
-        children: [
-          Text('KIMGA', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: c.surface,
-              border: Border.all(color: c.border),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Icon(SfIcons.search, size: 18, color: c.muted),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Ism, guruh yoki ota-onani izlang',
-                      style: SfType.ui(size: 14, color: c.muted)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text('TAVSIYALAR', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 8),
-          SfSurfaceCard(
-            child: Column(
-              children: [
-                for (int i = 0; i < suggestions.length; i++)
-                  Container(
-                    decoration: BoxDecoration(
-                      border: i < suggestions.length - 1
-                          ? Border(bottom: BorderSide(color: c.border))
-                          : null,
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    child: Row(
-                      children: [
-                        SfAvatar(name: suggestions[i].$1, size: 36),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(suggestions[i].$1,
-                                  style: SfType.ui(
-                                      size: 13.5,
-                                      weight: FontWeight.w600,
-                                      color: c.ink)),
-                              Text(suggestions[i].$2,
-                                  style: SfType.ui(size: 11, color: c.muted)),
-                            ],
-                          ),
-                        ),
-                        Icon(SfIcons.plus, size: 18, color: c.primary),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text('XABAR', style: SfType.eyebrow(color: c.muted)),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: c.surface,
-              border: Border.all(color: c.border),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: SizedBox(
-              height: 140,
-              child: Text('Xabaringizni yozing...',
-                  style: SfType.ui(size: 14, color: c.muted)),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: const [
-              SfPill(label: '+ Bugungi dars haqida'),
-              SfPill(label: '+ Davomat eslatma'),
-              SfPill(label: '+ Uy ishi'),
-              SfPill(label: '+ Ota-ona uchrashuvi'),
-            ],
-          ),
-          const SizedBox(height: 18),
-          SfAiSurface(
-            borderRadius: BorderRadius.circular(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SfAiBadge(label: 'Yozish yordamchi'),
-                const SizedBox(height: 8),
-                Text(
-                  'Qabul qiluvchini tanlang — sizning karta va davomat ma‘lumotlaringiz asosida AI 3 ta variant tayyorlab beradi.',
-                  style: SfType.ui(size: 13, color: c.ink2, height: 1.4),
-                ),
-                const SizedBox(height: 10),
-                SfButton(
-                  kind: SfButtonKind.ink,
-                  label: 'Tavsiya berish',
-                  trailing: SfIcons.arrowR,
-                  fontSize: 13,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                ),
-              ],
-            ),
+        actions: [
+          TextButton(
+            onPressed: _sending ? null : _send,
+            child: const Text('Yuborish'),
           ),
         ],
       ),
+      body: threads.isEmpty
+          ? const SfEmptyState(
+              title: 'Suhbat mavjud emas',
+              message:
+                  'Xabar yuborish uchun avval xodimlar guruhi yaratilishi kerak.',
+              icon: SfIcons.chat,
+            )
+          : Form(
+              key: _formKey,
+              child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+                children: [
+                  const SfHintCard(
+                    compact: true,
+                    title: 'Xodimlararo kanal',
+                    message: 'Faqat siz a’zo bo‘lgan suhbatlar ko‘rsatiladi.',
+                  ),
+                  const SizedBox(height: 18),
+                  Text('KIMGA', style: SfType.eyebrow(color: c.muted)),
+                  const SizedBox(height: 7),
+                  SfSurfaceCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 3,
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: _threadId,
+                        icon: const Icon(SfIcons.chevD),
+                        items: [
+                          for (final thread in threads)
+                            DropdownMenuItem(
+                              value: thread.id,
+                              child: Text(thread.title),
+                            ),
+                        ],
+                        onChanged: _sending
+                            ? null
+                            : (value) => setState(() => _threadId = value),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  SfTextField(
+                    controller: _body,
+                    label: 'Xabar',
+                    hint: 'Aniq va qisqa xabar yozing…',
+                    minLines: 5,
+                    maxLines: 9,
+                    maxLength: 800,
+                    textInputAction: TextInputAction.newline,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Xabar matnini kiriting';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 18),
+                  SfButton(
+                    block: true,
+                    label: _sending ? 'Yuborilmoqda…' : 'Xabarni yuborish',
+                    trailing: SfIcons.send,
+                    haptic: app.settings.haptics,
+                    motionEnabled: !app.settings.reducedMotion,
+                    onPressed: _sending ? null : _send,
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }

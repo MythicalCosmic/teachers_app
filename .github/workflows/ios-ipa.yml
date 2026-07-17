@@ -1,0 +1,239 @@
+name: Build signed iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: Apple export method
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - ad-hoc
+          - app-store
+      bundle_id:
+        description: Bundle ID in the provisioning profile
+        required: true
+        default: uz.starforge.starforgeEdu
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    env:
+      IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+      IOS_BUNDLE_ID: ${{ inputs.bundle_id }}
+      IOS_EXPORT_METHOD: ${{ inputs.export_method }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.6
+          channel: stable
+          cache: true
+
+      - name: Validate signing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variable in \
+            IOS_CERTIFICATE_BASE64 \
+            IOS_CERTIFICATE_PASSWORD \
+            IOS_PROVISIONING_PROFILE_BASE64 \
+            IOS_KEYCHAIN_PASSWORD; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "Missing required GitHub Actions secret: $variable" >&2
+              exit 1
+            fi
+          done
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Analyze and test
+        run: |
+          flutter analyze
+          flutter test --reporter expanded
+
+      - name: Install Apple signing material
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          certificate_path="$RUNNER_TEMP/starforge-signing.p12"
+          profile_path="$RUNNER_TEMP/starforge.mobileprovision"
+          keychain_path="$RUNNER_TEMP/starforge-signing.keychain-db"
+          decoded_profile="$RUNNER_TEMP/starforge-profile.plist"
+
+          printf '%s' "$IOS_CERTIFICATE_BASE64" | openssl base64 -d -A > "$certificate_path"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | openssl base64 -d -A > "$profile_path"
+
+          security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$IOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path" login.keychain-db
+
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | awk -F'"' 'NR == 1 { print $2 }')"
+          if [[ -z "$signing_identity" ]]; then
+            echo "The uploaded certificate contains no usable code-signing identity." >&2
+            exit 1
+          fi
+
+          security cms -D -i "$profile_path" > "$decoded_profile"
+          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$decoded_profile")"
+          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$decoded_profile")"
+          team_id="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$decoded_profile")"
+          app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$decoded_profile")"
+          profile_bundle_id="${app_identifier#*.}"
+
+          if [[ "$profile_bundle_id" != '*' && "$profile_bundle_id" != "$IOS_BUNDLE_ID" ]]; then
+            echo "Provisioning profile is for '$profile_bundle_id', but the workflow requested '$IOS_BUNDLE_ID'." >&2
+            exit 1
+          fi
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$profile_path" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+
+          {
+            echo "IOS_KEYCHAIN_PATH=$keychain_path"
+            echo "IOS_SIGNING_IDENTITY=$signing_identity"
+            echo "IOS_PROFILE_NAME=$profile_name"
+            echo "IOS_TEAM_ID=$team_id"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure Xcode signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          require 'xcodeproj'
+
+          project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
+          runner = project.targets.find { |target| target.name == 'Runner' }
+          raise 'Runner target was not found' unless runner
+
+          runner.build_configurations.each do |configuration|
+            settings = configuration.build_settings
+            settings['PRODUCT_BUNDLE_IDENTIFIER'] = ENV.fetch('IOS_BUNDLE_ID')
+            settings['DEVELOPMENT_TEAM'] = ENV.fetch('IOS_TEAM_ID')
+            settings['CODE_SIGN_STYLE'] = 'Manual'
+            settings['CODE_SIGN_IDENTITY'] = ENV.fetch('IOS_SIGNING_IDENTITY')
+            settings['PROVISIONING_PROFILE_SPECIFIER'] = ENV.fetch('IOS_PROFILE_NAME')
+          end
+          project.save
+          RUBY
+
+      - name: Create export options
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>method</key>
+            <string>$IOS_EXPORT_METHOD</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$IOS_BUNDLE_ID</key>
+              <string>$IOS_PROFILE_NAME</string>
+            </dict>
+            <key>signingCertificate</key>
+            <string>$IOS_SIGNING_IDENTITY</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>teamID</key>
+            <string>$IOS_TEAM_ID</string>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Build signed IPA
+        run: flutter build ipa --release --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Verify IPA structure and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          ipa_path="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' -print -quit)"
+          [[ -n "$ipa_path" ]] || { echo 'No IPA was produced.' >&2; exit 1; }
+
+          verify_dir="$RUNNER_TEMP/starforge-ipa-verify"
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+          unzip -q "$ipa_path" -d "$verify_dir"
+
+          app_path="$(find "$verify_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          [[ -n "$app_path" ]] || {
+            echo 'The IPA does not contain Payload/<App>.app.' >&2
+            exit 1
+          }
+          [[ -f "$app_path/embedded.mobileprovision" ]] || {
+            echo 'The exported app has no embedded provisioning profile.' >&2
+            exit 1
+          }
+
+          ipa_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")"
+          [[ "$ipa_bundle_id" == "$IOS_BUNDLE_ID" ]] || {
+            echo "The IPA bundle ID is '$ipa_bundle_id', expected '$IOS_BUNDLE_ID'." >&2
+            exit 1
+          }
+
+          security cms -D -i "$app_path/embedded.mobileprovision" \
+            > "$verify_dir/embedded-profile.plist"
+          embedded_team_id="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$verify_dir/embedded-profile.plist")"
+          [[ "$embedded_team_id" == "$IOS_TEAM_ID" ]] || {
+            echo "The embedded profile team is '$embedded_team_id', expected '$IOS_TEAM_ID'." >&2
+            exit 1
+          }
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          codesign -dv --verbose=4 "$app_path"
+
+      - name: Upload signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: starforge-staff-${{ inputs.export_method }}-ipa
+          path: app/build/ios/ipa/*.ipa
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove temporary keychain
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${IOS_KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "$IOS_KEYCHAIN_PATH" || true
+          fi

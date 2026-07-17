@@ -1,7 +1,5 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/sf_theme.dart';
-import '../theme/tokens.dart';
 
 /// Container with the AI gradient + soft radial halo accent.
 class SfAiSurface extends StatelessWidget {
@@ -37,7 +35,10 @@ class SfAiSurface extends StatelessWidget {
                     gradient: RadialGradient(
                       center: const Alignment(-0.4, -0.4),
                       radius: 1.0,
-                      colors: [c.accent.withValues(alpha: 0.22), Colors.transparent],
+                      colors: [
+                        c.accent.withValues(alpha: 0.22),
+                        Colors.transparent,
+                      ],
                       stops: const [0.0, 0.5],
                     ),
                   ),

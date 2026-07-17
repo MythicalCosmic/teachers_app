@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+
 import '../theme/sf_theme.dart';
-import '../theme/tokens.dart';
 
 /// Generic StarForge surface card.
 class SfSurfaceCard extends StatelessWidget {
@@ -20,15 +20,14 @@ class SfSurfaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: color ?? c.surface,
-        border: Border.all(color: c.border),
+    return Material(
+      color: color ?? c.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: borderRadius,
+        side: BorderSide(color: c.border),
       ),
-      padding: padding,
       clipBehavior: Clip.antiAlias,
-      child: child,
+      child: Padding(padding: padding, child: child),
     );
   }
 }

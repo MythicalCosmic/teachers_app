@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../theme/sf_theme.dart';
+import 'sf_bottom_navigation.dart';
 import 'sf_icons.dart';
 
 enum SfTab { home, cohort, tasks, ai, print }
@@ -7,8 +7,18 @@ enum SfTab { home, cohort, tasks, ai, print }
 class SfTabBar extends StatelessWidget {
   final SfTab active;
   final ValueChanged<SfTab>? onChanged;
+  final bool glassEnabled;
+  final bool motionEnabled;
+  final bool safeBottom;
 
-  const SfTabBar({super.key, this.active = SfTab.home, this.onChanged});
+  const SfTabBar({
+    super.key,
+    this.active = SfTab.home,
+    this.onChanged,
+    this.glassEnabled = true,
+    this.motionEnabled = true,
+    this.safeBottom = true,
+  });
 
   static const _items = <_TabItem>[
     _TabItem(SfTab.home, 'Bugun', SfIcons.home),
@@ -20,58 +30,18 @@ class SfTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: c.surface,
-        border: Border(top: BorderSide(color: c.border)),
-      ),
-      padding: const EdgeInsets.fromLTRB(6, 10, 6, 12),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            for (final t in _items)
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => onChanged?.call(t.id),
-                  behavior: HitTestBehavior.opaque,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          if (t.id == active)
-                            Container(
-                              width: 38,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: c.primarySoft,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          Icon(t.icon, size: 22, color: t.id == active ? c.primary : c.muted),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        t.label,
-                        style: SfType.ui(
-                          size: 10.5,
-                          weight: t.id == active ? FontWeight.w700 : FontWeight.w500,
-                          color: t.id == active ? c.primary : c.muted,
-                          letterSpacing: -0.05,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+    return SfAdaptiveBottomNavigation(
+      activeIndex: _items.indexWhere((item) => item.id == active),
+      onDestinationSelected: onChanged == null
+          ? null
+          : (index) => onChanged!(_items[index].id),
+      glassEnabled: glassEnabled,
+      motionEnabled: motionEnabled,
+      safeBottom: safeBottom,
+      destinations: [
+        for (final item in _items)
+          SfBottomDestination(icon: Icon(item.icon), label: item.label),
+      ],
     );
   }
 }

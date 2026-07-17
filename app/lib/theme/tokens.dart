@@ -72,10 +72,10 @@ class SfColors {
   });
 
   LinearGradient get aiGradient => LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: aiBg,
-      );
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: aiBg,
+  );
 }
 
 // ───────────── PALETTE: SAROY (terracotta) ─────────────
@@ -271,35 +271,34 @@ extension SfColorsCopy on SfColors {
     Color? primary,
     Color? primaryHover,
     Color? primarySoft,
-  }) =>
-      SfColors(
-        bg: bg,
-        surface: surface,
-        surface2: surface2,
-        surface3: surface3,
-        ink: ink,
-        ink2: ink2,
-        muted: muted,
-        muted2: muted2,
-        border: border,
-        borderStrong: borderStrong,
-        primary: primary ?? this.primary,
-        primaryHover: primaryHover ?? this.primaryHover,
-        primarySoft: primarySoft ?? this.primarySoft,
-        primaryInk: primaryInk,
-        accent: accent,
-        accentSoft: accentSoft,
-        accentInk: accentInk,
-        success: success,
-        successSoft: successSoft,
-        warn: warn,
-        warnSoft: warnSoft,
-        danger: danger,
-        dangerSoft: dangerSoft,
-        ai: ai,
-        aiBg: aiBg,
-        aiBorder: aiBorder,
-      );
+  }) => SfColors(
+    bg: bg,
+    surface: surface,
+    surface2: surface2,
+    surface3: surface3,
+    ink: ink,
+    ink2: ink2,
+    muted: muted,
+    muted2: muted2,
+    border: border,
+    borderStrong: borderStrong,
+    primary: primary ?? this.primary,
+    primaryHover: primaryHover ?? this.primaryHover,
+    primarySoft: primarySoft ?? this.primarySoft,
+    primaryInk: primaryInk,
+    accent: accent,
+    accentSoft: accentSoft,
+    accentInk: accentInk,
+    success: success,
+    successSoft: successSoft,
+    warn: warn,
+    warnSoft: warnSoft,
+    danger: danger,
+    dangerSoft: dangerSoft,
+    ai: ai,
+    aiBg: aiBg,
+    aiBorder: aiBorder,
+  );
 }
 
 // Radii
@@ -320,34 +319,14 @@ class SfRadius {
 // Shadows
 class SfShadows {
   static const sm = [
-    BoxShadow(
-      color: Color(0x0F361E0E),
-      blurRadius: 2,
-      offset: Offset(0, 1),
-    ),
+    BoxShadow(color: Color(0x0F361E0E), blurRadius: 2, offset: Offset(0, 1)),
   ];
   static const md = [
-    BoxShadow(
-      color: Color(0x14361E0E),
-      blurRadius: 18,
-      offset: Offset(0, 6),
-    ),
-    BoxShadow(
-      color: Color(0x0A361E0E),
-      blurRadius: 4,
-      offset: Offset(0, 2),
-    ),
+    BoxShadow(color: Color(0x14361E0E), blurRadius: 18, offset: Offset(0, 6)),
+    BoxShadow(color: Color(0x0A361E0E), blurRadius: 4, offset: Offset(0, 2)),
   ];
   static const lg = [
-    BoxShadow(
-      color: Color(0x1F361E0E),
-      blurRadius: 40,
-      offset: Offset(0, 18),
-    ),
-    BoxShadow(
-      color: Color(0x0F361E0E),
-      blurRadius: 10,
-      offset: Offset(0, 4),
-    ),
+    BoxShadow(color: Color(0x1F361E0E), blurRadius: 40, offset: Offset(0, 18)),
+    BoxShadow(color: Color(0x0F361E0E), blurRadius: 10, offset: Offset(0, 4)),
   ];
 }

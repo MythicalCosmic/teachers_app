@@ -29,9 +29,10 @@ class SfLargeAppBar extends StatelessWidget {
             height: 44,
             child: Row(
               children: [
-                if (leading != null) leading!,
+                ?leading,
                 const Spacer(),
-                for (final a in actions) Padding(padding: const EdgeInsets.only(left: 8), child: a),
+                for (final a in actions)
+                  Padding(padding: const EdgeInsets.only(left: 8), child: a),
               ],
             ),
           ),
@@ -50,7 +51,11 @@ class SfLargeAppBar extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 subtitle!,
-                style: SfType.ui(size: 13, color: c.muted, weight: FontWeight.w500),
+                style: SfType.ui(
+                  size: 13,
+                  color: c.muted,
+                  weight: FontWeight.w500,
+                ),
               ),
             ),
         ],
@@ -111,7 +116,11 @@ class SfNavBar extends StatelessWidget {
                 children: [
                   if (leading != null)
                     DefaultTextStyle(
-                      style: SfType.ui(size: 16, weight: FontWeight.w600, color: c.primary),
+                      style: SfType.ui(
+                        size: 16,
+                        weight: FontWeight.w600,
+                        color: c.primary,
+                      ),
                       child: IconTheme(
                         data: IconThemeData(color: c.primary, size: 18),
                         child: leading!,

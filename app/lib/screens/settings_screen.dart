@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
+import '../data/models.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_avatar.dart';
 import '../widgets/sf_button.dart';
 import '../widgets/sf_card.dart';
+import '../widgets/sf_form_controls.dart';
+import '../widgets/sf_hint_card.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_pill.dart';
 import '../widgets/sf_scaffold.dart';
-import '../widgets/sf_star.dart';
+import '../widgets/sf_state_view.dart';
+import '../widgets/sf_toast.dart';
 import '../widgets/sf_wordmark.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -17,160 +22,214 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final session = app.session;
+    final settings = app.settings;
     final c = SfTheme.colorsOf(context);
-    final sections = [
-      _Sec('Hisob', [
-        _Item('Shaxsiy ma‘lumotlar', icon: SfIcons.user, value: 'Nigora Karimova'),
-        _Item('Foydalanuvchi nomi', icon: SfIcons.shield, value: 'nigora.karimova', mono: true),
-        _Item('Parolni o‘zgartirish', icon: SfIcons.edit),
-        _Item('Til', icon: SfIcons.globe, value: 'O‘zbekcha'),
-      ]),
-      _Sec('Maxfiylik · Profil ulashish', [
-        _Item('Profilim markaz uchun ko‘rinadi', toggle: true),
-        _Item('Ismsiz so‘rovnomalarda ishtirok', toggle: true),
-        _Item('AI sizning ma‘lumotlaringizdan o‘rganadi', toggle: false),
-      ]),
-      _Sec('Bildirishnomalar', [
-        _Item('Push xabarlar', toggle: true),
-        _Item('Dars boshlanishi · 15 daq oldin', toggle: true),
-        _Item('Print tugaganda', toggle: true),
-        _Item('AI tavsiyalari', toggle: true),
-        _Item('Sokin soatlar · 22:00–07:00', value: 'Yoniq'),
-      ]),
-      _Sec('AI yordamchi', [
-        _Item('Guruh haqida suhbat', toggle: true),
-        _Item('Karta sabab taklifi', toggle: true),
-        _Item('Ota-ona javob taklifi', toggle: false),
-        _Item('Markaz limiti', value: '4 320 / 50 000 token', mono: true),
-      ]),
-      _Sec('Markaz', [
-        _Item('Demo Akademiya', icon: SfIcons.shield, value: 'Yunusobod filiali'),
-        _Item('Karta sozlamalari', icon: SfIcons.brand, value: 'Yulduz / Ogohlantirish'),
-        _Item('Qurilmalar', icon: SfIcons.printer, value: '2 ta'),
-        _Item('Maxfiylik va shartlar', icon: SfIcons.shield),
-      ]),
-    ];
+    if (session == null) {
+      return const SfScaffold(
+        body: SfErrorState(
+          title: 'Sessiya topilmadi',
+          message: 'Profil sozlamalarini ochish uchun qayta kiring.',
+        ),
+      );
+    }
+
+    void confirm(String message) => SfToast.show(
+      context,
+      message: message,
+      tone: SfToastTone.success,
+      motionEnabled: !settings.reducedMotion,
+      glassEnabled: settings.liquidGlass,
+    );
 
     return SfScaffold(
       top: SfLargeAppBar(
         title: 'Profil',
-        actions: const [Icon(SfIcons.settings)],
+        leading: IconButton(
+          tooltip: 'Ortga',
+          onPressed: Navigator.of(context).canPop()
+              ? () => Navigator.of(context).maybePop()
+              : null,
+          icon: const Icon(SfIcons.arrowL),
+        ),
       ),
       body: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
         children: [
+          _ProfileCard(session: session),
+          const SizedBox(height: 16),
+          SfHintCard(
+            tone: SfHintTone.info,
+            title: '${session.role.uzLabel} rejimi',
+            message:
+                'Bu yerda faqat sizning rolingiz uchun ruxsat etilgan sozlamalar ko‘rsatiladi.',
+            compact: true,
+          ),
+          _SectionTitle('Hisob'),
           SfSurfaceCard(
-            padding: const EdgeInsets.all(18),
-            child: Stack(
+            child: Column(
               children: [
-                Positioned(
-                    right: -30,
-                    top: -30,
-                    child: Opacity(opacity: 0.08, child: SfStar(size: 140, color: c.primary))),
-                Column(
-                  children: [
-                    Row(
-                      children: [
-                        SfAvatar(name: 'Nigora Karimova', size: 64, color: c.primary),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Nigora Karimova',
-                                  style: SfType.ui(
-                                      size: 18,
-                                      weight: FontWeight.w800,
-                                      color: c.ink,
-                                      letterSpacing: -0.36)),
-                              const SizedBox(height: 2),
-                              Text('Matematika ustozi · Yunusobod filiali',
-                                  style: SfType.ui(size: 12, color: c.muted)),
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 4,
-                                runSpacing: 4,
-                                children: const [
-                                  SfPill(tone: SfPillTone.primary, label: '9-B'),
-                                  SfPill(tone: SfPillTone.primary, label: 'Alg Mid'),
-                                  SfPill(tone: SfPillTone.accent, label: '10-V'),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                    color: c.successSoft,
-                                    borderRadius: BorderRadius.circular(999)),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: BoxDecoration(
-                                            color: c.success, shape: BoxShape.circle)),
-                                    const SizedBox(width: 6),
-                                    Text('PROFIL ULASHILMOQDA',
-                                        style: SfType.eyebrow(color: c.success)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        for (final s in const [
-                          ('3', 'Guruh'),
-                          ('58', 'O‘quvchi'),
-                          ('12', 'Dars/hafta'),
-                        ])
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              child: Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                    color: c.surface2,
-                                    borderRadius: BorderRadius.circular(10)),
-                                child: Column(
-                                  children: [
-                                    Text(s.$1,
-                                        style: SfType.mono(
-                                            size: 18,
-                                            weight: FontWeight.w700,
-                                            color: c.ink,
-                                            height: 1)),
-                                    const SizedBox(height: 4),
-                                    Text(s.$2.toUpperCase(),
-                                        style: SfType.eyebrow(color: c.muted, size: 10)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                _NavigationRow(
+                  icon: SfIcons.user,
+                  title: 'Shaxsiy ma’lumotlar',
+                  value: session.displayName,
+                  onTap: () => context.push('/settings/edit'),
+                ),
+                _ValueRow(
+                  icon: SfIcons.shield,
+                  title: 'Rol',
+                  value: session.role.uzLabel,
+                ),
+                _ValueRow(
+                  icon: SfIcons.globe,
+                  title: 'Filial',
+                  value: session.branchName,
+                  last: true,
+                ),
+              ],
+            ),
+          ),
+          _SectionTitle('Ko‘rinish'),
+          SfSurfaceCard(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('REJIM', style: SfType.eyebrow(color: c.muted)),
+                const SizedBox(height: 8),
+                SfSegmentedControl<AppThemeMode>(
+                  expanded: true,
+                  value: settings.themeMode,
+                  onChanged: (value) {
+                    app.setThemeMode(value);
+                    confirm('Ko‘rinish rejimi saqlandi');
+                  },
+                  segments: const [
+                    SfSegment(value: AppThemeMode.system, label: 'Tizim'),
+                    SfSegment(value: AppThemeMode.light, label: 'Yorug‘'),
+                    SfSegment(value: AppThemeMode.dark, label: 'Tungi'),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text('RANG', style: SfType.eyebrow(color: c.muted)),
+                const SizedBox(height: 8),
+                SfSegmentedControl<AppPalette>(
+                  expanded: true,
+                  value: settings.palette,
+                  onChanged: (value) {
+                    app.setPalette(value);
+                    confirm('Rang palitrasi saqlandi');
+                  },
+                  segments: const [
+                    SfSegment(value: AppPalette.daryo, label: 'Daryo'),
+                    SfSegment(value: AppPalette.saroy, label: 'Saroy'),
+                    SfSegment(value: AppPalette.marvarid, label: 'Marvarid'),
+                    SfSegment(value: AppPalette.samarqand, label: 'Samarqand'),
                   ],
                 ),
               ],
             ),
           ),
-          for (final sec in sections) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
-              child: Text(sec.h.toUpperCase(), style: SfType.eyebrow(color: c.muted)),
+          _SectionTitle('Qulaylik va harakat'),
+          SfSurfaceCard(
+            child: Column(
+              children: [
+                SfSwitchTile(
+                  title: 'Liquid Glass',
+                  subtitle:
+                      'Qo‘llab-quvvatlanadigan iPhone qurilmalarida shaffof sirtlar',
+                  leading: Icons.blur_on_rounded,
+                  value: settings.liquidGlass,
+                  onChanged: (value) {
+                    app.setLiquidGlass(value);
+                    confirm(
+                      value
+                          ? 'Liquid Glass yoqildi'
+                          : 'Liquid Glass o‘chirildi',
+                    );
+                  },
+                ),
+                SfSwitchTile(
+                  title: 'Kamaytirilgan harakat',
+                  subtitle: 'O‘tishlar va bezak animatsiyalarini kamaytiradi',
+                  leading: Icons.motion_photos_off_outlined,
+                  value: settings.reducedMotion,
+                  onChanged: (value) {
+                    app.setReducedMotion(value);
+                    confirm(
+                      value
+                          ? 'Harakat kamaytirildi'
+                          : 'To‘liq animatsiya yoqildi',
+                    );
+                  },
+                ),
+                SfSwitchTile(
+                  title: 'Haptik javob',
+                  subtitle: 'Muhim bosishlarda yengil tebranish',
+                  leading: Icons.vibration_rounded,
+                  value: settings.haptics,
+                  onChanged: (value) {
+                    app.setHaptics(value);
+                    confirm(
+                      value
+                          ? 'Haptik javob yoqildi'
+                          : 'Haptik javob o‘chirildi',
+                    );
+                  },
+                ),
+                SfSwitchTile(
+                  title: 'Kontekst yordamlar',
+                  subtitle: 'Yangi yoki murakkab joylarda qisqa ko‘rsatmalar',
+                  leading: Icons.tips_and_updates_outlined,
+                  value: settings.coachMarks,
+                  showDivider: false,
+                  onChanged: (value) {
+                    app.setCoachMarks(value);
+                    confirm(
+                      value ? 'Yordamlar yoqildi' : 'Yordamlar o‘chirildi',
+                    );
+                  },
+                ),
+              ],
             ),
+          ),
+          _SectionTitle('Til'),
+          SfSurfaceCard(
+            padding: const EdgeInsets.all(12),
+            child: SfSegmentedControl<AppLocale>(
+              expanded: true,
+              value: settings.locale,
+              onChanged: (value) {
+                app.updateSettings(settings.copyWith(locale: value));
+                confirm('Til tanlovi saqlandi');
+              },
+              segments: const [
+                SfSegment(value: AppLocale.uz, label: 'O‘zbekcha'),
+                SfSegment(value: AppLocale.ru, label: 'Русский'),
+              ],
+            ),
+          ),
+          if (session.can(StaffCapability.managePrintQueue) ||
+              session.can(StaffCapability.viewAuditWorkspace)) ...[
+            _SectionTitle('Ruxsat berilgan vositalar'),
             SfSurfaceCard(
               child: Column(
                 children: [
-                  for (int i = 0; i < sec.items.length; i++)
-                    _ItemRow(sec.items[i], last: i == sec.items.length - 1),
+                  if (session.can(StaffCapability.managePrintQueue))
+                    _NavigationRow(
+                      icon: SfIcons.printer,
+                      title: 'Print navbatini boshqarish',
+                      onTap: () => context.push('/print'),
+                    ),
+                  if (session.can(StaffCapability.viewAuditWorkspace))
+                    const _ValueRow(
+                      icon: Icons.fact_check_outlined,
+                      title: 'Audit ish maydoni',
+                      value: 'Ruxsat berilgan',
+                      last: true,
+                    ),
                 ],
               ),
             ),
@@ -183,102 +242,171 @@ class SettingsScreen extends StatelessWidget {
             label: 'Chiqish',
             leading: SfIcons.logout,
             overrideFg: c.danger,
-            onPressed: () => context.go('/login'),
+            haptic: settings.haptics,
+            motionEnabled: !settings.reducedMotion,
+            onPressed: () async {
+              await app.signOut();
+              if (context.mounted) context.go('/login');
+            },
           ),
           const SizedBox(height: 14),
           const Center(child: SfWordmark(size: 12)),
           const SizedBox(height: 4),
           Center(
-              child: Text('v1.0.0 · build 2026.05.19',
-                  style: SfType.mono(size: 10, color: c.muted))),
+            child: Text(
+              'v1.0.0 · staff',
+              style: SfType.mono(size: 10, color: c.muted),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _Sec {
-  final String h;
-  final List<_Item> items;
-  _Sec(this.h, this.items);
-}
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard({required this.session});
 
-class _Item {
-  final String label;
-  final IconData? icon;
-  final String? value;
-  final bool? toggle;
-  final bool mono;
-  _Item(this.label, {this.icon, this.value, this.toggle, this.mono = false});
-}
+  final StaffSession session;
 
-class _ItemRow extends StatelessWidget {
-  final _Item it;
-  final bool last;
-  const _ItemRow(this.it, {required this.last});
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: it.label == 'Shaxsiy ma‘lumotlar' ? () => context.go('/settings/edit') : null,
-      child: Container(
-      decoration: BoxDecoration(
-        border: last ? null : Border(bottom: BorderSide(color: c.border)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    return SfSurfaceCard(
+      padding: const EdgeInsets.all(18),
       child: Row(
         children: [
-          if (it.icon != null) ...[
-            Container(
-              width: 32,
-              height: 32,
-              decoration:
-                  BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(9)),
-              alignment: Alignment.center,
-              child: Icon(it.icon, size: 16, color: c.ink2),
+          SfAvatar(name: session.displayName, size: 64, color: c.primary),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  session.displayName,
+                  style: SfType.ui(
+                    size: 18,
+                    weight: FontWeight.w800,
+                    color: c.ink,
+                    letterSpacing: -0.36,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${session.role.uzLabel} · ${session.branchName}',
+                  style: SfType.ui(size: 12, color: c.muted),
+                ),
+                const SizedBox(height: 8),
+                SfPill(tone: SfPillTone.primary, label: session.role.uzLabel),
+              ],
             ),
-            const SizedBox(width: 12),
-          ],
-          Expanded(child: Text(it.label, style: SfType.ui(size: 13.5, color: c.ink))),
-          if (it.value != null)
-            Text(it.value!,
-                style: it.mono
-                    ? SfType.mono(size: 12, color: c.muted)
-                    : SfType.ui(size: 12, color: c.muted)),
-          if (it.toggle != null) _Toggle(value: it.toggle!),
-          if (it.toggle == null && it.value == null) Icon(SfIcons.chevR, size: 16, color: c.muted),
+          ),
         ],
-      ),
       ),
     );
   }
 }
 
-class _Toggle extends StatelessWidget {
-  final bool value;
-  const _Toggle({required this.value});
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+    child: Text(
+      label.toUpperCase(),
+      style: SfType.eyebrow(color: SfTheme.colorsOf(context).muted),
+    ),
+  );
+}
+
+class _NavigationRow extends StatelessWidget {
+  const _NavigationRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.value,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 56),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: c.border)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: c.ink2),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(title, style: SfType.ui(size: 13.5, color: c.ink)),
+            ),
+            if (value != null)
+              Flexible(
+                child: Text(
+                  value!,
+                  overflow: TextOverflow.ellipsis,
+                  style: SfType.ui(size: 12, color: c.muted),
+                ),
+              ),
+            const SizedBox(width: 6),
+            Icon(SfIcons.chevR, size: 17, color: c.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ValueRow extends StatelessWidget {
+  const _ValueRow({
+    required this.icon,
+    required this.title,
+    required this.value,
+    this.last = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final bool last;
+
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
     return Container(
-      width: 44,
-      height: 26,
-      padding: const EdgeInsets.all(3),
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
-          color: value ? c.primary : c.surface3,
-          borderRadius: BorderRadius.circular(999)),
-      child: AnimatedAlign(
-        alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-        duration: const Duration(milliseconds: 200),
-        child: Container(
-          width: 20,
-          height: 20,
-          decoration: const BoxDecoration(
-              color: Color(0xFFFFFCF5),
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Color(0x33000000), blurRadius: 2)]),
-        ),
+        border: last ? null : Border(bottom: BorderSide(color: c.border)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 19, color: c.ink2),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(title, style: SfType.ui(size: 13.5, color: c.ink)),
+          ),
+          Flexible(
+            child: Text(
+              value,
+              overflow: TextOverflow.ellipsis,
+              style: SfType.ui(size: 12, color: c.muted),
+            ),
+          ),
+        ],
       ),
     );
   }

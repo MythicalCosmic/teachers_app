@@ -59,10 +59,15 @@ class _StarPainter extends CustomPainter {
     canvas.drawPath(path, Paint()..color = color);
 
     if (centerDot != null) {
-      canvas.drawCircle(Offset(w / 2, h / 2), w * 0.07, Paint()..color = centerDot!);
+      canvas.drawCircle(
+        Offset(w / 2, h / 2),
+        w * 0.07,
+        Paint()..color = centerDot!,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(_StarPainter old) => old.color != color || old.centerDot != centerDot;
+  bool shouldRepaint(_StarPainter old) =>
+      old.color != color || old.centerDot != centerDot;
 }
