@@ -19,6 +19,8 @@ until it is signed for a specific iPhone.
 The workflow resolves dependencies, checks formatting, analyzes and tests the
 app, compiles the ARM64 iPhone release, creates both an unsigned IPA and a
 `Runner.app` ZIP, and verifies their bundle identifier and container layout.
+Both files are written directly to Codemagic's `$CM_EXPORT_DIR`; the workflow
+fails if either artifact is missing or empty.
 
 ## Sign and install with a free Apple ID
 

@@ -63,11 +63,10 @@ workflows:
           test -f "$source_app/$executable_name"
           file "$source_app/$executable_name" | grep -q arm64
 
-          output_dir="build/ios/3utools"
+          output_dir="$CM_EXPORT_DIR"
           stage_dir="$(mktemp -d)"
           verify_dir="$(mktemp -d)"
           trap 'rm -rf "$stage_dir" "$verify_dir"' EXIT
-          rm -rf "$output_dir"
           mkdir -p "$output_dir" "$stage_dir/Payload"
 
           ditto "$source_app" "$stage_dir/Payload/Runner.app"
@@ -86,9 +85,20 @@ workflows:
           shasum -a 256 "$app_zip" > "$app_zip.sha256"
           echo "Verified unsigned release IPA for 3uTools signing: $final_ipa"
 
+      - name: Confirm exported artifacts
+        script: |
+          set -euo pipefail
+          test -s "$CM_EXPORT_DIR/StarForge-Staff-unsigned-release.ipa"
+          test -s "$CM_EXPORT_DIR/StarForge-Staff-Runner.app.zip"
+          test -s "$CM_EXPORT_DIR/StarForge-Staff-unsigned-release.ipa.sha256"
+          test -s "$CM_EXPORT_DIR/StarForge-Staff-Runner.app.zip.sha256"
+          echo "Codemagic export directory:"
+          ls -lah "$CM_EXPORT_DIR"
+
     artifacts:
-      - app/build/ios/3utools/StarForge-Staff-unsigned-release.ipa
-      - app/build/ios/3utools/StarForge-Staff-unsigned-release.ipa.sha256
-      - app/build/ios/3utools/StarForge-Staff-Runner.app.zip
-      - app/build/ios/3utools/StarForge-Staff-Runner.app.zip.sha256
+      - $CM_EXPORT_DIR/StarForge-Staff-unsigned-release.ipa
+      - $CM_EXPORT_DIR/StarForge-Staff-unsigned-release.ipa.sha256
+      - $CM_EXPORT_DIR/StarForge-Staff-Runner.app.zip
+      - $CM_EXPORT_DIR/StarForge-Staff-Runner.app.zip.sha256
+      - $CM_BUILD_DIR/app/build/ios/iphoneos/Runner.app
       - /tmp/xcodebuild_logs/*.log
