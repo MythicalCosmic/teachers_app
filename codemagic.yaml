@@ -1,14 +1,11 @@
 workflows:
-  ios-release:
-    name: StarForge Staff - iPhone Release IPA
+  ios-unsigned-release:
+    name: StarForge Staff - Unsigned Release for 3uTools
     instance_type: mac_mini_m2
     max_build_duration: 60
     working_directory: app
 
     environment:
-      ios_signing:
-        distribution_type: development
-        bundle_identifier: uz.starforge.starforgeEdu
       flutter: "3.44.6"
       xcode: "16.4"
       cocoapods: default
@@ -41,52 +38,57 @@ workflows:
       - name: Run tests
         script: flutter test --reporter expanded
 
-      - name: Apply iOS signing profile
-        script: xcode-project use-profiles
-
-      - name: Build signed release IPA
+      - name: Build unsigned iPhone release
         script: |
           set -euo pipefail
-          flutter build ipa --release \
-            --build-number="${PROJECT_BUILD_NUMBER:-1}" \
-            --export-options-plist=/Users/builder/export_options.plist
+          flutter build ios --release --no-codesign \
+            --build-number="${PROJECT_BUILD_NUMBER:-1}"
 
-      - name: Verify and name installable IPA
+      - name: Package and verify 3uTools artifacts
         script: |
           set -euo pipefail
 
           expected_bundle_id="uz.starforge.starforgeEdu"
-          ipa_path="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' -print -quit)"
-          test -n "$ipa_path"
+          source_app="build/ios/iphoneos/Runner.app"
+          test -d "$source_app"
+          test -f "$source_app/Info.plist"
 
-          verify_dir="$(mktemp -d)"
-          trap 'rm -rf "$verify_dir"' EXIT
-          unzip -q "$ipa_path" -d "$verify_dir"
-
-          app_path="$(find "$verify_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
-          test -n "$app_path"
-          test -f "$app_path/Info.plist"
-          test -f "$app_path/embedded.mobileprovision"
-
-          actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")"
+          actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$source_app/Info.plist")"
           if [[ "$actual_bundle_id" != "$expected_bundle_id" ]]; then
-            echo "IPA bundle ID is '$actual_bundle_id', expected '$expected_bundle_id'." >&2
+            echo "App bundle ID is '$actual_bundle_id', expected '$expected_bundle_id'." >&2
             exit 1
           fi
 
-          security cms -D -i "$app_path/embedded.mobileprovision" > "$verify_dir/profile.plist"
-          /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices:0' "$verify_dir/profile.plist" >/dev/null
-          codesign --verify --deep --strict --verbose=2 "$app_path"
+          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$source_app/Info.plist")"
+          test -f "$source_app/$executable_name"
+          file "$source_app/$executable_name" | grep -q arm64
 
-          final_ipa="build/ios/ipa/StarForge-Staff-release.ipa"
-          if [[ "$ipa_path" != "$final_ipa" ]]; then
-            mv "$ipa_path" "$final_ipa"
-          fi
+          output_dir="build/ios/3utools"
+          stage_dir="$(mktemp -d)"
+          verify_dir="$(mktemp -d)"
+          trap 'rm -rf "$stage_dir" "$verify_dir"' EXIT
+          rm -rf "$output_dir"
+          mkdir -p "$output_dir" "$stage_dir/Payload"
+
+          ditto "$source_app" "$stage_dir/Payload/Runner.app"
+
+          final_ipa="$output_dir/StarForge-Staff-unsigned-release.ipa"
+          app_zip="$output_dir/StarForge-Staff-Runner.app.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$stage_dir/Payload" "$final_ipa"
+          ditto -c -k --sequesterRsrc --keepParent "$source_app" "$app_zip"
+
+          unzip -q "$final_ipa" -d "$verify_dir"
+          test -f "$verify_dir/Payload/Runner.app/Info.plist"
+          packaged_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$verify_dir/Payload/Runner.app/Info.plist")"
+          test "$packaged_bundle_id" = "$expected_bundle_id"
+
           shasum -a 256 "$final_ipa" > "$final_ipa.sha256"
-          echo "Verified signed IPA: $final_ipa"
+          shasum -a 256 "$app_zip" > "$app_zip.sha256"
+          echo "Verified unsigned release IPA for 3uTools signing: $final_ipa"
 
     artifacts:
-      - app/build/ios/ipa/StarForge-Staff-release.ipa
-      - app/build/ios/ipa/StarForge-Staff-release.ipa.sha256
-      - app/build/ios/archive/Runner.xcarchive/dSYMs/*.dSYM
+      - app/build/ios/3utools/StarForge-Staff-unsigned-release.ipa
+      - app/build/ios/3utools/StarForge-Staff-unsigned-release.ipa.sha256
+      - app/build/ios/3utools/StarForge-Staff-Runner.app.zip
+      - app/build/ios/3utools/StarForge-Staff-Runner.app.zip.sha256
       - /tmp/xcodebuild_logs/*.log

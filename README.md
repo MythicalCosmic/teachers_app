@@ -40,5 +40,7 @@ All demo accounts use password `demo2026`:
 
 See [the product and permission specification](docs/STAFF_APP_PRODUCT_SPEC.md)
 for scope and security rules. A signed iPhone build is produced by the manual
-GitHub Actions workflow documented in [the IPA signing guide](docs/IOS_SIGNING.md),
-or by the root-level [Codemagic workflow](docs/CODEMAGIC_IOS.md).
+GitHub Actions workflow documented in [the IPA signing guide](docs/IOS_SIGNING.md).
+For free Apple ID testing, the root-level
+[Codemagic workflow](docs/CODEMAGIC_IOS.md) produces an unsigned release IPA
+that can be signed for a connected iPhone with 3uTools.
