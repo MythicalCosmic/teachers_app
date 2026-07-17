@@ -1,0 +1,92 @@
+workflows:
+  ios-adhoc:
+    name: StarForge Staff - iPhone Ad Hoc IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    working_directory: app
+
+    environment:
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: uz.starforge.starforgeEdu
+      flutter: "3.44.6"
+      xcode: "16.4"
+      cocoapods: default
+
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
+
+    scripts:
+      - name: Verify Flutter project
+        script: |
+          set -euo pipefail
+          test -f pubspec.yaml
+          test -d ios/Runner.xcodeproj
+          flutter --version
+
+      - name: Resolve Flutter dependencies
+        script: flutter pub get
+
+      - name: Install native iOS dependencies
+        script: find ios -name Podfile -execdir pod install \;
+
+      - name: Check formatting
+        script: dart format --output=none --set-exit-if-changed lib test tool
+
+      - name: Analyze app
+        script: flutter analyze
+
+      - name: Run tests
+        script: flutter test --reporter expanded
+
+      - name: Apply iOS signing profile
+        script: xcode-project use-profiles
+
+      - name: Build signed release IPA
+        script: |
+          set -euo pipefail
+          flutter build ipa --release \
+            --build-number="${PROJECT_BUILD_NUMBER:-1}" \
+            --export-options-plist=/Users/builder/export_options.plist
+
+      - name: Verify and name installable IPA
+        script: |
+          set -euo pipefail
+
+          expected_bundle_id="uz.starforge.starforgeEdu"
+          ipa_path="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$ipa_path"
+
+          verify_dir="$(mktemp -d)"
+          trap 'rm -rf "$verify_dir"' EXIT
+          unzip -q "$ipa_path" -d "$verify_dir"
+
+          app_path="$(find "$verify_dir/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app_path"
+          test -f "$app_path/Info.plist"
+          test -f "$app_path/embedded.mobileprovision"
+
+          actual_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")"
+          if [[ "$actual_bundle_id" != "$expected_bundle_id" ]]; then
+            echo "IPA bundle ID is '$actual_bundle_id', expected '$expected_bundle_id'." >&2
+            exit 1
+          fi
+
+          security cms -D -i "$app_path/embedded.mobileprovision" > "$verify_dir/profile.plist"
+          /usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices:0' "$verify_dir/profile.plist" >/dev/null
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+
+          final_ipa="build/ios/ipa/StarForge-Staff-ad-hoc.ipa"
+          if [[ "$ipa_path" != "$final_ipa" ]]; then
+            mv "$ipa_path" "$final_ipa"
+          fi
+          shasum -a 256 "$final_ipa" > "$final_ipa.sha256"
+          echo "Verified signed IPA: $final_ipa"
+
+    artifacts:
+      - app/build/ios/ipa/StarForge-Staff-ad-hoc.ipa
+      - app/build/ios/ipa/StarForge-Staff-ad-hoc.ipa.sha256
+      - app/build/ios/archive/Runner.xcarchive/dSYMs/*.dSYM
+      - /tmp/xcodebuild_logs/*.log
