@@ -37,8 +37,17 @@ class SfAiBadge extends StatelessWidget {
           ),
           if (label != null && label != 'AI') ...[
             const SizedBox(width: 6),
+            Container(
+              width: 3,
+              height: 3,
+              decoration: BoxDecoration(color: c.ai, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 7),
             Text(
               label!.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              softWrap: false,
               style: SfType.ui(
                 size: labelFontSize,
                 weight: FontWeight.w700,

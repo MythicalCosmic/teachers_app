@@ -334,11 +334,18 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
               style: SfType.eyebrow(color: c.muted),
             ),
             const SizedBox(height: 8),
-            SizedBox(
-              height: 92,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
+            LayoutBuilder(
+              key: const ValueKey('new-task-template-picker'),
+              builder: (context, constraints) {
+                const gap = 8.0;
+                final textScale = MediaQuery.textScalerOf(context).scale(1);
+                final useTwoColumns =
+                    constraints.maxWidth < 340 || textScale > 1.3;
+                final columns = useTwoColumns ? 2 : 4;
+                final tileWidth =
+                    (constraints.maxWidth - (gap * (columns - 1))) / columns;
+                final tileHeight = useTwoColumns ? 86.0 : 92.0;
+                final templates = <Widget>[
                   _TemplateTile(
                     template: _TaskTemplate.blank,
                     selected: _template == _TaskTemplate.blank,
@@ -387,8 +394,20 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
                     ),
                     onTap: _applyTemplate,
                   ),
-                ],
-              ),
+                ];
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final template in templates)
+                      SizedBox(
+                        width: tileWidth,
+                        height: tileHeight,
+                        child: template,
+                      ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
             SfSurfaceCard(
@@ -781,43 +800,39 @@ class _TemplateTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: SizedBox(
-        width: 104,
-        child: SfPressable(
-          onPressed: () => onTap(template),
-          selected: selected,
+    return SfPressable(
+      key: ValueKey('new-task-template-${template.name}'),
+      semanticLabel: label,
+      onPressed: () => onTap(template),
+      selected: selected,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: selected ? c.primarySoft : c.surface,
           borderRadius: BorderRadius.circular(16),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: selected ? c.primarySoft : c.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selected ? c.primary : c.border,
-                width: selected ? 1.5 : 1,
+          border: Border.all(
+            color: selected ? c.primary : c.border,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 22, color: selected ? c.primary : c.muted),
+            const Spacer(),
+            Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: SfType.ui(
+                size: 10,
+                weight: FontWeight.w700,
+                color: selected ? c.primary : c.ink2,
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, color: selected ? c.primary : c.muted),
-                const Spacer(),
-                Text(
-                  label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: SfType.ui(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    color: selected ? c.primary : c.ink2,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          ],
         ),
       ),
     );

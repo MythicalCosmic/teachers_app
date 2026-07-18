@@ -295,39 +295,53 @@ class _ContentScreenState extends State<ContentScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 116,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _folders.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final folder = _folders[index];
-                return _FolderCard(
-                  name: folder,
-                  count: _files.where((file) => file.folder == folder).length,
-                  active: _folder == folder,
-                  onPressed: () => setState(() {
-                    _folder = _folder == folder ? null : folder;
-                  }),
-                );
-              },
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columnCount = constraints.maxWidth >= 336 ? 3 : 2;
+              return GridView.builder(
+                key: const ValueKey('content-folder-grid'),
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columnCount,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  mainAxisExtent: columnCount == 3 ? 112 : 104,
+                ),
+                itemCount: _folders.length,
+                itemBuilder: (context, index) {
+                  final folder = _folders[index];
+                  return _FolderCard(
+                    key: ValueKey('content-folder-$folder'),
+                    name: folder,
+                    count: _files.where((file) => file.folder == folder).length,
+                    active: _folder == folder,
+                    onPressed: () => setState(() {
+                      _folder = _folder == folder ? null : folder;
+                    }),
+                  );
+                },
+              );
+            },
           ),
           const SizedBox(height: 20),
           Row(
             children: [
-              Text(
-                _folder == null
-                    ? _contentText(
-                        context,
-                        uz: 'SO‘NGGI FAYLLAR',
-                        en: 'RECENT MATERIALS',
-                      )
-                    : _folder!.toUpperCase(),
-                style: SfType.eyebrow(color: c.muted),
+              Expanded(
+                child: Text(
+                  _folder == null
+                      ? _contentText(
+                          context,
+                          uz: 'SO‘NGGI FAYLLAR',
+                          en: 'RECENT MATERIALS',
+                        )
+                      : _folder!.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SfType.eyebrow(color: c.muted),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               TextButton.icon(
                 onPressed: () => setState(() => _sortByTitle = !_sortByTitle),
                 icon: Icon(
@@ -700,6 +714,7 @@ class _TypeFilters extends StatelessWidget {
 
 class _FolderCard extends StatelessWidget {
   const _FolderCard({
+    super.key,
     required this.name,
     required this.count,
     required this.active,
@@ -714,54 +729,56 @@ class _FolderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return SizedBox(
-      width: 164,
-      child: SfPressable(
-        onPressed: onPressed,
-        semanticLabel: _contentText(
-          context,
-          uz: '$name papkasi, $count fayl',
-          en: '$name folder, $count items',
-        ),
-        borderRadius: BorderRadius.circular(16),
-        child: SfSurfaceCard(
-          padding: const EdgeInsets.all(13),
-          color: active ? c.primarySoft : null,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: active ? c.primary : c.ink2,
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  SfIcons.folder,
-                  size: 20,
-                  color: Color(0xFFFFFCF5),
+    return SfPressable(
+      onPressed: onPressed,
+      semanticLabel: _contentText(
+        context,
+        uz: '$name papkasi, $count fayl',
+        en: '$name folder, $count items',
+      ),
+      borderRadius: BorderRadius.circular(16),
+      child: SfSurfaceCard(
+        padding: const EdgeInsets.all(11),
+        color: active ? c.primarySoft : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: active ? c.primary : c.ink2,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                SfIcons.folder,
+                size: 18,
+                color: Color(0xFFFFFCF5),
+              ),
+            ),
+            const SizedBox(height: 7),
+            Expanded(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: SfType.ui(
+                    size: 12,
+                    weight: FontWeight.w700,
+                    color: c.ink,
+                    height: 1.12,
+                  ),
                 ),
               ),
-              const SizedBox(height: 9),
-              Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: SfType.ui(
-                  size: 13,
-                  weight: FontWeight.w700,
-                  color: c.ink,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _contentText(context, uz: '$count fayl', en: '$count items'),
-                style: SfType.ui(size: 10, color: c.muted),
-              ),
-            ],
-          ),
+            ),
+            Text(
+              _contentText(context, uz: '$count fayl', en: '$count items'),
+              style: SfType.ui(size: 9.5, color: c.muted),
+            ),
+          ],
         ),
       ),
     );

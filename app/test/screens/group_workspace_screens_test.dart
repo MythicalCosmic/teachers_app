@@ -175,6 +175,37 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('group detail actions and lesson rhythm stay clear on iPhone', (
+    tester,
+  ) async {
+    configurePhone(tester);
+    final store = _store();
+    await tester.pumpWidget(
+      _host(CohortDetailScreen(store: store, groupId: 'cohort-9b-algebra')),
+    );
+    await tester.pumpAndSettle();
+
+    final attendance = find.byKey(const ValueKey('group-attendance-action'));
+    final message = find.byKey(const ValueKey('group-message-action'));
+    expect(attendance, findsOneWidget);
+    expect(message, findsOneWidget);
+    expect(
+      (tester.getCenter(attendance).dy - tester.getCenter(message).dy).abs(),
+      lessThan(1),
+    );
+
+    final firstBar = find.byKey(const ValueKey('rhythm-bar-0'));
+    await tester.scrollUntilVisible(firstBar, 240);
+    await tester.pumpAndSettle();
+    await tester.tap(firstBar);
+    await tester.pumpAndSettle();
+    final selection = tester.widget<Text>(
+      find.byKey(const ValueKey('rhythm-selection-0')),
+    );
+    expect(selection.data, contains('88%'));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('English locale changes every major group workflow surface', (
     tester,
   ) async {

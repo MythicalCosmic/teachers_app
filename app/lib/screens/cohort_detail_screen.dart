@@ -407,16 +407,30 @@ class _HeroCard extends StatelessWidget {
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final narrow = constraints.maxWidth < 330;
+                  final narrow = constraints.maxWidth < 285;
                   final attendanceButton = SfButton(
+                    key: const ValueKey('group-attendance-action'),
                     block: true,
+                    height: 48,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: narrow ? 18 : 12,
+                      vertical: 9,
+                    ),
+                    fontSize: narrow ? 13.5 : 12.5,
                     label: context.gt('take_attendance'),
                     leading: SfIcons.check,
                     haptic: true,
                     onPressed: onAttendance,
                   );
                   final messageButton = SfButton(
+                    key: const ValueKey('group-message-action'),
                     block: true,
+                    height: 48,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: narrow ? 18 : 12,
+                      vertical: 9,
+                    ),
+                    fontSize: narrow ? 13.5 : 12.5,
                     kind: SfButtonKind.soft,
                     label: context.gt('message_group'),
                     leading: SfIcons.chat,
@@ -523,7 +537,13 @@ class _DetailTabs extends StatelessWidget {
                 haptic: true,
                 child: AnimatedContainer(
                   duration: SfMotion.resolve(context, SfMotion.quick),
-                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minHeight: 42),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 9,
+                  ),
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: selected == entry.key
                         ? c.surface
@@ -542,7 +562,7 @@ class _DetailTabs extends StatelessWidget {
                   child: Text(
                     entry.value,
                     maxLines: 1,
-                    overflow: TextOverflow.fade,
+                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: SfType.ui(
                       size: 10.5,
@@ -650,95 +670,165 @@ class _OverviewPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        SfSurfaceCard(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        _LessonRhythmCard(trend: group.trend),
+        const SizedBox(height: 14),
+        _NextLessonCard(group: group, onPressed: onOpenLesson),
+      ],
+    );
+  }
+}
+
+class _LessonRhythmCard extends StatefulWidget {
+  const _LessonRhythmCard({required this.trend});
+
+  final List<double> trend;
+
+  @override
+  State<_LessonRhythmCard> createState() => _LessonRhythmCardState();
+}
+
+class _LessonRhythmCardState extends State<_LessonRhythmCard> {
+  late int _selected = widget.trend.isEmpty ? 0 : widget.trend.length - 1;
+
+  @override
+  void didUpdateWidget(_LessonRhythmCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_selected >= widget.trend.length) {
+      _selected = widget.trend.isEmpty ? 0 : widget.trend.length - 1;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    if (widget.trend.isEmpty) return const SizedBox.shrink();
+    final selectedValue = widget.trend[_selected];
+    return SfSurfaceCard(
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 13),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Text(
-                    context.gt('eight_lesson_rhythm'),
-                    style: SfType.ui(
-                      size: 14,
-                      weight: FontWeight.w800,
-                      color: c.ink,
-                    ),
+              Expanded(
+                child: Text(
+                  context.gt('eight_lesson_rhythm'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SfType.ui(
+                    size: 14,
+                    weight: FontWeight.w800,
+                    color: c.ink,
                   ),
-                  const Spacer(),
-                  Text(
-                    '${group.trend.last.round()}%',
-                    style: SfType.mono(
-                      size: 15,
-                      weight: FontWeight.w800,
-                      color: c.success,
-                    ),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 88,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (final entry in group.trend.asMap().entries)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Expanded(
-                                child: Align(
-                                  alignment: Alignment.bottomCenter,
-                                  child: TweenAnimationBuilder<double>(
-                                    tween: Tween(
-                                      begin: 0,
-                                      end: entry.value / 100,
-                                    ),
-                                    duration: Duration(
-                                      milliseconds: 350 + entry.key * 55,
-                                    ),
-                                    curve: SfMotion.enter,
-                                    builder: (context, value, _) =>
-                                        FractionallySizedBox(
-                                          heightFactor: value,
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color:
-                                                  entry.key ==
-                                                      group.trend.length - 1
-                                                  ? c.primary
-                                                  : c.primarySoft,
-                                              borderRadius:
-                                                  const BorderRadius.vertical(
-                                                    top: Radius.circular(6),
-                                                  ),
-                                            ),
-                                          ),
-                                        ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              Text(
-                                '${entry.key + 1}',
-                                style: SfType.mono(size: 8, color: c.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
+              const SizedBox(width: 12),
+              AnimatedSwitcher(
+                duration: SfMotion.resolve(context, SfMotion.quick),
+                child: Text(
+                  '${context.gt('lesson_upper')} ${_selected + 1}  ${selectedValue.round()}%',
+                  key: ValueKey('rhythm-selection-$_selected'),
+                  style: SfType.mono(
+                    size: 12,
+                    weight: FontWeight.w800,
+                    color: c.success,
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 14),
-        _NextLessonCard(group: group, onPressed: onOpenLesson),
-      ],
+          const SizedBox(height: 13),
+          SizedBox(
+            height: 104,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final entry in widget.trend.asMap().entries)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                      child: SfPressable(
+                        key: ValueKey('rhythm-bar-${entry.key}'),
+                        onPressed: () => setState(() => _selected = entry.key),
+                        selected: _selected == entry.key,
+                        haptic: true,
+                        borderRadius: BorderRadius.circular(8),
+                        semanticLabel:
+                            '${context.gt('lesson_upper')} ${entry.key + 1}, ${entry.value.round()}%',
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: c.surface2,
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                alignment: Alignment.bottomCenter,
+                                child: TweenAnimationBuilder<double>(
+                                  tween: Tween(
+                                    begin: 0,
+                                    end: ((entry.value - 75) / 25).clamp(
+                                      .18,
+                                      1.0,
+                                    ),
+                                  ),
+                                  duration: Duration(
+                                    milliseconds: 360 + entry.key * 45,
+                                  ),
+                                  curve: SfMotion.enter,
+                                  builder: (context, value, _) =>
+                                      FractionallySizedBox(
+                                        widthFactor: 1,
+                                        heightFactor: value,
+                                        alignment: Alignment.bottomCenter,
+                                        child: AnimatedContainer(
+                                          duration: SfMotion.resolve(
+                                            context,
+                                            SfMotion.quick,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _selected == entry.key
+                                                ? c.primary
+                                                : Color.lerp(
+                                                    c.primarySoft,
+                                                    c.primary,
+                                                    .22,
+                                                  ),
+                                            borderRadius:
+                                                const BorderRadius.vertical(
+                                                  top: Radius.circular(7),
+                                                ),
+                                          ),
+                                        ),
+                                      ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              '${entry.key + 1}',
+                              style: SfType.mono(
+                                size: 8.5,
+                                weight: _selected == entry.key
+                                    ? FontWeight.w800
+                                    : FontWeight.w500,
+                                color: _selected == entry.key
+                                    ? c.primary
+                                    : c.muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -42,7 +42,7 @@ class _TodayScreenState extends State<TodayScreen> {
       top: const _Header(),
       body: ListView(
         key: const PageStorageKey('teacher-today-scroll'),
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 30),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 44),
         children: [
           _Reveal(
             order: 0,
@@ -681,22 +681,28 @@ class _NextLessonHero extends StatelessWidget {
                 const SizedBox(height: 17),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final narrow = constraints.maxWidth < 310;
+                    final narrow =
+                        constraints.maxWidth < 360 ||
+                        MediaQuery.textScalerOf(context).scale(1) > 1.1;
                     final openButton = SfButton(
+                      key: const ValueKey('today-open-lesson-action'),
                       block: true,
                       kind: SfButtonKind.primary,
                       label: staffTr(context, 'Darsni ochish', 'Open lesson'),
                       trailing: SfIcons.arrowR,
+                      fontSize: 13,
                       height: 46,
                       overrideBg: const Color(0xFFFFFCF5),
                       overrideFg: c.primary,
                       onPressed: onOpen,
                     );
                     final attendanceButton = SfButton(
+                      key: const ValueKey('today-attendance-action'),
                       block: true,
                       kind: SfButtonKind.ghost,
                       label: staffTr(context, 'Davomat', 'Attendance'),
                       leading: SfIcons.check,
+                      fontSize: 13,
                       height: 46,
                       overrideFg: const Color(0xFFFFFCF5),
                       onPressed: onAttendance,
@@ -834,80 +840,121 @@ class _QuickStats extends StatelessWidget {
     final scale = MediaQuery.textScalerOf(context).scale(1);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth < 330 || scale > 1.18 ? 1 : 3;
         const gap = 8.0;
-        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (final metric in metrics)
+        final singleColumn = constraints.maxWidth < 330 || scale > 1.18;
+        if (singleColumn) {
+          return Column(
+            children: [
+              for (var index = 0; index < metrics.length; index++) ...[
+                if (index > 0) const SizedBox(height: gap),
+                _metricCard(context, metrics[index], horizontal: true),
+              ],
+            ],
+          );
+        }
+
+        if (constraints.maxWidth < 520) {
+          return Column(
+            children: [
               SizedBox(
-                width: width,
-                child: SfPressable(
-                  semanticLabel: staffTr(
-                    context,
-                    '${metric.$2} tafsilotlarini ochish',
-                    'Open ${metric.$2} details',
-                  ),
-                  onPressed: () => context.push(metric.$6),
-                  haptic: true,
-                  borderRadius: BorderRadius.circular(20),
-                  builder: (context, state, _) => AnimatedContainer(
-                    duration: SfMotion.resolve(context, SfMotion.quick),
-                    padding: EdgeInsets.all(columns == 1 ? 14 : 12),
-                    decoration: BoxDecoration(
-                      color: state.pressed ? c.surface2 : c.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: state.hovered ? metric.$5 : c.border,
-                      ),
-                    ),
-                    child: columns == 1
-                        ? Row(
-                            children: [
-                              _MetricIcon(icon: metric.$4, color: metric.$5),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _MetricCopy(
-                                  value: metric.$1,
-                                  title: metric.$2,
-                                  caption: metric.$3,
-                                  color: metric.$5,
-                                ),
-                              ),
-                              Icon(SfIcons.chevR, color: c.muted, size: 19),
-                            ],
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  _MetricIcon(
-                                    icon: metric.$4,
-                                    color: metric.$5,
-                                    compact: true,
-                                  ),
-                                  const Spacer(),
-                                  Icon(SfIcons.chevR, color: c.muted, size: 16),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              _MetricCopy(
-                                value: metric.$1,
-                                title: metric.$2,
-                                caption: metric.$3,
-                                color: metric.$5,
-                              ),
-                            ],
-                          ),
-                  ),
+                height: 158,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _metricCard(context, metrics[0])),
+                    const SizedBox(width: gap),
+                    Expanded(child: _metricCard(context, metrics[1])),
+                  ],
                 ),
               ),
-          ],
+              const SizedBox(height: gap),
+              _metricCard(context, metrics[2], horizontal: true),
+            ],
+          );
+        }
+
+        return SizedBox(
+          height: 152,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < metrics.length; index++) ...[
+                if (index > 0) const SizedBox(width: gap),
+                Expanded(child: _metricCard(context, metrics[index])),
+              ],
+            ],
+          ),
         );
       },
+    );
+  }
+
+  Widget _metricCard(
+    BuildContext context,
+    (String, String, String, IconData, Color, String) metric, {
+    bool horizontal = false,
+  }) {
+    final c = SfTheme.colorsOf(context);
+    return SfPressable(
+      key: ValueKey('today-metric-${metric.$6}'),
+      semanticLabel: staffTr(
+        context,
+        '${metric.$2} tafsilotlarini ochish',
+        'Open ${metric.$2} details',
+      ),
+      onPressed: () => context.push(metric.$6),
+      haptic: true,
+      borderRadius: BorderRadius.circular(20),
+      builder: (context, state, _) => AnimatedContainer(
+        duration: SfMotion.resolve(context, SfMotion.quick),
+        constraints: BoxConstraints(minHeight: horizontal ? 84 : 148),
+        padding: EdgeInsets.all(horizontal ? 14 : 12),
+        decoration: BoxDecoration(
+          color: state.pressed ? c.surface2 : c.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: state.hovered ? metric.$5 : c.border),
+        ),
+        child: horizontal
+            ? Row(
+                children: [
+                  _MetricIcon(icon: metric.$4, color: metric.$5),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _MetricCopy(
+                      value: metric.$1,
+                      title: metric.$2,
+                      caption: metric.$3,
+                      color: metric.$5,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(SfIcons.chevR, color: c.muted, size: 19),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      _MetricIcon(
+                        icon: metric.$4,
+                        color: metric.$5,
+                        compact: true,
+                      ),
+                      const Spacer(),
+                      Icon(SfIcons.chevR, color: c.muted, size: 16),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _MetricCopy(
+                    value: metric.$1,
+                    title: metric.$2,
+                    caption: metric.$3,
+                    color: metric.$5,
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }
@@ -966,6 +1013,7 @@ class _MetricCopy extends StatelessWidget {
         Text(
           title,
           maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: SfType.ui(
             size: 11,
             weight: FontWeight.w800,
@@ -977,6 +1025,7 @@ class _MetricCopy extends StatelessWidget {
         Text(
           caption,
           maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: SfType.ui(size: 9.5, color: c.muted, height: 1.25),
         ),
       ],
@@ -1044,6 +1093,7 @@ class _AiPanel extends StatelessWidget {
             runSpacing: 8,
             children: [
               SfAiBadge(
+                key: const ValueKey('today-ai-badge'),
                 label: staffTr(context, 'Bugungi insight', 'Today’s insight'),
                 compact: true,
               ),
@@ -1295,87 +1345,148 @@ class _SectionHeading extends StatelessWidget {
   }
 }
 
-class _HomeDateStrip extends StatelessWidget {
+class _HomeDateStrip extends StatefulWidget {
   const _HomeDateStrip({required this.selected, required this.onSelected});
   final DateTime selected;
   final ValueChanged<DateTime> onSelected;
 
   @override
+  State<_HomeDateStrip> createState() => _HomeDateStripState();
+}
+
+class _HomeDateStripState extends State<_HomeDateStrip> {
+  static const _tileWidth = 60.0;
+  static const _gap = 7.0;
+  late final ScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final selectedIndex = widget.selected.difference(staffWeekStart).inDays;
+    final leadingIndex = (selectedIndex - 2).clamp(0, 6);
+    _controller = ScrollController(
+      initialScrollOffset: leadingIndex * (_tileWidth + _gap),
+    );
+    _scheduleReveal(animate: false);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeDateStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!DateUtils.isSameDay(oldWidget.selected, widget.selected)) {
+      _scheduleReveal(animate: true);
+    }
+  }
+
+  void _scheduleReveal({required bool animate}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients) return;
+      final selectedIndex = widget.selected
+          .difference(staffWeekStart)
+          .inDays
+          .clamp(0, 6);
+      final viewport = _controller.position.viewportDimension;
+      final desired =
+          selectedIndex * (_tileWidth + _gap) - (viewport - _tileWidth) / 2;
+      final target = desired.clamp(
+        _controller.position.minScrollExtent,
+        _controller.position.maxScrollExtent,
+      );
+      if (animate) {
+        _controller.animateTo(
+          target,
+          duration: SfMotion.resolve(context, SfMotion.standard),
+          curve: SfMotion.enter,
+        );
+      } else {
+        _controller.jumpTo(target);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return Row(
-      children: [
-        for (var i = 0; i < 5; i++) ...[
-          if (i > 0) const SizedBox(width: 7),
-          Expanded(
-            child: Builder(
-              builder: (context) {
-                final date = staffWeekStart.add(Duration(days: i));
-                final active = DateUtils.isSameDay(date, selected);
-                final count = lessonsFor(date).length;
-                return SfPressable(
-                  key: Key('today-date-${date.day}'),
-                  semanticLabel: staffTr(
-                    context,
-                    '${staffDayTitle(context, date)}, $count ta dars',
-                    '${staffDayTitle(context, date)}, $count lessons',
+    return SizedBox(
+      height: 68,
+      child: ListView.separated(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: 7,
+        separatorBuilder: (_, _) => const SizedBox(width: _gap),
+        itemBuilder: (context, i) => SizedBox(
+          width: _tileWidth,
+          child: Builder(
+            builder: (context) {
+              final date = staffWeekStart.add(Duration(days: i));
+              final active = DateUtils.isSameDay(date, widget.selected);
+              final count = lessonsFor(date).length;
+              return SfPressable(
+                key: Key('today-date-${date.day}'),
+                semanticLabel: staffTr(
+                  context,
+                  '${staffDayTitle(context, date)}, $count ta dars',
+                  '${staffDayTitle(context, date)}, $count lessons',
+                ),
+                selected: active,
+                haptic: true,
+                onPressed: () => widget.onSelected(date),
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: SfMotion.resolve(context, SfMotion.standard),
+                  curve: SfMotion.enter,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: active ? c.ink : c.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: active ? c.ink : c.border),
                   ),
-                  selected: active,
-                  haptic: true,
-                  onPressed: () => onSelected(date),
-                  borderRadius: BorderRadius.circular(16),
-                  child: AnimatedContainer(
-                    duration: SfMotion.resolve(context, SfMotion.standard),
-                    curve: SfMotion.enter,
-                    padding: const EdgeInsets.symmetric(vertical: 9),
-                    decoration: BoxDecoration(
-                      color: active ? c.ink : c.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: active ? c.ink : c.border),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          staffWeekdayShort(
-                            context,
-                            date.weekday,
-                          ).toUpperCase(),
-                          style: SfType.eyebrow(
-                            color: active ? c.bg : c.muted,
-                            size: 8,
-                          ),
+                  child: Column(
+                    children: [
+                      Text(
+                        staffWeekdayShort(context, date.weekday).toUpperCase(),
+                        style: SfType.eyebrow(
+                          color: active ? c.bg : c.muted,
+                          size: 8,
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '${date.day}',
-                          style: SfType.mono(
-                            size: 17,
-                            weight: FontWeight.w800,
-                            color: active ? c.bg : c.ink,
-                          ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${date.day}',
+                        style: SfType.mono(
+                          size: 17,
+                          weight: FontWeight.w800,
+                          color: active ? c.bg : c.ink,
                         ),
-                        const SizedBox(height: 4),
-                        Container(
-                          width: count == 0 ? 4 : 13,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? c.accent
-                                : count == 0
-                                ? c.borderStrong
-                                : c.primary,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: count == 0 ? 4 : 13,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? c.accent
+                              : count == 0
+                              ? c.borderStrong
+                              : c.primary,
+                          borderRadius: BorderRadius.circular(3),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
-        ],
-      ],
+        ),
+      ),
     );
   }
 }
@@ -1435,24 +1546,20 @@ class _ScheduleList extends StatelessWidget {
         ),
       );
     }
-    return SfSurfaceCard(
-      child: Column(
-        children: [
-          for (final entry in lessons.asMap().entries)
-            _ScheduleRow(
-              lesson: entry.value,
-              showDivider: entry.key < lessons.length - 1,
-            ),
+    return Column(
+      children: [
+        for (final entry in lessons.asMap().entries) ...[
+          if (entry.key > 0) const SizedBox(height: 8),
+          _ScheduleRow(lesson: entry.value),
         ],
-      ),
+      ],
     );
   }
 }
 
 class _ScheduleRow extends StatelessWidget {
-  const _ScheduleRow({required this.lesson, required this.showDivider});
+  const _ScheduleRow({required this.lesson});
   final TodayLessonData lesson;
-  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
@@ -1472,24 +1579,23 @@ class _ScheduleRow extends StatelessWidget {
       ),
       onPressed: () => context.push('/lesson?slot=${lesson.id}'),
       haptic: true,
-      borderRadius: BorderRadius.zero,
+      borderRadius: BorderRadius.circular(18),
       builder: (context, state, _) => AnimatedContainer(
         duration: SfMotion.resolve(context, SfMotion.quick),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
         decoration: BoxDecoration(
           color: state.pressed
               ? c.surface2
               : complete
               ? c.surface2.withValues(alpha: 0.5)
-              : Colors.transparent,
-          border: showDivider
-              ? Border(bottom: BorderSide(color: c.border))
-              : null,
+              : c.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: state.hovered ? tone : c.border),
         ),
         child: Row(
           children: [
             SizedBox(
-              width: 48,
+              width: 44,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1507,7 +1613,7 @@ class _ScheduleRow extends StatelessWidget {
             ),
             Container(
               width: 4,
-              height: 42,
+              height: 46,
               decoration: BoxDecoration(
                 color: complete ? c.borderStrong : tone,
                 borderRadius: BorderRadius.circular(4),
@@ -1520,7 +1626,7 @@ class _ScheduleRow extends StatelessWidget {
                 children: [
                   Text(
                     staffLessonTitle(context, lesson),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: SfType.ui(
                       size: 13,
@@ -1535,13 +1641,14 @@ class _ScheduleRow extends StatelessWidget {
                       '${lesson.topic} · ${lesson.room}-xona',
                       '${staffLessonTopic(context, lesson)} · Room ${lesson.room}',
                     ),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: SfType.ui(size: 10.5, color: c.muted),
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 7),
             if (live)
               SfPill(
                 tone: SfPillTone.primary,

@@ -54,9 +54,9 @@ class SfAdaptiveBottomNavigation extends StatelessWidget {
     this.motionEnabled = true,
     this.hapticsEnabled = true,
     this.safeBottom = true,
-    this.margin = const EdgeInsets.fromLTRB(8, 0, 8, 8),
-    this.padding = const EdgeInsets.fromLTRB(6, 8, 6, 6),
-    this.borderRadius = const BorderRadius.all(Radius.circular(24)),
+    this.margin = const EdgeInsets.fromLTRB(12, 0, 12, 4),
+    this.padding = const EdgeInsets.fromLTRB(4, 4, 4, 3),
+    this.borderRadius = const BorderRadius.all(Radius.circular(21)),
     this.backgroundColor,
     this.selectedColor,
     this.unselectedColor,
@@ -78,7 +78,7 @@ class SfAdaptiveBottomNavigation extends StatelessWidget {
     return SafeArea(
       top: false,
       bottom: safeBottom,
-      minimum: safeBottom ? const EdgeInsets.only(bottom: 6) : EdgeInsets.zero,
+      minimum: safeBottom ? const EdgeInsets.only(bottom: 2) : EdgeInsets.zero,
       child: Center(
         heightFactor: 1,
         child: ConstrainedBox(
@@ -100,8 +100,8 @@ class SfAdaptiveBottomNavigation extends StatelessWidget {
               shadows: [
                 BoxShadow(
                   color: c.ink.withValues(alpha: sf.dark ? 0.28 : 0.12),
-                  blurRadius: 28,
-                  offset: const Offset(0, 10),
+                  blurRadius: 22,
+                  offset: const Offset(0, 8),
                 ),
                 BoxShadow(
                   color: c.primary.withValues(alpha: 0.06),
@@ -165,7 +165,7 @@ class _SfBottomDestinationItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 1),
       child: SfPressable(
         onPressed: onPressed,
         selected: selected,
@@ -173,7 +173,7 @@ class _SfBottomDestinationItem extends StatelessWidget {
         motionEnabled: motionEnabled,
         pressedScale: 0.96,
         semanticLabel: destination.semanticLabel ?? destination.label,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         builder: (context, state, _) {
           final background = state.pressed
               ? c.surface3.withValues(alpha: 0.9)
@@ -185,11 +185,11 @@ class _SfBottomDestinationItem extends StatelessWidget {
           return AnimatedContainer(
             duration: duration,
             curve: SfMotion.enter,
-            constraints: const BoxConstraints(minHeight: 50),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+            constraints: const BoxConstraints(minHeight: 46),
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
             decoration: BoxDecoration(
               color: background,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -201,7 +201,7 @@ class _SfBottomDestinationItem extends StatelessWidget {
                   children: [
                     IconTheme(
                       data: IconThemeData(
-                        size: 22,
+                        size: 21,
                         color: selected ? activeColor : inactiveColor,
                       ),
                       child: selected
@@ -212,13 +212,13 @@ class _SfBottomDestinationItem extends StatelessWidget {
                       Positioned(right: -8, top: -6, child: destination.badge!),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   destination.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: SfType.ui(
-                    size: 10.5,
+                    size: 10,
                     weight: selected ? FontWeight.w700 : FontWeight.w600,
                     color: selected ? activeColor : inactiveColor,
                     letterSpacing: -0.05,

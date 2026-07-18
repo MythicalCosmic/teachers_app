@@ -98,4 +98,72 @@ void main() {
     expect(find.textContaining('Viyet teoremasi'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('highlighted Today controls fit the iPhone layout cleanly', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    debugSetStaffToday(DateTime(2026, 7, 18));
+
+    await tester.pumpWidget(_host(textScale: 1));
+    await tester.pumpAndSettle();
+
+    final openLesson = find.byKey(const ValueKey('today-open-lesson-action'));
+    final attendance = find.byKey(const ValueKey('today-attendance-action'));
+    expect(openLesson, findsOneWidget);
+    expect(attendance, findsOneWidget);
+    expect(tester.getSize(openLesson).width, greaterThan(250));
+    expect(tester.getSize(attendance).width, greaterThan(250));
+    expect(
+      tester.getCenter(attendance).dy,
+      greaterThan(tester.getCenter(openLesson).dy),
+    );
+
+    final lessonsMetric = find.byKey(
+      const ValueKey('today-metric-/today/lessons'),
+    );
+    final attendanceMetric = find.byKey(
+      const ValueKey('today-metric-/today/attendance'),
+    );
+    final performanceMetric = find.byKey(
+      const ValueKey('today-metric-/today/performance'),
+    );
+    expect(
+      (tester.getCenter(lessonsMetric).dy -
+              tester.getCenter(attendanceMetric).dy)
+          .abs(),
+      lessThan(1),
+    );
+    expect(
+      tester.getCenter(performanceMetric).dy,
+      greaterThan(tester.getCenter(lessonsMetric).dy),
+    );
+    expect(
+      tester.getSize(performanceMetric).width,
+      greaterThan(tester.getSize(lessonsMetric).width * 1.9),
+    );
+    final aiBadge = find.byKey(const ValueKey('today-ai-badge'));
+    await tester.scrollUntilVisible(
+      aiBadge,
+      220,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(aiBadge, findsOneWidget);
+
+    final saturday = find.byKey(const Key('today-date-18'));
+    await tester.scrollUntilVisible(
+      saturday,
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final saturdayRect = tester.getRect(saturday);
+    expect(saturdayRect.left, greaterThanOrEqualTo(0));
+    expect(saturdayRect.right, lessThanOrEqualTo(393));
+    expect(tester.takeException(), isNull);
+  });
 }

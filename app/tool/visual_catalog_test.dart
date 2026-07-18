@@ -105,6 +105,68 @@ void main() {
     await _capture(tester, 'teacher_settings');
   });
 
+  testWidgets('highlighted teacher surfaces visual baselines', (tester) async {
+    _configureIPhoneView(tester);
+    final state = (await tester.runAsync(() => _stateFor('nigora.karimova')))!;
+    await _pumpApp(tester, state);
+
+    await tester.tap(find.text('Guruhlar').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byKey(const ValueKey('cohort-9b-algebra')).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await _capture(tester, 'teacher_group_detail');
+
+    final rhythm = find.byKey(const ValueKey('rhythm-bar-0'));
+    await tester.scrollUntilVisible(rhythm, 240);
+    await tester.pump(const Duration(milliseconds: 300));
+    await _capture(tester, 'teacher_group_rhythm');
+  });
+
+  testWidgets('highlighted Today details visual baseline', (tester) async {
+    _configureIPhoneView(tester);
+    final state = (await tester.runAsync(() => _stateFor('nigora.karimova')))!;
+    await _pumpApp(tester, state);
+
+    final saturday = find.byKey(const ValueKey('today-date-18'));
+    await tester.scrollUntilVisible(
+      saturday,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await _capture(tester, 'teacher_today_details');
+  });
+
+  testWidgets('materials visual baseline', (tester) async {
+    _configureIPhoneView(tester);
+    final state = (await tester.runAsync(() => _stateFor('nigora.karimova')))!;
+    await _pumpApp(tester, state);
+
+    await tester.tap(find.text('Boshqa').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Materiallar').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await _capture(tester, 'teacher_materials');
+  });
+
+  testWidgets('new task visual baseline', (tester) async {
+    _configureIPhoneView(tester);
+    final state = (await tester.runAsync(() => _stateFor('nigora.karimova')))!;
+    await _pumpApp(tester, state);
+
+    await tester.tap(find.text('Vazifalar').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('Yangi vazifa').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await _capture(tester, 'teacher_new_task');
+  });
+
   testWidgets('dark survey visual baseline', (tester) async {
     _configureIPhoneView(tester);
     final state = (await tester.runAsync(
