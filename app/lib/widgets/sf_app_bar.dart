@@ -82,61 +82,83 @@ class SfNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
+    final leadingReserve = leading == null ? 0.0 : 52.0;
+    final actionsReserve = actions.isEmpty ? 0.0 : actions.length * 54.0;
+    final titleInset = leadingReserve > actionsReserve
+        ? leadingReserve
+        : actionsReserve;
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 4, 12, 8),
       decoration: BoxDecoration(color: c.surface),
       child: SafeArea(
         bottom: false,
-        child: SizedBox(
-          height: subtitle != null ? 56 : 44,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: subtitle != null ? 56 : 44),
           child: Stack(
             alignment: Alignment.center,
             children: [
               if (title != null)
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title!,
-                      style: SfType.ui(
-                        size: 17,
-                        weight: FontWeight.w700,
-                        color: c.ink,
-                        letterSpacing: -0.17,
-                      ),
-                    ),
-                    if (subtitle != null)
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: titleInset),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
                       Text(
-                        subtitle!,
-                        style: SfType.ui(size: 11, color: c.muted),
+                        title!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: SfType.ui(
+                          size: 17,
+                          weight: FontWeight.w700,
+                          color: c.ink,
+                          letterSpacing: -0.17,
+                        ),
                       ),
-                  ],
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: SfType.ui(size: 11, color: c.muted),
+                        ),
+                    ],
+                  ),
                 ),
-              Row(
-                children: [
-                  if (leading != null)
-                    DefaultTextStyle(
-                      style: SfType.ui(
-                        size: 16,
-                        weight: FontWeight.w600,
-                        color: c.primary,
-                      ),
-                      child: IconTheme(
-                        data: IconThemeData(color: c.primary, size: 18),
-                        child: leading!,
-                      ),
+              if (leading != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: DefaultTextStyle(
+                    style: SfType.ui(
+                      size: 16,
+                      weight: FontWeight.w600,
+                      color: c.primary,
                     ),
-                  const Spacer(),
-                  for (final a in actions)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 10),
-                      child: IconTheme(
-                        data: IconThemeData(color: c.primary, size: 22),
-                        child: a,
-                      ),
+                    child: IconTheme(
+                      data: IconThemeData(color: c.primary, size: 18),
+                      child: leading!,
                     ),
-                ],
-              ),
+                  ),
+                ),
+              if (actions.isNotEmpty)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final a in actions)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 10),
+                          child: IconTheme(
+                            data: IconThemeData(color: c.primary, size: 22),
+                            child: a,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),

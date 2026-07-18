@@ -123,7 +123,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             _Wordmark(colors: c),
                             const SizedBox(height: 52),
                             Text(
-                              'Assalomu',
+                              _copy(
+                                context,
+                                uz: 'Assalomu',
+                                ru: 'Добро',
+                                en: 'Welcome',
+                              ),
                               style: SfType.display(
                                 size: 38,
                                 color: c.ink,
@@ -132,7 +137,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'alaykum.',
+                              _copy(
+                                context,
+                                uz: 'alaykum.',
+                                ru: 'пожаловать.',
+                                en: 'back.',
+                              ),
                               style: SfType.ui(
                                 size: 36,
                                 weight: FontWeight.w800,
@@ -144,7 +154,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 340),
                               child: Text(
-                                'Xodim hisobingizga kiring. Huquqlar profilingizdan xavfsiz tarzda aniqlanadi.',
+                                _copy(
+                                  context,
+                                  uz: 'Xodim hisobingizga kiring. Huquqlar profilingizdan xavfsiz tarzda aniqlanadi.',
+                                  ru: 'Войдите в аккаунт сотрудника. Доступ безопасно определяется вашим профилем.',
+                                  en: 'Sign in to your staff account. Access is securely determined by your profile.',
+                                ),
                                 style: SfType.ui(
                                   size: 14,
                                   color: c.muted,
@@ -155,8 +170,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 30),
                             SfTextField(
                               controller: _username,
-                              label: 'Foydalanuvchi nomi',
-                              hint: 'ism.familiya',
+                              label: _copy(
+                                context,
+                                uz: 'Foydalanuvchi nomi',
+                                ru: 'Имя пользователя',
+                                en: 'Username',
+                              ),
+                              hint: _copy(
+                                context,
+                                uz: 'ism.familiya',
+                                ru: 'имя.фамилия',
+                                en: 'name.surname',
+                              ),
                               prefixIcon: SfIcons.user,
                               textInputAction: TextInputAction.next,
                               autofillHints: const [AutofillHints.username],
@@ -165,10 +190,20 @@ class _LoginScreenState extends State<LoginScreen> {
                               validator: (value) {
                                 final username = value?.trim() ?? '';
                                 if (username.isEmpty) {
-                                  return 'Foydalanuvchi nomini kiriting';
+                                  return _copy(
+                                    context,
+                                    uz: 'Foydalanuvchi nomini kiriting',
+                                    ru: 'Введите имя пользователя',
+                                    en: 'Enter your username',
+                                  );
                                 }
                                 if (username.length < 3) {
-                                  return 'Kamida 3 ta belgi kiriting';
+                                  return _copy(
+                                    context,
+                                    uz: 'Kamida 3 ta belgi kiriting',
+                                    ru: 'Введите не менее 3 символов',
+                                    en: 'Enter at least 3 characters',
+                                  );
                                 }
                                 return null;
                               },
@@ -177,8 +212,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             SfTextField(
                               controller: _password,
                               focusNode: _passwordFocus,
-                              label: 'Parol',
-                              hint: 'Parolingiz',
+                              label: _copy(
+                                context,
+                                uz: 'Parol',
+                                ru: 'Пароль',
+                                en: 'Password',
+                              ),
+                              hint: _copy(
+                                context,
+                                uz: 'Parolingiz',
+                                ru: 'Ваш пароль',
+                                en: 'Your password',
+                              ),
                               prefixIcon: SfIcons.shield,
                               obscureText: _obscurePassword,
                               textInputAction: TextInputAction.done,
@@ -187,8 +232,18 @@ class _LoginScreenState extends State<LoginScreen> {
                               onChanged: (_) => _clearError(),
                               suffix: IconButton(
                                 tooltip: _obscurePassword
-                                    ? 'Parolni ko‘rsatish'
-                                    : 'Parolni yashirish',
+                                    ? _copy(
+                                        context,
+                                        uz: 'Parolni ko‘rsatish',
+                                        ru: 'Показать пароль',
+                                        en: 'Show password',
+                                      )
+                                    : _copy(
+                                        context,
+                                        uz: 'Parolni yashirish',
+                                        ru: 'Скрыть пароль',
+                                        en: 'Hide password',
+                                      ),
                                 onPressed: () => setState(
                                   () => _obscurePassword = !_obscurePassword,
                                 ),
@@ -200,10 +255,20 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               validator: (value) {
                                 if ((value ?? '').isEmpty) {
-                                  return 'Parolni kiriting';
+                                  return _copy(
+                                    context,
+                                    uz: 'Parolni kiriting',
+                                    ru: 'Введите пароль',
+                                    en: 'Enter your password',
+                                  );
                                 }
                                 if ((value ?? '').length < 6) {
-                                  return 'Parol kamida 6 ta belgidan iborat';
+                                  return _copy(
+                                    context,
+                                    uz: 'Parol kamida 6 ta belgidan iborat',
+                                    ru: 'Пароль должен содержать не менее 6 символов',
+                                    en: 'Password must contain at least 6 characters',
+                                  );
                                 }
                                 return null;
                               },
@@ -221,7 +286,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                   controlAffinity:
                                       ListTileControlAffinity.leading,
                                   title: Text(
-                                    'Bu qurilmada eslab qol',
+                                    _copy(
+                                      context,
+                                      uz: 'Bu qurilmada eslab qol',
+                                      ru: 'Запомнить на устройстве',
+                                      en: 'Remember this device',
+                                    ),
                                     style: SfType.ui(size: 13, color: c.ink2),
                                   ),
                                   value: _rememberDevice,
@@ -238,7 +308,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ? null
                                       : () => context.push('/login/forgot'),
                                   child: Text(
-                                    'Parolni unutdingizmi?',
+                                    _copy(
+                                      context,
+                                      uz: 'Parolni unutdingizmi?',
+                                      ru: 'Забыли пароль?',
+                                      en: 'Forgot password?',
+                                    ),
                                     style: SfType.ui(
                                       size: 11,
                                       color: c.primary,
@@ -278,7 +353,19 @@ class _LoginScreenState extends State<LoginScreen> {
                               kind: SfButtonKind.primary,
                               block: true,
                               height: 54,
-                              label: _submitting ? 'Tekshirilmoqda…' : 'Kirish',
+                              label: _submitting
+                                  ? _copy(
+                                      context,
+                                      uz: 'Tekshirilmoqda…',
+                                      ru: 'Проверка…',
+                                      en: 'Signing in…',
+                                    )
+                                  : _copy(
+                                      context,
+                                      uz: 'Kirish',
+                                      ru: 'Войти',
+                                      en: 'Sign in',
+                                    ),
                               trailing: _submitting ? null : SfIcons.arrowR,
                               fontSize: 16,
                               onPressed: _submitting ? null : _submit,
@@ -288,7 +375,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 12),
                             Center(
                               child: Text(
-                                'Demo parol: demo2026 · Rol foydalanuvchi hisobidan aniqlanadi',
+                                _copy(
+                                  context,
+                                  uz: 'Demo parol: demo2026 · Rol foydalanuvchi hisobidan aniqlanadi',
+                                  ru: 'Демо-пароль: demo2026 · Роль определяется аккаунтом',
+                                  en: 'Demo password: demo2026 · Your role comes from your account',
+                                ),
                                 textAlign: TextAlign.center,
                                 style: SfType.ui(
                                   size: 11,
@@ -327,7 +419,12 @@ class _Wordmark extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: 'StarForge EDU, Xodimlar',
+      label: _copy(
+        context,
+        uz: 'StarForge EDU, Xodimlar',
+        ru: 'StarForge EDU, Сотрудники',
+        en: 'StarForge EDU, Staff',
+      ),
       child: ExcludeSemantics(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -372,7 +469,14 @@ class _Wordmark extends StatelessWidget {
                 children: [
                   brand,
                   const SizedBox(height: 10),
-                  const SfPill(label: 'Xodimlar'),
+                  SfPill(
+                    label: _copy(
+                      context,
+                      uz: 'Xodimlar',
+                      ru: 'Сотрудники',
+                      en: 'Staff',
+                    ),
+                  ),
                 ],
               );
             }
@@ -381,7 +485,14 @@ class _Wordmark extends StatelessWidget {
               children: [
                 Expanded(child: brand),
                 const SizedBox(width: 12),
-                const SfPill(label: 'Xodimlar'),
+                SfPill(
+                  label: _copy(
+                    context,
+                    uz: 'Xodimlar',
+                    ru: 'Сотрудники',
+                    en: 'Staff',
+                  ),
+                ),
               ],
             );
           },
@@ -473,7 +584,12 @@ class _CenterIdentity extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Yunusobod filiali · staff.starforge.uz',
+                  _copy(
+                    context,
+                    uz: 'Yunusobod filiali · staff.starforge.uz',
+                    ru: 'Филиал Юнусабад · staff.starforge.uz',
+                    en: 'Yunusobod branch · staff.starforge.uz',
+                  ),
                   style: SfType.mono(size: 10, color: colors.muted),
                 ),
               ],
@@ -485,3 +601,14 @@ class _CenterIdentity extends StatelessWidget {
     );
   }
 }
+
+String _copy(
+  BuildContext context, {
+  required String uz,
+  required String ru,
+  required String en,
+}) => switch (Localizations.localeOf(context).languageCode) {
+  'ru' => ru,
+  'en' => en,
+  _ => uz,
+};

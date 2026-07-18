@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
@@ -7,6 +8,7 @@ import '../../widgets/sf_button.dart';
 import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pill.dart';
+import '../../widgets/sf_toast.dart';
 import 'staff_surface_widgets.dart';
 import 'staff_workspace_models.dart';
 
@@ -48,6 +50,7 @@ class AuditorDashboardScreen extends StatelessWidget {
     this.onOpenAuditLog,
     this.onOpenSignal,
     this.onRefresh,
+    this.refreshStore,
   });
 
   final StaffRole role;
@@ -58,6 +61,7 @@ class AuditorDashboardScreen extends StatelessWidget {
   final VoidCallback? onOpenAuditLog;
   final ValueChanged<String>? onOpenSignal;
   final Future<void> Function()? onRefresh;
+  final StaffWorkspaceRefreshStore? refreshStore;
 
   @override
   Widget build(BuildContext context) {
@@ -93,96 +97,103 @@ class AuditorDashboardScreen extends StatelessWidget {
           onPressed: onOpenAuditLog,
         ),
       ],
-      body: RefreshIndicator(
-        onRefresh: onRefresh ?? () async {},
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-          children: [
-            const StaffReadOnlyBanner(
-              message:
-                  'Signal manbalari faqat o\u2018qiladi · holatlar tahrirlanadi',
-            ),
-            const SizedBox(height: 12),
-            StaffAdaptiveGrid(
-              children: [
-                StaffMetricCard(
-                  label: 'Ochiq signal',
-                  value: '$openSignals',
-                  detail: 'Ko\u2018rib chiqilmagan',
-                  icon: SfIcons.flag,
-                  tone: openSignals > 0
-                      ? StaffMetricTone.danger
-                      : StaffMetricTone.success,
-                  onTap: onOpenSignals,
-                ),
-                StaffMetricCard(
-                  label: 'Yuqori daraja',
-                  value: '$critical',
-                  detail: 'Ustuvor tekshiruv',
-                  icon: SfIcons.shield,
-                  tone: StaffMetricTone.warning,
-                  onTap: onOpenSignals,
-                ),
-                StaffMetricCard(
-                  label: 'Faol holat',
-                  value: '$activeCases',
-                  detail: 'Ish yuritilmoqda',
-                  icon: SfIcons.pin,
-                  tone: StaffMetricTone.primary,
-                  onTap: onOpenCases,
-                ),
-                const StaffMetricCard(
-                  label: 'Yaxlitlik',
-                  value: '100%',
-                  detail: 'Jurnal zanjiri tasdiqlangan',
-                  icon: Icons.verified_user_outlined,
-                  tone: StaffMetricTone.success,
-                ),
+      body: AnimatedBuilder(
+        animation: refreshStore ?? kAlwaysCompleteAnimation,
+        builder: (context, _) => _AuditRefreshableBody(
+          onRefresh: onRefresh ?? refreshStore?.refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+            children: [
+              if (refreshStore != null) ...[
+                _AuditRefreshStatus(store: refreshStore!),
+                const SizedBox(height: 10),
               ],
-            ),
-            const SizedBox(height: 14),
-            const StaffHintCard(
-              title: 'Tavsiya etilgan tartib',
-              message:
-                  'Avval signal dalillarini o\u2018qing, keyin mavjud holatga ulang yoki yangi holat oching. Manba maydonlari hech qachon shu ekrandan o\u2018zgarmaydi.',
-              icon: Icons.account_tree_outlined,
-            ),
-            const SizedBox(height: 20),
-            StaffSectionHeader(
-              title: 'Ustuvor signallar',
-              subtitle: 'Yuqori va jiddiy daraja',
-              trailing: TextButton(
-                onPressed: onOpenSignals,
-                child: const Text('Hammasi'),
-              ),
-            ),
-            const SizedBox(height: 10),
-            if (anomalies.isEmpty)
-              const StaffEmptyState(
-                title: 'Signal yo\u2018q',
+              const StaffReadOnlyBanner(
                 message:
-                    'Hozircha tekshiruv talab qiladigan signal aniqlanmadi.',
-                icon: SfIcons.check,
-              )
-            else
-              SfSurfaceCard(
-                child: Column(
-                  children: [
-                    for (var i = 0; i < anomalies.take(4).length; i++) ...[
-                      _AnomalyRow(
-                        anomaly: anomalies[i],
-                        onTap: onOpenSignal == null
-                            ? null
-                            : () => onOpenSignal!(anomalies[i].id),
-                      ),
-                      if (i < anomalies.take(4).length - 1)
-                        const Divider(height: 1),
-                    ],
-                  ],
+                    'Signal manbalari faqat o\u2018qiladi · holatlar tahrirlanadi',
+              ),
+              const SizedBox(height: 12),
+              StaffAdaptiveGrid(
+                children: [
+                  StaffMetricCard(
+                    label: 'Ochiq signal',
+                    value: '$openSignals',
+                    detail: 'Ko\u2018rib chiqilmagan',
+                    icon: SfIcons.flag,
+                    tone: openSignals > 0
+                        ? StaffMetricTone.danger
+                        : StaffMetricTone.success,
+                    onTap: onOpenSignals,
+                  ),
+                  StaffMetricCard(
+                    label: 'Yuqori daraja',
+                    value: '$critical',
+                    detail: 'Ustuvor tekshiruv',
+                    icon: SfIcons.shield,
+                    tone: StaffMetricTone.warning,
+                    onTap: onOpenSignals,
+                  ),
+                  StaffMetricCard(
+                    label: 'Faol holat',
+                    value: '$activeCases',
+                    detail: 'Ish yuritilmoqda',
+                    icon: SfIcons.pin,
+                    tone: StaffMetricTone.primary,
+                    onTap: onOpenCases,
+                  ),
+                  const StaffMetricCard(
+                    label: 'Yaxlitlik',
+                    value: '100%',
+                    detail: 'Jurnal zanjiri tasdiqlangan',
+                    icon: Icons.verified_user_outlined,
+                    tone: StaffMetricTone.success,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const StaffHintCard(
+                title: 'Tavsiya etilgan tartib',
+                message:
+                    'Avval signal dalillarini o\u2018qing, keyin mavjud holatga ulang yoki yangi holat oching. Manba maydonlari hech qachon shu ekrandan o\u2018zgarmaydi.',
+                icon: Icons.account_tree_outlined,
+              ),
+              const SizedBox(height: 20),
+              StaffSectionHeader(
+                title: 'Ustuvor signallar',
+                subtitle: 'Yuqori va jiddiy daraja',
+                trailing: TextButton(
+                  onPressed: onOpenSignals,
+                  child: const Text('Hammasi'),
                 ),
               ),
-          ],
+              const SizedBox(height: 10),
+              if (anomalies.isEmpty)
+                const StaffEmptyState(
+                  title: 'Signal yo\u2018q',
+                  message:
+                      'Hozircha tekshiruv talab qiladigan signal aniqlanmadi.',
+                  icon: SfIcons.check,
+                )
+              else
+                SfSurfaceCard(
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < anomalies.take(4).length; i++) ...[
+                        _AnomalyRow(
+                          anomaly: anomalies[i],
+                          onTap: onOpenSignal == null
+                              ? null
+                              : () => onOpenSignal!(anomalies[i].id),
+                        ),
+                        if (i < anomalies.take(4).length - 1)
+                          const Divider(height: 1),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -199,6 +210,7 @@ class AuditSignalsScreen extends StatefulWidget {
     this.onOpenSignal,
     this.onAcknowledge,
     this.onRefresh,
+    this.refreshStore,
   });
 
   final StaffRole role;
@@ -206,6 +218,7 @@ class AuditSignalsScreen extends StatefulWidget {
   final ValueChanged<String>? onOpenSignal;
   final Future<void> Function(String anomalyId)? onAcknowledge;
   final Future<void> Function()? onRefresh;
+  final StaffWorkspaceRefreshStore? refreshStore;
 
   @override
   State<AuditSignalsScreen> createState() => _AuditSignalsScreenState();
@@ -238,84 +251,93 @@ class _AuditSignalsScreenState extends State<AuditSignalsScreen> {
       title: 'Anomaliyalar',
       subtitle:
           'Dalilni ko\u2018ring, qabul qilinganini belgilang yoki holatga ulang',
-      body: RefreshIndicator(
-        onRefresh: widget.onRefresh ?? () async {},
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-          children: [
-            const StaffReadOnlyBanner(),
-            const SizedBox(height: 12),
-            StaffSegment<AuditSignalFilter>(
-              values: AuditSignalFilter.values,
-              selected: _filter,
-              labelOf: (value) => switch (value) {
-                AuditSignalFilter.open => 'Ochiq',
-                AuditSignalFilter.highRisk => 'Yuqori xavf',
-                AuditSignalFilter.acknowledged => 'Ko\u2018rilgan',
-                AuditSignalFilter.all => 'Hammasi',
-              },
-              onChanged: (value) => setState(() => _filter = value),
-            ),
-            const SizedBox(height: 12),
-            AnimatedSwitcher(
-              duration: staffMotionDuration(context),
-              child: filtered.isEmpty
-                  ? const StaffEmptyState(
-                      key: ValueKey('empty-signals'),
-                      title: 'Bu filtrda signal yo\u2018q',
-                      message:
-                          'Boshqa filtrni tanlang yoki ro\u2018yxatni yangilang.',
-                      icon: SfIcons.check,
-                    )
-                  : Column(
-                      key: ValueKey(_filter),
-                      children: [
-                        for (final anomaly in filtered) ...[
-                          SfSurfaceCard(
-                            child: Column(
-                              children: [
-                                _AnomalyRow(
-                                  anomaly: anomaly,
-                                  onTap: widget.onOpenSignal == null
-                                      ? null
-                                      : () => widget.onOpenSignal!(anomaly.id),
-                                ),
-                                if (anomaly.status == AnomalyStatus.open)
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      14,
-                                      0,
-                                      14,
-                                      12,
-                                    ),
-                                    child: Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton.icon(
-                                        onPressed: widget.onAcknowledge == null
-                                            ? null
-                                            : () => widget.onAcknowledge!(
-                                                anomaly.id,
-                                              ),
-                                        icon: const Icon(
-                                          Icons.visibility_outlined,
-                                          size: 16,
-                                        ),
-                                        label: const Text(
-                                          'Ko\u2018rib chiqildi',
+      body: AnimatedBuilder(
+        animation: widget.refreshStore ?? kAlwaysCompleteAnimation,
+        builder: (context, _) => _AuditRefreshableBody(
+          onRefresh: widget.onRefresh ?? widget.refreshStore?.refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+            children: [
+              if (widget.refreshStore != null) ...[
+                _AuditRefreshStatus(store: widget.refreshStore!),
+                const SizedBox(height: 10),
+              ],
+              const StaffReadOnlyBanner(),
+              const SizedBox(height: 12),
+              StaffSegment<AuditSignalFilter>(
+                values: AuditSignalFilter.values,
+                selected: _filter,
+                labelOf: (value) => switch (value) {
+                  AuditSignalFilter.open => 'Ochiq',
+                  AuditSignalFilter.highRisk => 'Yuqori xavf',
+                  AuditSignalFilter.acknowledged => 'Ko\u2018rilgan',
+                  AuditSignalFilter.all => 'Hammasi',
+                },
+                onChanged: (value) => setState(() => _filter = value),
+              ),
+              const SizedBox(height: 12),
+              AnimatedSwitcher(
+                duration: staffMotionDuration(context),
+                child: filtered.isEmpty
+                    ? const StaffEmptyState(
+                        key: ValueKey('empty-signals'),
+                        title: 'Bu filtrda signal yo\u2018q',
+                        message:
+                            'Boshqa filtrni tanlang yoki ro\u2018yxatni yangilang.',
+                        icon: SfIcons.check,
+                      )
+                    : Column(
+                        key: ValueKey(_filter),
+                        children: [
+                          for (final anomaly in filtered) ...[
+                            SfSurfaceCard(
+                              child: Column(
+                                children: [
+                                  _AnomalyRow(
+                                    anomaly: anomaly,
+                                    onTap: widget.onOpenSignal == null
+                                        ? null
+                                        : () =>
+                                              widget.onOpenSignal!(anomaly.id),
+                                  ),
+                                  if (anomaly.status == AnomalyStatus.open)
+                                    Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        14,
+                                        0,
+                                        14,
+                                        12,
+                                      ),
+                                      child: Align(
+                                        alignment: Alignment.centerRight,
+                                        child: TextButton.icon(
+                                          onPressed:
+                                              widget.onAcknowledge == null
+                                              ? null
+                                              : () => widget.onAcknowledge!(
+                                                  anomaly.id,
+                                                ),
+                                          icon: const Icon(
+                                            Icons.visibility_outlined,
+                                            size: 16,
+                                          ),
+                                          label: const Text(
+                                            'Ko\u2018rib chiqildi',
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
+                            const SizedBox(height: 10),
+                          ],
                         ],
-                      ],
-                    ),
-            ),
-          ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -692,7 +714,7 @@ class ImmutableAuditLogScreen extends StatefulWidget {
 
   final StaffRole role;
   final List<ImmutableAuditEventView> events;
-  final Future<void> Function()? onExport;
+  final Future<String> Function()? onExport;
 
   @override
   State<ImmutableAuditLogScreen> createState() =>
@@ -701,6 +723,7 @@ class ImmutableAuditLogScreen extends StatefulWidget {
 
 class _ImmutableAuditLogScreenState extends State<ImmutableAuditLogScreen> {
   String _query = '';
+  bool _exporting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -720,10 +743,18 @@ class _ImmutableAuditLogScreenState extends State<ImmutableAuditLogScreen> {
       subtitle: 'Vaqt, aktyor va amal ketma-ketligi · yozuvlar tahrirlanmaydi',
       actions: [
         StaffIconButton(
+          key: const ValueKey('audit-export-csv'),
           icon: SfIcons.download,
-          tooltip: 'Jurnalni eksport qilish',
-          onPressed: widget.role.can(StaffCapability.exportAuditData)
-              ? widget.onExport
+          tooltip: _auditText(
+            context,
+            uz: 'Jurnalni eksport qilish',
+            en: 'Export audit log',
+          ),
+          onPressed:
+              widget.role.can(StaffCapability.exportAuditData) &&
+                  widget.onExport != null &&
+                  !_exporting
+              ? _export
               : null,
         ),
       ],
@@ -769,7 +800,187 @@ class _ImmutableAuditLogScreenState extends State<ImmutableAuditLogScreen> {
       ),
     );
   }
+
+  Future<void> _export() async {
+    setState(() => _exporting = true);
+    try {
+      final csv = await widget.onExport!();
+      if (!mounted) return;
+      if (csv.trim().isEmpty) {
+        SfToast.show(
+          context,
+          title: _auditText(
+            context,
+            uz: 'Eksport amalga oshmadi',
+            en: 'Export failed',
+          ),
+          message: _auditText(
+            context,
+            uz: 'CSV ma\u2018lumoti bo\u2018sh qaytdi.',
+            en: 'The CSV payload was empty.',
+          ),
+          tone: SfToastTone.error,
+        );
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        backgroundColor: SfTheme.colorsOf(context).surface,
+        builder: (context) => _AuditCsvPreview(csv: csv),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 }
+
+class _AuditCsvPreview extends StatelessWidget {
+  const _AuditCsvPreview({required this.csv});
+
+  final String csv;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          4,
+          18,
+          18 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _auditText(
+                context,
+                uz: 'Audit CSV ko\u2018rinishi',
+                en: 'Audit CSV preview',
+              ),
+              style: SfType.ui(size: 20, weight: FontWeight.w800, color: c.ink),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              _auditText(
+                context,
+                uz: 'Haqiqiy CSV matnini nusxalab, kerakli joyda .csv fayl sifatida saqlang.',
+                en: 'Copy the real CSV text and save it as a .csv file wherever you need it.',
+              ),
+              style: SfType.ui(size: 12, color: c.muted),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              key: const ValueKey('audit-csv-preview'),
+              constraints: const BoxConstraints(maxHeight: 260),
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: c.surface2,
+                border: Border.all(color: c.border),
+                borderRadius: SfRadius.mdAll,
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  csv,
+                  style: SfType.mono(size: 10.5, color: c.ink2, height: 1.45),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SfButton(
+              key: const ValueKey('copy-audit-csv'),
+              block: true,
+              label: _auditText(context, uz: 'CSVni nusxalash', en: 'Copy CSV'),
+              leading: Icons.copy_all_outlined,
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: csv));
+                if (!context.mounted) return;
+                SfToast.show(
+                  context,
+                  title: _auditText(
+                    context,
+                    uz: 'CSV nusxalandi',
+                    en: 'CSV copied',
+                  ),
+                  message: _auditText(
+                    context,
+                    uz: 'Endi uni .csv fayliga saqlashingiz mumkin.',
+                    en: 'You can now save it as a .csv file.',
+                  ),
+                  tone: SfToastTone.success,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuditRefreshStatus extends StatelessWidget {
+  const _AuditRefreshStatus({required this.store});
+
+  final StaffWorkspaceRefreshStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Align(
+      alignment: Alignment.centerRight,
+      child: AnimatedSwitcher(
+        duration: staffMotionDuration(context),
+        child: Text(
+          store.refreshing
+              ? _auditText(
+                  context,
+                  uz: 'Audit ma\u2018lumotlari yangilanmoqda…',
+                  en: 'Refreshing audit data…',
+                )
+              : '${_auditText(context, uz: 'Yangilandi', en: 'Updated')} · ${_refreshTime(store.lastUpdatedAt)} · #${store.revision}',
+          key: ValueKey('audit-refresh-${store.revision}-${store.refreshing}'),
+          style: SfType.mono(
+            size: 10.5,
+            color: store.refreshing ? c.primary : c.muted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AuditRefreshableBody extends StatelessWidget {
+  const _AuditRefreshableBody({required this.onRefresh, required this.child});
+
+  final Future<void> Function()? onRefresh;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final refresh = onRefresh;
+    return refresh == null
+        ? child
+        : RefreshIndicator(onRefresh: refresh, child: child);
+  }
+}
+
+String _refreshTime(DateTime value) {
+  final local = value.toLocal();
+  String two(int part) => part.toString().padLeft(2, '0');
+  return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+}
+
+String _auditText(
+  BuildContext context, {
+  required String uz,
+  required String en,
+}) => Localizations.maybeLocaleOf(context)?.languageCode == 'uz' ? uz : en;
 
 class _AnomalyRow extends StatelessWidget {
   const _AnomalyRow({required this.anomaly, this.onTap});

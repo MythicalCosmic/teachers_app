@@ -3,7 +3,7 @@ import '../theme/sf_theme.dart';
 import '../theme/tokens.dart';
 import 'sf_pressable.dart';
 
-enum SfButtonKind { primary, ghost, soft, ink }
+enum SfButtonKind { primary, ghost, soft, ink, danger }
 
 class SfButton extends StatelessWidget {
   final SfButtonKind kind;
@@ -80,6 +80,12 @@ class SfButton extends StatelessWidget {
         fg = c.bg;
         hoverBg = Color.lerp(c.ink, c.ink2, 0.4)!;
         pressedBg = c.ink2;
+        break;
+      case SfButtonKind.danger:
+        bg = c.danger;
+        fg = const Color(0xFFFFFCF5);
+        hoverBg = Color.lerp(c.danger, c.ink, 0.08)!;
+        pressedBg = Color.lerp(c.danger, c.ink, 0.16)!;
         break;
     }
     if (overrideBg != null) {

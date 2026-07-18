@@ -41,6 +41,8 @@ class StaffTodayRouteScreen extends StatelessWidget {
       onOpenTask: onOpenTask,
       onOpenPrimaryWorkspace: onOpenPrimaryWorkspace,
       onOpenMessages: onOpenMessages,
+      refreshStore: staffTodayRefreshStore,
+      onRefresh: staffTodayRefreshStore.refresh,
     );
   }
 }
@@ -135,6 +137,8 @@ class AuditorDashboardRouteScreen extends StatelessWidget {
       onOpenCases: onOpenCases,
       onOpenAuditLog: onOpenAuditLog,
       onOpenSignal: onOpenSignal,
+      refreshStore: auditWorkspaceRefreshStore,
+      onRefresh: auditWorkspaceRefreshStore.refresh,
     );
   }
 }
@@ -154,6 +158,8 @@ class AuditSignalsRouteScreen extends StatelessWidget {
       anomalies: state.auditAnomalies,
       onOpenSignal: onOpenSignal,
       onAcknowledge: state.acknowledgeAnomaly,
+      refreshStore: auditWorkspaceRefreshStore,
+      onRefresh: auditWorkspaceRefreshStore.refresh,
     );
   }
 }
@@ -253,17 +259,18 @@ class AuditCaseDetailRouteScreen extends StatelessWidget {
 class ImmutableAuditLogRouteScreen extends StatelessWidget {
   const ImmutableAuditLogRouteScreen({super.key, this.onExport});
 
-  final Future<void> Function()? onExport;
+  final Future<String> Function()? onExport;
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final session = state.session;
     if (session == null) return const _SignedOutStaffSurface();
+    final events = _auditEvents(state.auditAnomalies, state.auditCases);
     return ImmutableAuditLogScreen(
       role: session.role,
-      events: _auditEvents(state.auditAnomalies, state.auditCases),
-      onExport: onExport,
+      events: events,
+      onExport: onExport ?? () async => buildAuditCsv(events),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_scope.dart';
 import '../../app/app_state.dart';
 import '../../data/models.dart';
+import '../../l10n/sf_l10n.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_bottom_navigation.dart';
 import '../../widgets/sf_shell_scope.dart';
@@ -11,10 +12,28 @@ import '../../widgets/sf_shell_scope.dart';
 /// Persistent five-position navigation shared by every permitted staff role.
 /// The destinations stay spatially stable while their labels and capabilities
 /// adapt to the authenticated profile.
-class StaffShellScreen extends StatelessWidget {
+class StaffShellScreen extends StatefulWidget {
   const StaffShellScreen({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
+
+  @override
+  State<StaffShellScreen> createState() => _StaffShellScreenState();
+}
+
+class _StaffShellScreenState extends State<StaffShellScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pageMotion = AnimationController(
+    vsync: this,
+    value: 1,
+  );
+  double _direction = 1;
+
+  @override
+  void dispose() {
+    _pageMotion.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,18 +42,39 @@ class StaffShellScreen extends StatelessWidget {
       listenable: app,
       builder: (context, _) {
         final role = app.session?.role ?? StaffRole.teacher;
-        final destinations = _destinationsFor(role);
+        final destinations = _destinationsFor(context, role);
+        final motionEnabled = !app.settings.reducedMotion;
+        _pageMotion.duration = SfTheme.of(
+          context,
+        ).duration(const Duration(milliseconds: 360));
         return PopScope(
-          canPop: navigationShell.currentIndex == 0,
+          canPop: widget.navigationShell.currentIndex == 0,
           onPopInvokedWithResult: (didPop, result) {
-            if (!didPop && navigationShell.currentIndex != 0) {
-              navigationShell.goBranch(0);
+            if (!didPop && widget.navigationShell.currentIndex != 0) {
+              _openBranch(0, motionEnabled: motionEnabled);
             }
           },
           child: Scaffold(
             backgroundColor: SfTheme.colorsOf(context).bg,
             resizeToAvoidBottomInset: true,
-            body: SfShellScope(child: navigationShell),
+            body: AnimatedBuilder(
+              animation: _pageMotion,
+              child: SfShellScope(child: widget.navigationShell),
+              builder: (context, child) {
+                final value = Curves.easeOutCubic.transform(_pageMotion.value);
+                return Opacity(
+                  opacity: 0.68 + (0.32 * value),
+                  child: Transform.translate(
+                    offset: Offset(_direction * (1 - value) * 18, 0),
+                    child: Transform.scale(
+                      scale: 0.988 + (0.012 * value),
+                      alignment: Alignment.center,
+                      child: child,
+                    ),
+                  ),
+                );
+              },
+            ),
             bottomNavigationBar: SfAdaptiveBottomNavigation(
               destinations: [
                 for (var index = 0; index < destinations.length; index++)
@@ -46,21 +86,27 @@ class StaffShellScreen extends StatelessWidget {
                     badge: _badgeFor(context, app, role, index),
                   ),
               ],
-              activeIndex: navigationShell.currentIndex,
-              glassEnabled: app.settings.liquidGlass,
-              motionEnabled: !app.settings.reducedMotion,
+              activeIndex: widget.navigationShell.currentIndex,
+              glassEnabled: SfTheme.of(context).usesGlass,
+              motionEnabled: motionEnabled,
               hapticsEnabled: app.settings.haptics,
               onDestinationSelected: (index) {
-                navigationShell.goBranch(
-                  index,
-                  initialLocation: index == navigationShell.currentIndex,
-                );
+                _openBranch(index, motionEnabled: motionEnabled);
               },
             ),
           ),
         );
       },
     );
+  }
+
+  void _openBranch(int index, {required bool motionEnabled}) {
+    final current = widget.navigationShell.currentIndex;
+    if (index != current && motionEnabled) {
+      _direction = index > current ? 1 : -1;
+      _pageMotion.forward(from: 0);
+    }
+    widget.navigationShell.goBranch(index, initialLocation: index == current);
   }
 
   Widget? _badgeFor(
@@ -77,7 +123,12 @@ class StaffShellScreen extends StatelessWidget {
     if (count <= 0) return null;
     final c = SfTheme.colorsOf(context);
     return Semantics(
-      label: '$count ta o‘qilmagan',
+      label: _shellCopy(
+        context,
+        uz: '$count ta o‘qilmagan',
+        ru: '$count непрочитанных',
+        en: '$count unread',
+      ),
       child: Container(
         constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -114,42 +165,42 @@ class _Destination {
   final String semanticLabel;
 }
 
-List<_Destination> _destinationsFor(StaffRole role) {
+List<_Destination> _destinationsFor(BuildContext context, StaffRole role) {
   final labels = switch (role) {
-    StaffRole.teacher => const [
-      'Bugun',
-      'Guruhlar',
-      'Vazifalar',
-      'Xabarlar',
-      'Boshqa',
+    StaffRole.teacher => [
+      context.tr('today'),
+      context.tr('groups'),
+      context.tr('tasks'),
+      context.tr('messages'),
+      context.tr('more'),
     ],
-    StaffRole.assistant => const [
-      'Bugun',
-      'Guruhlar',
-      'Vazifalar',
-      'Xabarlar',
-      'Boshqa',
+    StaffRole.assistant => [
+      context.tr('today'),
+      context.tr('groups'),
+      context.tr('tasks'),
+      context.tr('messages'),
+      context.tr('more'),
     ],
-    StaffRole.methodist => const [
-      'Bugun',
-      'Sifat',
-      'Vazifalar',
-      'Xabarlar',
-      'Boshqa',
+    StaffRole.methodist => [
+      context.tr('today'),
+      context.tr('quality'),
+      context.tr('tasks'),
+      context.tr('messages'),
+      context.tr('more'),
     ],
-    StaffRole.reception => const [
-      'Bugun',
-      'Lidlar',
-      'Qabul',
-      'Xabarlar',
-      'Boshqa',
+    StaffRole.reception => [
+      context.tr('today'),
+      context.tr('leads'),
+      context.tr('reception'),
+      context.tr('messages'),
+      context.tr('more'),
     ],
-    StaffRole.auditor => const [
-      'Audit',
-      'Signallar',
-      'Holatlar',
-      'Ogohlant.',
-      'Boshqa',
+    StaffRole.auditor => [
+      context.tr('audit'),
+      context.tr('signals'),
+      context.tr('cases'),
+      context.tr('alerts'),
+      context.tr('more'),
     ],
   };
   return [
@@ -157,7 +208,12 @@ List<_Destination> _destinationsFor(StaffRole role) {
       labels[0],
       Icons.home_outlined,
       Icons.home_rounded,
-      '${labels[0]} sahifasi',
+      _shellCopy(
+        context,
+        uz: '${labels[0]} sahifasi',
+        ru: 'Страница «${labels[0]}»',
+        en: '${labels[0]} page',
+      ),
     ),
     _Destination(
       labels[1],
@@ -167,7 +223,12 @@ List<_Destination> _destinationsFor(StaffRole role) {
       role == StaffRole.auditor
           ? Icons.monitor_heart_rounded
           : Icons.dashboard_customize_rounded,
-      '${labels[1]} ish maydoni',
+      _shellCopy(
+        context,
+        uz: '${labels[1]} ish maydoni',
+        ru: 'Раздел «${labels[1]}»',
+        en: '${labels[1]} workspace',
+      ),
     ),
     _Destination(
       labels[2],
@@ -193,7 +254,23 @@ List<_Destination> _destinationsFor(StaffRole role) {
       labels[4],
       Icons.grid_view_outlined,
       Icons.grid_view_rounded,
-      'Boshqa imkoniyatlar',
+      _shellCopy(
+        context,
+        uz: 'Boshqa imkoniyatlar',
+        ru: 'Другие возможности',
+        en: 'More options',
+      ),
     ),
   ];
 }
+
+String _shellCopy(
+  BuildContext context, {
+  required String uz,
+  required String ru,
+  required String en,
+}) => switch (Localizations.localeOf(context).languageCode) {
+  'ru' => ru,
+  'en' => en,
+  _ => uz,
+};

@@ -7,6 +7,7 @@ import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_star.dart';
 import 'staff_surface_widgets.dart';
+import 'staff_workspace_models.dart';
 
 class StaffTodayScreen extends StatelessWidget {
   const StaffTodayScreen({
@@ -21,6 +22,7 @@ class StaffTodayScreen extends StatelessWidget {
     this.onOpenPrimaryWorkspace,
     this.onOpenMessages,
     this.onRefresh,
+    this.refreshStore,
   });
 
   final StaffRole role;
@@ -33,6 +35,7 @@ class StaffTodayScreen extends StatelessWidget {
   final VoidCallback? onOpenPrimaryWorkspace;
   final VoidCallback? onOpenMessages;
   final Future<void> Function()? onRefresh;
+  final StaffWorkspaceRefreshStore? refreshStore;
 
   bool get _supported =>
       role == StaffRole.assistant ||
@@ -41,6 +44,15 @@ class StaffTodayScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final store = refreshStore;
+    if (store == null) return _buildScreen(context);
+    return AnimatedBuilder(
+      animation: store,
+      builder: (context, _) => _buildScreen(context),
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
     if (!_supported) {
       return const StaffPageScaffold(
         eyebrow: 'Bugun',
@@ -76,12 +88,16 @@ class StaffTodayScreen extends StatelessWidget {
           onPressed: onOpenMessages,
         ),
       ],
-      body: RefreshIndicator(
-        onRefresh: onRefresh ?? () async {},
+      body: _TodayRefreshableBody(
+        onRefresh: onRefresh ?? refreshStore?.refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
           children: [
+            if (refreshStore != null) ...[
+              _TodayRefreshStatus(store: refreshStore!),
+              const SizedBox(height: 10),
+            ],
             _RoleHero(role: role, onOpen: onOpenPrimaryWorkspace),
             const SizedBox(height: 12),
             _metrics(context),
@@ -259,6 +275,66 @@ class StaffTodayScreen extends StatelessWidget {
     return StaffAdaptiveGrid(children: metrics);
   }
 }
+
+class _TodayRefreshableBody extends StatelessWidget {
+  const _TodayRefreshableBody({required this.onRefresh, required this.child});
+
+  final Future<void> Function()? onRefresh;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final refresh = onRefresh;
+    return refresh == null
+        ? child
+        : RefreshIndicator(onRefresh: refresh, child: child);
+  }
+}
+
+class _TodayRefreshStatus extends StatelessWidget {
+  const _TodayRefreshStatus({required this.store});
+
+  final StaffWorkspaceRefreshStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Align(
+      alignment: Alignment.centerRight,
+      child: AnimatedSwitcher(
+        duration: staffMotionDuration(context),
+        child: Text(
+          store.refreshing
+              ? _todayText(
+                  context,
+                  uz: 'Ma\u2018lumotlar yangilanmoqda…',
+                  en: 'Refreshing data…',
+                )
+              : '${_todayText(context, uz: 'Yangilandi', en: 'Updated')} · ${_todayRefreshTime(store.lastUpdatedAt)} · #${store.revision}',
+          key: ValueKey(
+            'staff-today-refresh-${store.revision}-${store.refreshing}',
+          ),
+          style: SfType.mono(
+            size: 10.5,
+            color: store.refreshing ? c.primary : c.muted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _todayRefreshTime(DateTime value) {
+  final local = value.toLocal();
+  String two(int part) => part.toString().padLeft(2, '0');
+  return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+}
+
+String _todayText(
+  BuildContext context, {
+  required String uz,
+  required String en,
+}) => Localizations.maybeLocaleOf(context)?.languageCode == 'uz' ? uz : en;
 
 class _RoleHero extends StatelessWidget {
   const _RoleHero({required this.role, this.onOpen});

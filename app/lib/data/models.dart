@@ -141,7 +141,24 @@ enum AppThemeMode { system, light, dark }
 
 enum AppPalette { daryo, saroy, marvarid, samarqand }
 
-enum AppLocale { uz, ru }
+enum AppLocale { uz, ru, en }
+
+/// The surface language used across cards, navigation and overlays.
+///
+/// `classic` intentionally remains the default so existing installations keep
+/// their familiar StarForge look until a member of staff opts into another
+/// expression.
+enum AppVisualStyle {
+  classic,
+  glassmorphism,
+  claymorphism,
+  liquidGlass,
+  maximalism,
+}
+
+enum AppFontChoice { manrope, system, editorial, mono }
+
+enum AppLayoutDensity { compact, comfortable, spacious }
 
 final class AppSettings {
   const AppSettings({
@@ -153,6 +170,12 @@ final class AppSettings {
     this.reducedMotion = false,
     this.haptics = true,
     this.coachMarks = true,
+    this.visualStyle = AppVisualStyle.classic,
+    this.fontChoice = AppFontChoice.manrope,
+    this.layoutDensity = AppLayoutDensity.comfortable,
+    this.surfaceOpacity = 1,
+    this.navigationOpacity = 0.78,
+    this.motionIntensity = 1,
   });
 
   final AppThemeMode themeMode;
@@ -163,6 +186,12 @@ final class AppSettings {
   final bool reducedMotion;
   final bool haptics;
   final bool coachMarks;
+  final AppVisualStyle visualStyle;
+  final AppFontChoice fontChoice;
+  final AppLayoutDensity layoutDensity;
+  final double surfaceOpacity;
+  final double navigationOpacity;
+  final double motionIntensity;
 
   AppSettings copyWith({
     AppThemeMode? themeMode,
@@ -173,6 +202,12 @@ final class AppSettings {
     bool? reducedMotion,
     bool? haptics,
     bool? coachMarks,
+    AppVisualStyle? visualStyle,
+    AppFontChoice? fontChoice,
+    AppLayoutDensity? layoutDensity,
+    double? surfaceOpacity,
+    double? navigationOpacity,
+    double? motionIntensity,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -183,6 +218,18 @@ final class AppSettings {
       reducedMotion: reducedMotion ?? this.reducedMotion,
       haptics: haptics ?? this.haptics,
       coachMarks: coachMarks ?? this.coachMarks,
+      visualStyle: visualStyle ?? this.visualStyle,
+      fontChoice: fontChoice ?? this.fontChoice,
+      layoutDensity: layoutDensity ?? this.layoutDensity,
+      surfaceOpacity: (surfaceOpacity ?? this.surfaceOpacity)
+          .clamp(0.45, 1)
+          .toDouble(),
+      navigationOpacity: (navigationOpacity ?? this.navigationOpacity)
+          .clamp(0.45, 1)
+          .toDouble(),
+      motionIntensity: (motionIntensity ?? this.motionIntensity)
+          .clamp(0.65, 1.35)
+          .toDouble(),
     );
   }
 
@@ -195,6 +242,12 @@ final class AppSettings {
     'reducedMotion': reducedMotion,
     'haptics': haptics,
     'coachMarks': coachMarks,
+    'visualStyle': visualStyle.name,
+    'fontChoice': fontChoice.name,
+    'layoutDensity': layoutDensity.name,
+    'surfaceOpacity': surfaceOpacity,
+    'navigationOpacity': navigationOpacity,
+    'motionIntensity': motionIntensity,
   };
 
   factory AppSettings.fromJson(JsonMap json) => AppSettings(
@@ -210,6 +263,30 @@ final class AppSettings {
     reducedMotion: json['reducedMotion'] as bool? ?? false,
     haptics: json['haptics'] as bool? ?? true,
     coachMarks: json['coachMarks'] as bool? ?? true,
+    visualStyle: _enumValue(
+      AppVisualStyle.values,
+      json['visualStyle'],
+      AppVisualStyle.classic,
+    ),
+    fontChoice: _enumValue(
+      AppFontChoice.values,
+      json['fontChoice'],
+      AppFontChoice.manrope,
+    ),
+    layoutDensity: _enumValue(
+      AppLayoutDensity.values,
+      json['layoutDensity'],
+      AppLayoutDensity.comfortable,
+    ),
+    surfaceOpacity: ((json['surfaceOpacity'] as num?)?.toDouble() ?? 1)
+        .clamp(0.45, 1)
+        .toDouble(),
+    navigationOpacity: ((json['navigationOpacity'] as num?)?.toDouble() ?? 0.78)
+        .clamp(0.45, 1)
+        .toDouble(),
+    motionIntensity: ((json['motionIntensity'] as num?)?.toDouble() ?? 1)
+        .clamp(0.65, 1.35)
+        .toDouble(),
   );
 }
 
@@ -221,6 +298,10 @@ final class StaffSession {
     required this.branchId,
     required this.branchName,
     required this.email,
+    this.username = '',
+    this.phone = '',
+    this.bio = '',
+    this.avatarColorValue = 0,
   });
 
   final String userId;
@@ -229,6 +310,10 @@ final class StaffSession {
   final String branchId;
   final String branchName;
   final String email;
+  final String username;
+  final String phone;
+  final String bio;
+  final int avatarColorValue;
 
   bool can(StaffCapability capability) => role.can(capability);
 
@@ -239,6 +324,10 @@ final class StaffSession {
     'branchId': branchId,
     'branchName': branchName,
     'email': email,
+    'username': username,
+    'phone': phone,
+    'bio': bio,
+    'avatarColorValue': avatarColorValue,
   };
 
   factory StaffSession.fromJson(JsonMap json) => StaffSession(
@@ -248,6 +337,10 @@ final class StaffSession {
     branchId: json['branchId']! as String,
     branchName: json['branchName']! as String,
     email: json['email']! as String,
+    username: json['username'] as String? ?? '',
+    phone: json['phone'] as String? ?? '',
+    bio: json['bio'] as String? ?? '',
+    avatarColorValue: json['avatarColorValue'] as int? ?? 0,
   );
 }
 
@@ -278,6 +371,38 @@ final class TaskChecklistItem {
   );
 }
 
+final class TaskComment {
+  const TaskComment({
+    required this.id,
+    required this.authorId,
+    required this.authorName,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String authorId;
+  final String authorName;
+  final String body;
+  final DateTime createdAt;
+
+  JsonMap toJson() => {
+    'id': id,
+    'authorId': authorId,
+    'authorName': authorName,
+    'body': body,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+  };
+
+  factory TaskComment.fromJson(JsonMap json) => TaskComment(
+    id: json['id']! as String,
+    authorId: json['authorId']! as String,
+    authorName: json['authorName']! as String,
+    body: json['body']! as String,
+    createdAt: _date(json['createdAt']),
+  );
+}
+
 final class StaffTask {
   StaffTask({
     required this.id,
@@ -292,7 +417,12 @@ final class StaffTask {
     required this.dueAt,
     required this.createdAt,
     required Iterable<TaskChecklistItem> checklist,
-  }) : checklist = List.unmodifiable(checklist);
+    Iterable<String> tags = const [],
+    Iterable<TaskComment> comments = const [],
+    this.isFavorite = false,
+  }) : checklist = List.unmodifiable(checklist),
+       tags = List.unmodifiable(tags),
+       comments = List.unmodifiable(comments);
 
   final String id;
   final String title;
@@ -306,28 +436,41 @@ final class StaffTask {
   final DateTime dueAt;
   final DateTime createdAt;
   final List<TaskChecklistItem> checklist;
+  final List<String> tags;
+  final List<TaskComment> comments;
+  final bool isFavorite;
 
   int get completedSteps => checklist.where((item) => item.isDone).length;
 
   StaffTask copyWith({
+    String? title,
+    String? description,
     TaskStatus? status,
     TaskPriority? priority,
+    String? assigneeId,
+    String? assigneeName,
     DateTime? dueAt,
     Iterable<TaskChecklistItem>? checklist,
+    Iterable<String>? tags,
+    Iterable<TaskComment>? comments,
+    bool? isFavorite,
   }) {
     return StaffTask(
       id: id,
-      title: title,
-      description: description,
+      title: title ?? this.title,
+      description: description ?? this.description,
       status: status ?? this.status,
       priority: priority ?? this.priority,
       creatorId: creatorId,
       creatorName: creatorName,
-      assigneeId: assigneeId,
-      assigneeName: assigneeName,
+      assigneeId: assigneeId ?? this.assigneeId,
+      assigneeName: assigneeName ?? this.assigneeName,
       dueAt: dueAt ?? this.dueAt,
       createdAt: createdAt,
       checklist: checklist ?? this.checklist,
+      tags: tags ?? this.tags,
+      comments: comments ?? this.comments,
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 
@@ -344,6 +487,9 @@ final class StaffTask {
     'dueAt': dueAt.toUtc().toIso8601String(),
     'createdAt': createdAt.toUtc().toIso8601String(),
     'checklist': checklist.map((item) => item.toJson()).toList(),
+    'tags': tags,
+    'comments': comments.map((item) => item.toJson()).toList(),
+    'isFavorite': isFavorite,
   };
 
   factory StaffTask.fromJson(JsonMap json) => StaffTask(
@@ -363,6 +509,9 @@ final class StaffTask {
     dueAt: _date(json['dueAt']),
     createdAt: _date(json['createdAt']),
     checklist: _maps(json['checklist']).map(TaskChecklistItem.fromJson),
+    tags: (json['tags'] as List?)?.whereType<String>() ?? const [],
+    comments: _maps(json['comments']).map(TaskComment.fromJson),
+    isFavorite: json['isFavorite'] as bool? ?? false,
   );
 }
 

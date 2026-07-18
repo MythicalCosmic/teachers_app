@@ -101,4 +101,18 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('clearing a survey draft removes the persisted answer', () async {
+    final survey = state.surveys.first;
+    const questionId = 'survey-001-q3';
+    final originalCount = survey.answeredCount;
+
+    await state.answerSurvey(survey.id, questionId, 'Draft reflection');
+    expect(state.surveys.first.answers[questionId], 'Draft reflection');
+    expect(state.surveys.first.answeredCount, originalCount + 1);
+
+    await state.answerSurvey(survey.id, questionId, '   ');
+    expect(state.surveys.first.answers, isNot(contains(questionId)));
+    expect(state.surveys.first.answeredCount, originalCount);
+  });
 }

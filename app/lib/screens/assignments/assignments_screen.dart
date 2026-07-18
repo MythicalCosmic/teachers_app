@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_scope.dart';
 import '../../data/models.dart';
+import '../../features/assignments/assignment_controller.dart';
+import '../../features/assignments/assignment_l10n.dart';
+import '../../features/assignments/assignment_models.dart';
 import '../../router.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_app_bar.dart';
@@ -17,7 +20,9 @@ import '../../widgets/sf_tab_bar.dart';
 enum _SubmissionFilter { all, needsFeedback, collecting, complete }
 
 class AssignmentsScreen extends StatefulWidget {
-  const AssignmentsScreen({super.key});
+  const AssignmentsScreen({super.key, this.controller});
+
+  final AssignmentController? controller;
 
   @override
   State<AssignmentsScreen> createState() => _AssignmentsScreenState();
@@ -26,197 +31,226 @@ class AssignmentsScreen extends StatefulWidget {
 class _AssignmentsScreenState extends State<AssignmentsScreen> {
   _SubmissionFilter _filter = _SubmissionFilter.all;
 
-  static const _seed = [
-    _Assignment(
-      'Kvadrat tenglamalar',
-      '9-B Algebra',
-      24,
-      7,
-      _SubmissionState.needsFeedback,
-    ),
-    _Assignment(
-      'Funksiyalar grafigi',
-      '9-A Algebra',
-      22,
-      18,
-      _SubmissionState.collecting,
-    ),
-    _Assignment(
-      'Yozma ish · Geometriya',
-      '10-V',
-      19,
-      12,
-      _SubmissionState.collecting,
-    ),
-    _Assignment(
-      'Olimpiada mashqlari',
-      '11-B Tayyorlov',
-      13,
-      13,
-      _SubmissionState.feedbackShared,
-    ),
-  ];
+  AssignmentController get _controller =>
+      widget.controller ?? AssignmentController.shared;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = AppScope.maybeOf(context);
+    _controller.initialize(
+      ownerId: app?.session?.userId ?? _controller.ownerId ?? 'demo-teacher',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
+    final app = AppScope.maybeOf(context);
+    final canTeach = app?.can(StaffCapability.teachLessons) ?? true;
     final c = SfTheme.colorsOf(context);
-    final fromTasks = state.tasks
-        .where((task) => task.title.startsWith('Topshiriq: '))
-        .map(
-          (task) => _Assignment(
-            task.title.substring('Topshiriq: '.length),
-            task.description.isEmpty ? 'Mening guruhim' : task.description,
-            0,
-            0,
-            _SubmissionState.collecting,
-          ),
-        );
-    final all = [...fromTasks, ..._seed];
-    final visible = all
-        .where((item) {
-          return switch (_filter) {
-            _SubmissionFilter.all => true,
-            _SubmissionFilter.needsFeedback =>
-              item.state == _SubmissionState.needsFeedback,
-            _SubmissionFilter.collecting =>
-              item.state == _SubmissionState.collecting,
-            _SubmissionFilter.complete =>
-              item.state == _SubmissionState.feedbackShared,
-          };
-        })
-        .toList(growable: false);
-    final canTeach = state.can(StaffCapability.teachLessons);
-    return SfScaffold(
-      tab: SfTab.cohort,
-      onTabChanged: (tab) => handleTab(context, SfTab.values.indexOf(tab)),
-      top: SfLargeAppBar(
-        title: 'Topshiriqlar',
-        subtitle:
-            '${all.where((item) => item.state == _SubmissionState.needsFeedback).length} ta fikr kutmoqda',
-        actions: [
-          IconButton(
-            tooltip: 'Jarayon ko‘rinishi',
-            onPressed: () => context.push('/assignments/gradebook'),
-            icon: const Icon(Icons.view_kanban_outlined),
-          ),
-          if (canTeach)
-            IconButton(
-              tooltip: 'Topshiriq yaratish',
-              onPressed: () => context.push('/assignments/new'),
-              icon: const Icon(SfIcons.plus),
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) {
+        final l = AssignmentL10n.of(context);
+        final assignments = _controller.assignments;
+        final visible = assignments
+            .where((item) {
+              final progress = _controller.progressFor(item.id);
+              return switch (_filter) {
+                _SubmissionFilter.all => true,
+                _SubmissionFilter.needsFeedback =>
+                  progress == AssignmentProgressState.needsFeedback,
+                _SubmissionFilter.collecting =>
+                  progress == AssignmentProgressState.collecting,
+                _SubmissionFilter.complete =>
+                  progress == AssignmentProgressState.complete,
+              };
+            })
+            .toList(growable: false);
+        final featured = _controller.featuredAssignment;
+        return SfScaffold(
+          tab: SfTab.cohort,
+          onTabChanged: (tab) => handleTab(context, SfTab.values.indexOf(tab)),
+          top: SfLargeAppBar(
+            title: l.text('Topshiriqlar', 'Assignments'),
+            subtitle: l.text(
+              '${assignments.fold<int>(0, (sum, item) => sum + _controller.needsFeedbackCount(item.id))} ta fikr kutmoqda',
+              '${assignments.fold<int>(0, (sum, item) => sum + _controller.needsFeedbackCount(item.id))} awaiting feedback',
             ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
-        children: [
-          SegmentedButton<_SubmissionFilter>(
-            segments: const [
-              ButtonSegment(
-                value: _SubmissionFilter.all,
-                label: Text('Barchasi'),
+            actions: [
+              IconButton(
+                tooltip: l.text('Jarayon ko‘rinishi', 'Open gradebook'),
+                onPressed: featured == null
+                    ? null
+                    : () => _openGradebook(context, featured.id),
+                icon: const Icon(Icons.view_kanban_outlined),
               ),
-              ButtonSegment(
-                value: _SubmissionFilter.needsFeedback,
-                label: Text('Fikr kerak'),
-              ),
-              ButtonSegment(
-                value: _SubmissionFilter.collecting,
-                label: Text('Jarayonda'),
-              ),
-              ButtonSegment(
-                value: _SubmissionFilter.complete,
-                label: Text('Yakun'),
-              ),
+              if (canTeach)
+                IconButton(
+                  tooltip: l.text('Topshiriq yaratish', 'Create assignment'),
+                  onPressed: () => context.push('/assignments/new'),
+                  icon: const Icon(SfIcons.plus),
+                ),
             ],
-            selected: {_filter},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) =>
-                setState(() => _filter = selection.first),
           ),
-          const SizedBox(height: 14),
-          if (visible.isEmpty)
-            const SfEmptyState(
-              title: 'Bu holatda topshiriq yo‘q',
-              message: 'Boshqa filtrni tanlang.',
-              compact: true,
-            )
-          else
-            for (final item in visible) ...[
-              _AssignmentCard(item: item, canOpen: canTeach),
-              const SizedBox(height: 9),
-            ],
-        ],
-      ),
-      bottom: canTeach
-          ? Container(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
-              decoration: BoxDecoration(
-                color: c.surface,
-                border: Border(top: BorderSide(color: c.border)),
-              ),
-              child: SfButton(
-                kind: SfButtonKind.primary,
-                block: true,
-                height: 48,
-                label: 'Yangi topshiriq',
-                leading: SfIcons.plus,
-                onPressed: () => context.push('/assignments/new'),
-              ),
-            )
-          : null,
+          body: _controller.isRestoring
+              ? SfLoadingState(
+                  label: l.text(
+                    'Topshiriqlar tiklanmoqda…',
+                    'Restoring assignments…',
+                  ),
+                  message: l.text(
+                    'Saqlangan baho va fikrlar yuklanmoqda.',
+                    'Loading saved grades and feedback.',
+                  ),
+                )
+              : _controller.restoreError != null
+              ? SfErrorState(
+                  title: l.text(
+                    'Topshiriqlar ochilmadi',
+                    'Assignments could not be opened',
+                  ),
+                  message: '${_controller.restoreError}',
+                  retryLabel: l.text('Qayta urinish', 'Try again'),
+                  onRetry: _controller.retryRestore,
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                  children: [
+                    SegmentedButton<_SubmissionFilter>(
+                      segments: [
+                        ButtonSegment(
+                          value: _SubmissionFilter.all,
+                          label: Text(l.text('Barchasi', 'All')),
+                        ),
+                        ButtonSegment(
+                          value: _SubmissionFilter.needsFeedback,
+                          label: Text(l.text('Fikr kerak', 'Needs feedback')),
+                        ),
+                        ButtonSegment(
+                          value: _SubmissionFilter.collecting,
+                          label: Text(l.text('Jarayonda', 'Collecting')),
+                        ),
+                        ButtonSegment(
+                          value: _SubmissionFilter.complete,
+                          label: Text(l.text('Yakun', 'Complete')),
+                        ),
+                      ],
+                      selected: {_filter},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (selection) =>
+                          setState(() => _filter = selection.first),
+                    ),
+                    const SizedBox(height: 14),
+                    if (visible.isEmpty)
+                      SfEmptyState(
+                        title: l.text(
+                          'Bu holatda topshiriq yo‘q',
+                          'No assignments in this state',
+                        ),
+                        message: l.text(
+                          'Boshqa filtrni tanlang.',
+                          'Choose another filter.',
+                        ),
+                        compact: true,
+                      )
+                    else
+                      for (final item in visible) ...[
+                        _AssignmentCard(
+                          assignment: item,
+                          progress: _controller.progressFor(item.id),
+                          submitted: _controller.submittedCount(item.id),
+                          total: _controller.submissionsFor(item.id).length,
+                          averageGrade: _controller.averageGrade(item.id),
+                          canOpen: canTeach,
+                          onOpen: () => _openGradebook(context, item.id),
+                        ),
+                        const SizedBox(height: 9),
+                      ],
+                  ],
+                ),
+          bottom:
+              canTeach &&
+                  !_controller.isRestoring &&
+                  _controller.restoreError == null
+              ? Container(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    border: Border(top: BorderSide(color: c.border)),
+                  ),
+                  child: SfButton(
+                    kind: SfButtonKind.primary,
+                    block: true,
+                    height: 48,
+                    label: l.text('Yangi topshiriq', 'New assignment'),
+                    leading: SfIcons.plus,
+                    onPressed: () => context.push('/assignments/new'),
+                  ),
+                )
+              : null,
+        );
+      },
+    );
+  }
+
+  void _openGradebook(BuildContext context, String assignmentId) {
+    context.push(
+      Uri(
+        path: '/assignments/gradebook',
+        queryParameters: {'assignmentId': assignmentId},
+      ).toString(),
     );
   }
 }
 
-enum _SubmissionState { collecting, needsFeedback, feedbackShared }
-
-class _Assignment {
-  const _Assignment(
-    this.title,
-    this.cohort,
-    this.total,
-    this.submitted,
-    this.state,
-  );
-  final String title;
-  final String cohort;
-  final int total;
-  final int submitted;
-  final _SubmissionState state;
-}
-
 class _AssignmentCard extends StatelessWidget {
-  const _AssignmentCard({required this.item, required this.canOpen});
-  final _Assignment item;
+  const _AssignmentCard({
+    required this.assignment,
+    required this.progress,
+    required this.submitted,
+    required this.total,
+    required this.averageGrade,
+    required this.canOpen,
+    required this.onOpen,
+  });
+
+  final StaffAssignment assignment;
+  final AssignmentProgressState progress;
+  final int submitted;
+  final int total;
+  final int? averageGrade;
   final bool canOpen;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    final status = switch (item.state) {
-      _SubmissionState.collecting => (
+    final l = AssignmentL10n.of(context);
+    final status = switch (progress) {
+      AssignmentProgressState.collecting => (
         SfPillTone.primary,
-        'Javoblar kelmoqda',
+        l.text('Javoblar kelmoqda', 'Collecting responses'),
         c.primary,
       ),
-      _SubmissionState.needsFeedback => (
+      AssignmentProgressState.needsFeedback => (
         SfPillTone.warn,
-        'Fikr kutilmoqda',
+        l.text('Fikr kutilmoqda', 'Feedback needed'),
         c.warn,
       ),
-      _SubmissionState.feedbackShared => (
+      AssignmentProgressState.complete => (
         SfPillTone.success,
-        'Fikr yuborilgan',
+        l.text('Fikr yuborilgan', 'Feedback shared'),
         c.success,
       ),
     };
-    final progress = item.total == 0 ? 0.0 : item.submitted / item.total;
+    final submissionProgress = total == 0 ? 0.0 : submitted / total;
     return SfSurfaceCard(
+      key: Key('assignment-card-${assignment.id}'),
       padding: EdgeInsets.zero,
       child: InkWell(
-        onTap: canOpen ? () => context.push('/assignments/grade') : null,
+        key: Key('assignment-open-${assignment.id}'),
+        onTap: canOpen ? onOpen : null,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -227,7 +261,7 @@ class _AssignmentCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      item.title,
+                      l.assignmentTitle(assignment),
                       style: SfType.ui(
                         size: 14,
                         weight: FontWeight.w800,
@@ -239,21 +273,39 @@ class _AssignmentCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              Text(item.cohort, style: SfType.ui(size: 11, color: c.muted)),
+              Text(
+                '${l.cohortName(assignment.cohortName)} · ${l.responseLabel(assignment.responseType)}',
+                style: SfType.ui(size: 11, color: c.muted),
+              ),
               const SizedBox(height: 11),
               LinearProgressIndicator(
-                value: progress,
+                value: submissionProgress,
                 minHeight: 6,
                 borderRadius: BorderRadius.circular(6),
                 color: status.$3,
                 backgroundColor: c.surface3,
               ),
               const SizedBox(height: 6),
-              Text(
-                item.total == 0
-                    ? 'Hali topshirilmagan'
-                    : '${item.submitted}/${item.total} ta topshirildi',
-                style: SfType.mono(size: 10, color: c.muted),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      l.text(
+                        '$submitted/$total ta topshirildi',
+                        '$submitted/$total submitted',
+                      ),
+                      style: SfType.mono(size: 10, color: c.muted),
+                    ),
+                  ),
+                  if (averageGrade != null)
+                    Text(
+                      l.text(
+                        'O‘rtacha $averageGrade/100',
+                        'Average $averageGrade/100',
+                      ),
+                      style: SfType.mono(size: 10, color: c.ink2),
+                    ),
+                ],
               ),
             ],
           ),

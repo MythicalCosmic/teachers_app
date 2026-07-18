@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_scope.dart';
 import '../data/models.dart';
@@ -26,6 +30,8 @@ class ContentScreen extends StatefulWidget {
 }
 
 class _ContentScreenState extends State<ContentScreen> {
+  static const _storageKey = 'starforge.content_workspace.v1';
+
   final _searchController = TextEditingController();
   final _downloadedIds = <String>{};
   late final List<_LibraryFile> _files = [..._seedFiles];
@@ -33,11 +39,93 @@ class _ContentScreenState extends State<ContentScreen> {
   String? _folder;
   bool _showSearch = false;
   bool _sortByTitle = false;
+  String? _storageError;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreLibrary());
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _restoreLibrary() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final raw = preferences.getString(_storageKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final map = Map<String, dynamic>.from(decoded);
+      final restoredFiles = (map['localResources'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (value) => _LibraryFile.fromJson(Map<String, dynamic>.from(value)),
+          )
+          .whereType<_LibraryFile>()
+          .toList();
+      final restoredIds = (map['offlineBookmarks'] as List? ?? const [])
+          .whereType<String>()
+          .toSet();
+      if (!mounted) return;
+      setState(() {
+        _files
+          ..removeWhere((file) => file.isLocal)
+          ..addAll(restoredFiles);
+        _downloadedIds
+          ..clear()
+          ..addAll(
+            restoredIds.where((id) => _files.any((file) => file.id == id)),
+          );
+        _storageError = null;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _storageError = _contentText(
+          context,
+          uz: 'Mahalliy kutubxona o‘qilmadi. Asosiy materiallar xavfsiz qoldi.',
+          en: 'The local library could not be read. Seed materials remain safe.',
+        );
+      });
+    }
+  }
+
+  Future<bool> _persistLibrary() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = await preferences.setString(
+        _storageKey,
+        jsonEncode({
+          'version': 1,
+          'localResources': _files
+              .where((file) => file.isLocal)
+              .map((file) => file.toJson())
+              .toList(),
+          'offlineBookmarks': _downloadedIds.toList(),
+        }),
+      );
+      if (!saved) throw StateError('SharedPreferences write returned false.');
+      if (mounted && _storageError != null) {
+        setState(() => _storageError = null);
+      }
+      return true;
+    } on Object {
+      if (mounted) {
+        setState(() {
+          _storageError = _contentText(
+            context,
+            uz: 'O‘zgarish qurilmaga saqlanmadi. Qayta urinib ko‘ring.',
+            en: 'The change was not saved on this device. Please retry.',
+          );
+        });
+      }
+      return false;
+    }
   }
 
   @override
@@ -68,13 +156,30 @@ class _ContentScreenState extends State<ContentScreen> {
       top: Column(
         children: [
           SfLargeAppBar(
-            title: 'Materiallar',
-            subtitle: 'Xodimlar kutubxonasi · ${_files.length} fayl',
-            leading: _BackButton(onPressed: () => _goBack(context)),
+            title: _contentText(context, uz: 'Materiallar', en: 'Materials'),
+            subtitle: _contentText(
+              context,
+              uz: 'Xodimlar kutubxonasi · ${_files.length} fayl',
+              en: 'Staff library · ${_files.length} items',
+            ),
+            leading: _BackButton(
+              label: _contentText(context, uz: 'Ortga', en: 'Back'),
+              onPressed: () => _goBack(context),
+            ),
             actions: [
               _HeaderAction(
                 icon: _showSearch ? Icons.close_rounded : SfIcons.search,
-                label: _showSearch ? 'Izlashni yopish' : 'Material izlash',
+                label: _showSearch
+                    ? _contentText(
+                        context,
+                        uz: 'Izlashni yopish',
+                        en: 'Close search',
+                      )
+                    : _contentText(
+                        context,
+                        uz: 'Material izlash',
+                        en: 'Search materials',
+                      ),
                 onPressed: () => setState(() {
                   _showSearch = !_showSearch;
                   if (!_showSearch) _searchController.clear();
@@ -82,7 +187,11 @@ class _ContentScreenState extends State<ContentScreen> {
               ),
               _HeaderAction(
                 icon: SfIcons.upload,
-                label: 'Material qo‘shish',
+                label: _contentText(
+                  context,
+                  uz: 'Material kartasi qo‘shish',
+                  en: 'Add material card',
+                ),
                 onPressed: _addResource,
               ),
             ],
@@ -94,14 +203,22 @@ class _ContentScreenState extends State<ContentScreen> {
               child: SfTextField(
                 controller: _searchController,
                 autofocus: true,
-                hint: 'Fayl yoki papka nomi',
+                hint: _contentText(
+                  context,
+                  uz: 'Fayl yoki papka nomi',
+                  en: 'Material or folder name',
+                ),
                 prefixIcon: SfIcons.search,
                 textInputAction: TextInputAction.search,
                 onChanged: (_) => setState(() {}),
                 suffix: _searchController.text.isEmpty
                     ? null
                     : IconButton(
-                        tooltip: 'Tozalash',
+                        tooltip: _contentText(
+                          context,
+                          uz: 'Tozalash',
+                          en: 'Clear',
+                        ),
                         onPressed: () {
                           _searchController.clear();
                           setState(() {});
@@ -126,25 +243,54 @@ class _ContentScreenState extends State<ContentScreen> {
         children: [
           SfHintCard(
             compact: true,
-            title: '${session.role.uzLabel} kutubxonasi',
-            message:
-                'Materialni ko‘rib chiqing, qurilmaga saqlang yoki to‘g‘ridan-to‘g‘ri chopga yuboring.',
+            title: _contentText(
+              context,
+              uz: '${session.role.uzLabel} kutubxonasi',
+              en: '${session.role.label} library',
+            ),
+            message: _contentText(
+              context,
+              uz: 'Material kartalarini ko‘ring, oflayn ro‘yxatga belgilang yoki chop navbatiga yuboring. Demo rejimida haqiqiy fayl uzatish ulanmagan.',
+              en: 'Review material cards, bookmark them for offline planning, or send them to the print queue. Binary file transfer is not connected in demo mode.',
+            ),
             actionLabel: session.can(StaffCapability.submitPrintJobs)
-                ? 'Chop navbati'
+                ? _contentText(context, uz: 'Chop navbati', en: 'Print queue')
                 : null,
             onAction: session.can(StaffCapability.submitPrintJobs)
                 ? () => context.push('/print')
                 : null,
           ),
+          if (_storageError != null) ...[
+            const SizedBox(height: 10),
+            SfHintCard(
+              compact: true,
+              tone: SfHintTone.danger,
+              title: _contentText(
+                context,
+                uz: 'Saqlash muammosi',
+                en: 'Storage problem',
+              ),
+              message: _storageError!,
+              actionLabel: _contentText(
+                context,
+                uz: 'Qayta urinish',
+                en: 'Retry',
+              ),
+              onAction: () => unawaited(_persistLibrary()),
+            ),
+          ],
           const SizedBox(height: 18),
           Row(
             children: [
-              Text('PAPKALAR', style: SfType.eyebrow(color: c.muted)),
+              Text(
+                _contentText(context, uz: 'PAPKALAR', en: 'FOLDERS'),
+                style: SfType.eyebrow(color: c.muted),
+              ),
               const Spacer(),
               if (_folder != null)
                 TextButton(
                   onPressed: () => setState(() => _folder = null),
-                  child: const Text('Hammasi'),
+                  child: Text(_contentText(context, uz: 'Hammasi', en: 'All')),
                 ),
             ],
           ),
@@ -172,7 +318,13 @@ class _ContentScreenState extends State<ContentScreen> {
           Row(
             children: [
               Text(
-                _folder == null ? 'SO‘NGGI FAYLLAR' : _folder!.toUpperCase(),
+                _folder == null
+                    ? _contentText(
+                        context,
+                        uz: 'SO‘NGGI FAYLLAR',
+                        en: 'RECENT MATERIALS',
+                      )
+                    : _folder!.toUpperCase(),
                 style: SfType.eyebrow(color: c.muted),
               ),
               const Spacer(),
@@ -184,7 +336,15 @@ class _ContentScreenState extends State<ContentScreen> {
                       : Icons.schedule_rounded,
                   size: 16,
                 ),
-                label: Text(_sortByTitle ? 'Nom bo‘yicha' : 'Yangi avval'),
+                label: Text(
+                  _sortByTitle
+                      ? _contentText(context, uz: 'Nom bo‘yicha', en: 'By name')
+                      : _contentText(
+                          context,
+                          uz: 'Yangi avval',
+                          en: 'Newest first',
+                        ),
+                ),
               ),
             ],
           ),
@@ -194,9 +354,21 @@ class _ContentScreenState extends State<ContentScreen> {
               child: SfEmptyState(
                 compact: true,
                 icon: SfIcons.folder,
-                title: 'Material topilmadi',
-                message: 'Izlash yoki tur filtrini tozalab ko‘ring.',
-                actionLabel: 'Filtrlarni tozalash',
+                title: _contentText(
+                  context,
+                  uz: 'Material topilmadi',
+                  en: 'No materials found',
+                ),
+                message: _contentText(
+                  context,
+                  uz: 'Izlash yoki tur filtrini tozalab ko‘ring.',
+                  en: 'Clear the search or type filter and try again.',
+                ),
+                actionLabel: _contentText(
+                  context,
+                  uz: 'Filtrlarni tozalash',
+                  en: 'Clear filters',
+                ),
                 onAction: () {
                   _searchController.clear();
                   setState(() {
@@ -246,30 +418,85 @@ class _ContentScreenState extends State<ContentScreen> {
           id: 'local-${DateTime.now().microsecondsSinceEpoch}',
           name: draft.name,
           type: draft.type,
-          meta: 'Mahalliy material · yangi',
+          meta: 'Mahalliy material kartasi · fayl biriktirilmagan',
           folder: draft.folder,
           order: DateTime.now().millisecondsSinceEpoch,
           aiSummary: false,
+          description: draft.description,
+          isLocal: true,
         ),
       );
       _type = _ContentType.all;
       _folder = null;
     });
+    final persisted = await _persistLibrary();
+    if (!mounted) return;
     SfToast.show(
       context,
-      title: 'Material qo‘shildi',
-      message: '${draft.name} xodimlar kutubxonasiga joylandi.',
-      tone: SfToastTone.success,
+      title: persisted
+          ? _contentText(
+              context,
+              uz: 'Material kartasi saqlandi',
+              en: 'Material card saved',
+            )
+          : _contentText(context, uz: 'Saqlab bo‘lmadi', en: 'Could not save'),
+      message: persisted
+          ? _contentText(
+              context,
+              uz: '${draft.name} ushbu qurilmadagi kutubxonaga qo‘shildi.',
+              en: '${draft.name} was added to this device library.',
+            )
+          : _contentText(
+              context,
+              uz: 'Kartani ko‘rishingiz mumkin, ammo u qayta ochilganda yo‘qolishi mumkin.',
+              en: 'The card remains visible now but may be lost after reopening.',
+            ),
+      tone: persisted ? SfToastTone.success : SfToastTone.error,
     );
   }
 
-  void _download(_LibraryFile file) {
-    setState(() => _downloadedIds.add(file.id));
+  Future<void> _download(_LibraryFile file) async {
+    final added = !_downloadedIds.contains(file.id);
+    setState(() {
+      if (added) {
+        _downloadedIds.add(file.id);
+      } else {
+        _downloadedIds.remove(file.id);
+      }
+    });
+    final persisted = await _persistLibrary();
+    if (!mounted) return;
     SfToast.show(
       context,
-      title: 'Qurilmaga saqlandi',
-      message: '${file.name} oflayn foydalanish uchun tayyor.',
-      tone: SfToastTone.success,
+      title: persisted
+          ? added
+                ? _contentText(
+                    context,
+                    uz: 'Oflayn ro‘yxatga belgilandi',
+                    en: 'Added to offline planning',
+                  )
+                : _contentText(
+                    context,
+                    uz: 'Oflayn ro‘yxatdan olindi',
+                    en: 'Removed from offline planning',
+                  )
+          : _contentText(
+              context,
+              uz: 'Belgini saqlab bo‘lmadi',
+              en: 'Could not save bookmark',
+            ),
+      message: persisted
+          ? _contentText(
+              context,
+              uz: 'Bu belgi qurilmada saqlanadi; demo rejimi faylning o‘zini yuklab olmaydi.',
+              en: 'The bookmark is saved on this device; demo mode does not download the binary file.',
+            )
+          : _contentText(
+              context,
+              uz: 'Qurilma xotirasiga yozishda muammo yuz berdi.',
+              en: 'The device could not store this change.',
+            ),
+      tone: persisted ? SfToastTone.success : SfToastTone.error,
     );
   }
 
@@ -278,90 +505,140 @@ class _ContentScreenState extends State<ContentScreen> {
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final c = SfTheme.colorsOf(sheetContext);
         return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .88,
+          ),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 38,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: c.borderStrong,
-                  borderRadius: BorderRadius.circular(99),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 38,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: c.borderStrong,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              _FileIcon(type: file.type, size: 64),
-              const SizedBox(height: 14),
-              Text(
-                file.name,
-                textAlign: TextAlign.center,
-                style: SfType.ui(
-                  size: 19,
-                  weight: FontWeight.w800,
-                  color: c.ink,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                '${file.folder} · ${file.meta}',
-                textAlign: TextAlign.center,
-                style: SfType.ui(size: 12, color: c.muted),
-              ),
-              if (file.aiSummary) ...[
+                const SizedBox(height: 20),
+                _FileIcon(type: file.type, size: 64),
                 const SizedBox(height: 14),
-                const SfHintCard(
-                  compact: true,
-                  tone: SfHintTone.ai,
-                  title: 'AI xulosa tayyor',
-                  message:
-                      'Asosiy mavzular va dars uchun tavsiya etilgan savollar ajratilgan.',
+                Text(
+                  file.name,
+                  textAlign: TextAlign.center,
+                  style: SfType.ui(
+                    size: 19,
+                    weight: FontWeight.w800,
+                    color: c.ink,
+                  ),
                 ),
-              ],
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: SfButton(
-                      kind: SfButtonKind.ghost,
-                      label: _downloadedIds.contains(file.id)
-                          ? 'Saqlandi'
-                          : 'Saqlash',
-                      leading: _downloadedIds.contains(file.id)
-                          ? SfIcons.check
-                          : SfIcons.download,
-                      onPressed: () {
-                        Navigator.pop(sheetContext);
-                        _download(file);
-                      },
+                const SizedBox(height: 5),
+                Text(
+                  '${file.folder} · ${_fileMeta(sheetContext, file)}',
+                  textAlign: TextAlign.center,
+                  style: SfType.ui(size: 12, color: c.muted),
+                ),
+                if (file.description.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    file.description,
+                    textAlign: TextAlign.center,
+                    style: SfType.ui(size: 12, color: c.ink2, height: 1.45),
+                  ),
+                ],
+                if (file.isLocal) ...[
+                  const SizedBox(height: 12),
+                  SfHintCard(
+                    compact: true,
+                    tone: SfHintTone.warning,
+                    title: _contentText(
+                      sheetContext,
+                      uz: 'Mahalliy karta',
+                      en: 'Local card',
+                    ),
+                    message: _contentText(
+                      sheetContext,
+                      uz: 'Nomi va izohi qurilmada saqlangan. Fayl uzatish ishlab chiqarish serveri ulangach mavjud bo‘ladi.',
+                      en: 'Its title and notes are stored on this device. File transfer becomes available when the production server is connected.',
                     ),
                   ),
-                  if (app.can(StaffCapability.submitPrintJobs)) ...[
-                    const SizedBox(width: 10),
+                ],
+                if (file.aiSummary) ...[
+                  const SizedBox(height: 14),
+                  SfHintCard(
+                    compact: true,
+                    tone: SfHintTone.ai,
+                    title: _contentText(
+                      sheetContext,
+                      uz: 'AI xulosa tayyor',
+                      en: 'AI summary ready',
+                    ),
+                    message: _contentText(
+                      sheetContext,
+                      uz: 'Asosiy mavzular va dars uchun tavsiya etilgan savollar ajratilgan.',
+                      en: 'Key topics and suggested lesson questions are highlighted.',
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                Row(
+                  children: [
                     Expanded(
                       child: SfButton(
-                        label: 'Chop etish',
-                        leading: SfIcons.printer,
+                        kind: SfButtonKind.ghost,
+                        label: _downloadedIds.contains(file.id)
+                            ? _contentText(
+                                sheetContext,
+                                uz: 'Oflayn belgisi bor',
+                                en: 'Offline bookmark',
+                              )
+                            : _contentText(
+                                sheetContext,
+                                uz: 'Oflayn belgilash',
+                                en: 'Bookmark offline',
+                              ),
+                        leading: _downloadedIds.contains(file.id)
+                            ? SfIcons.check
+                            : SfIcons.download,
                         onPressed: () {
                           Navigator.pop(sheetContext);
-                          context.push(
-                            '/print/new?document=${Uri.encodeQueryComponent(file.name)}',
-                          );
+                          unawaited(_download(file));
                         },
                       ),
                     ),
+                    if (app.can(StaffCapability.submitPrintJobs)) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: SfButton(
+                          label: _contentText(
+                            sheetContext,
+                            uz: 'Chop etish',
+                            en: 'Print',
+                          ),
+                          leading: SfIcons.printer,
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            context.push(
+                              '/print/new?document=${Uri.encodeQueryComponent(file.name)}',
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ],
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -389,7 +666,11 @@ class _TypeFilters extends StatelessWidget {
           final active = type == value;
           return SfPressable(
             onPressed: () => onChanged(type),
-            semanticLabel: '${_typeLabel(type)} filtri',
+            semanticLabel: _contentText(
+              context,
+              uz: '${_typeLabel(context, type)} filtri',
+              en: '${_typeLabel(context, type)} filter',
+            ),
             borderRadius: BorderRadius.circular(999),
             child: AnimatedContainer(
               duration: MediaQuery.disableAnimationsOf(context)
@@ -402,7 +683,7 @@ class _TypeFilters extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                _typeLabel(type),
+                _typeLabel(context, type),
                 style: SfType.ui(
                   size: 12,
                   weight: FontWeight.w700,
@@ -437,7 +718,11 @@ class _FolderCard extends StatelessWidget {
       width: 164,
       child: SfPressable(
         onPressed: onPressed,
-        semanticLabel: '$name papkasi, $count fayl',
+        semanticLabel: _contentText(
+          context,
+          uz: '$name papkasi, $count fayl',
+          en: '$name folder, $count items',
+        ),
         borderRadius: BorderRadius.circular(16),
         child: SfSurfaceCard(
           padding: const EdgeInsets.all(13),
@@ -471,7 +756,10 @@ class _FolderCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text('$count fayl', style: SfType.ui(size: 10, color: c.muted)),
+              Text(
+                _contentText(context, uz: '$count fayl', en: '$count items'),
+                style: SfType.ui(size: 10, color: c.muted),
+              ),
             ],
           ),
         ),
@@ -500,7 +788,7 @@ class _FileTile extends StatelessWidget {
     final c = SfTheme.colorsOf(context);
     return SfPressable(
       onPressed: onOpen,
-      semanticLabel: '${file.name}. ${file.meta}',
+      semanticLabel: '${file.name}. ${_fileMeta(context, file)}',
       borderRadius: BorderRadius.zero,
       child: Container(
         constraints: const BoxConstraints(minHeight: 72),
@@ -533,7 +821,7 @@ class _FileTile extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          file.meta,
+                          _fileMeta(context, file),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: SfType.ui(size: 10.5, color: c.muted),
@@ -553,9 +841,27 @@ class _FileTile extends StatelessWidget {
               child: SfPressable(
                 onPressed: onDownload,
                 semanticLabel: downloaded
-                    ? 'Qurilmaga saqlangan'
-                    : 'Qurilmaga saqlash',
-                tooltip: downloaded ? 'Saqlandi' : 'Saqlash',
+                    ? _contentText(
+                        context,
+                        uz: 'Oflayn ro‘yxatdan olish',
+                        en: 'Remove offline bookmark',
+                      )
+                    : _contentText(
+                        context,
+                        uz: 'Oflayn ro‘yxatga belgilash',
+                        en: 'Add offline bookmark',
+                      ),
+                tooltip: downloaded
+                    ? _contentText(
+                        context,
+                        uz: 'Oflayn belgi',
+                        en: 'Offline bookmark',
+                      )
+                    : _contentText(
+                        context,
+                        uz: 'Oflayn belgilash',
+                        en: 'Bookmark offline',
+                      ),
                 borderRadius: BorderRadius.circular(12),
                 child: Icon(
                   downloaded ? SfIcons.check : SfIcons.download,
@@ -610,7 +916,11 @@ class _UploadCard extends StatelessWidget {
     final c = SfTheme.colorsOf(context);
     return SfPressable(
       onPressed: onPressed,
-      semanticLabel: 'Yangi material qo‘shish',
+      semanticLabel: _contentText(
+        context,
+        uz: 'Yangi material kartasi qo‘shish',
+        en: 'Add a new material card',
+      ),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(18),
@@ -633,12 +943,20 @@ class _UploadCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'Material qo‘shish',
+              _contentText(
+                context,
+                uz: 'Material kartasi qo‘shish',
+                en: 'Add material card',
+              ),
               style: SfType.ui(size: 14, weight: FontWeight.w700, color: c.ink),
             ),
             const SizedBox(height: 2),
             Text(
-              'Nomi, turi va papkasini kiriting',
+              _contentText(
+                context,
+                uz: 'Nomi, izohi, turi va papkasini kiriting',
+                en: 'Enter a title, notes, type, and folder',
+              ),
               style: SfType.ui(size: 11, color: c.muted),
             ),
           ],
@@ -658,12 +976,14 @@ class _AddResourceSheet extends StatefulWidget {
 class _AddResourceSheetState extends State<_AddResourceSheet> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
   _ContentType _type = _ContentType.pdf;
   String _folder = _folders.first;
 
   @override
   void dispose() {
     _nameController.dispose();
+    _descriptionController.dispose();
     super.dispose();
   }
 
@@ -700,7 +1020,11 @@ class _AddResourceSheetState extends State<_AddResourceSheet> {
               ),
               const SizedBox(height: 18),
               Text(
-                'Yangi material',
+                _contentText(
+                  context,
+                  uz: 'Yangi material kartasi',
+                  en: 'New material card',
+                ),
                 style: SfType.ui(
                   size: 20,
                   weight: FontWeight.w800,
@@ -709,31 +1033,72 @@ class _AddResourceSheetState extends State<_AddResourceSheet> {
               ),
               const SizedBox(height: 5),
               Text(
-                'Kutubxonada xodimlar uchun tushunarli nomdan foydalaning.',
+                _contentText(
+                  context,
+                  uz: 'Demo rejimida metadata qurilmada saqlanadi; haqiqiy fayl yuborilmaydi.',
+                  en: 'Demo mode stores metadata on this device; it does not upload a binary file.',
+                ),
                 style: SfType.ui(size: 12, color: c.muted),
               ),
               const SizedBox(height: 18),
               SfTextField(
                 controller: _nameController,
-                label: 'Material nomi',
-                hint: 'Masalan, Kvadrat tenglamalar',
+                label: _contentText(
+                  context,
+                  uz: 'Material nomi',
+                  en: 'Material title',
+                ),
+                hint: _contentText(
+                  context,
+                  uz: 'Masalan, Kvadrat tenglamalar',
+                  en: 'For example, Quadratic equations',
+                ),
                 prefixIcon: SfIcons.doc,
                 autofocus: true,
-                textInputAction: TextInputAction.done,
+                textInputAction: TextInputAction.next,
                 validator: (value) => value == null || value.trim().length < 3
-                    ? 'Kamida 3 ta belgi kiriting'
+                    ? _contentText(
+                        context,
+                        uz: 'Kamida 3 ta belgi kiriting',
+                        en: 'Enter at least 3 characters',
+                      )
                     : null,
+              ),
+              const SizedBox(height: 14),
+              SfTextField(
+                controller: _descriptionController,
+                label: _contentText(
+                  context,
+                  uz: 'Qisqa izoh',
+                  en: 'Short note',
+                ),
+                hint: _contentText(
+                  context,
+                  uz: 'Darsda qanday ishlatiladi?',
+                  en: 'How will this be used in class?',
+                ),
+                prefixIcon: Icons.notes_rounded,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 240,
+                textInputAction: TextInputAction.newline,
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<_ContentType>(
                 initialValue: _type,
-                decoration: const InputDecoration(labelText: 'Fayl turi'),
+                decoration: InputDecoration(
+                  labelText: _contentText(
+                    context,
+                    uz: 'Fayl turi',
+                    en: 'Material type',
+                  ),
+                ),
                 items: _ContentType.values
                     .where((type) => type != _ContentType.all)
                     .map(
                       (type) => DropdownMenuItem(
                         value: type,
-                        child: Text(_typeLabel(type)),
+                        child: Text(_typeLabel(context, type)),
                       ),
                     )
                     .toList(growable: false),
@@ -744,7 +1109,9 @@ class _AddResourceSheetState extends State<_AddResourceSheet> {
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
                 initialValue: _folder,
-                decoration: const InputDecoration(labelText: 'Papka'),
+                decoration: InputDecoration(
+                  labelText: _contentText(context, uz: 'Papka', en: 'Folder'),
+                ),
                 items: _folders
                     .map(
                       (folder) =>
@@ -758,7 +1125,11 @@ class _AddResourceSheetState extends State<_AddResourceSheet> {
               const SizedBox(height: 20),
               SfButton(
                 block: true,
-                label: 'Kutubxonaga qo‘shish',
+                label: _contentText(
+                  context,
+                  uz: 'Kartani saqlash',
+                  en: 'Save card',
+                ),
                 leading: SfIcons.upload,
                 onPressed: () {
                   if (!_formKey.currentState!.validate()) return;
@@ -768,6 +1139,7 @@ class _AddResourceSheetState extends State<_AddResourceSheet> {
                       name: _nameController.text.trim(),
                       type: _type,
                       folder: _folder,
+                      description: _descriptionController.text.trim(),
                     ),
                   );
                 },
@@ -808,8 +1180,9 @@ class _HeaderAction extends StatelessWidget {
 }
 
 class _BackButton extends StatelessWidget {
-  const _BackButton({required this.onPressed});
+  const _BackButton({required this.label, required this.onPressed});
 
+  final String label;
   final VoidCallback onPressed;
 
   @override
@@ -817,8 +1190,8 @@ class _BackButton extends StatelessWidget {
     final c = SfTheme.colorsOf(context);
     return SfPressable(
       onPressed: onPressed,
-      semanticLabel: 'Ortga',
-      tooltip: 'Ortga',
+      semanticLabel: label,
+      tooltip: label,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
@@ -827,7 +1200,7 @@ class _BackButton extends StatelessWidget {
           children: [
             Icon(SfIcons.arrowL, size: 18, color: c.primary),
             const SizedBox(width: 3),
-            Text('Ortga', style: SfType.ui(size: 13, color: c.primary)),
+            Text(label, style: SfType.ui(size: 13, color: c.primary)),
           ],
         ),
       ),
@@ -844,6 +1217,8 @@ class _LibraryFile {
     required this.folder,
     required this.order,
     required this.aiSummary,
+    this.description = '',
+    this.isLocal = false,
   });
 
   final String id;
@@ -853,6 +1228,40 @@ class _LibraryFile {
   final String folder;
   final int order;
   final bool aiSummary;
+  final String description;
+  final bool isLocal;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'type': type.name,
+    'meta': meta,
+    'folder': folder,
+    'order': order,
+    'description': description,
+  };
+
+  static _LibraryFile? fromJson(Map<String, dynamic> json) {
+    try {
+      final type = _ContentType.values.byName(json['type'] as String);
+      if (type == _ContentType.all) return null;
+      return _LibraryFile(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        type: type,
+        meta:
+            json['meta'] as String? ??
+            'Mahalliy material kartasi · fayl biriktirilmagan',
+        folder: json['folder'] as String,
+        order: json['order'] as int,
+        aiSummary: false,
+        description: json['description'] as String? ?? '',
+        isLocal: true,
+      );
+    } on Object {
+      return null;
+    }
+  }
 }
 
 class _NewResourceDraft {
@@ -860,11 +1269,13 @@ class _NewResourceDraft {
     required this.name,
     required this.type,
     required this.folder,
+    required this.description,
   });
 
   final String name;
   final _ContentType type;
   final String folder;
+  final String description;
 }
 
 const _folders = <String>[
@@ -930,13 +1341,27 @@ const _seedFiles = <_LibraryFile>[
   ),
 ];
 
-String _typeLabel(_ContentType type) => switch (type) {
-  _ContentType.all => 'Hammasi',
+String _typeLabel(BuildContext context, _ContentType type) => switch (type) {
+  _ContentType.all => _contentText(context, uz: 'Hammasi', en: 'All'),
   _ContentType.pdf => 'PDF',
   _ContentType.video => 'Video',
-  _ContentType.slide => 'Slayd',
-  _ContentType.document => 'Hujjat',
+  _ContentType.slide => _contentText(context, uz: 'Slayd', en: 'Slides'),
+  _ContentType.document => _contentText(context, uz: 'Hujjat', en: 'Document'),
 };
+
+String _contentText(
+  BuildContext context, {
+  required String uz,
+  required String en,
+}) => Localizations.localeOf(context).languageCode == 'uz' ? uz : en;
+
+String _fileMeta(BuildContext context, _LibraryFile file) => file.isLocal
+    ? _contentText(
+        context,
+        uz: 'Mahalliy material kartasi · fayl biriktirilmagan',
+        en: 'Local material card · no file attached',
+      )
+    : file.meta;
 
 void _goBack(BuildContext context) {
   if (context.canPop()) {

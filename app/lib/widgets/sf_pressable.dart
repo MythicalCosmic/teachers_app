@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app/app_scope.dart';
 import '../theme/sf_motion.dart';
 
 /// The visual interaction state exposed by [SfPressable.builder].
@@ -113,7 +114,8 @@ class _SfPressableState extends State<SfPressable> {
 
   void _activate() {
     if (!_enabled) return;
-    if (widget.haptic) {
+    final hapticsEnabled = AppScope.maybeOf(context)?.settings.haptics ?? true;
+    if (widget.haptic && hapticsEnabled) {
       HapticFeedback.selectionClick();
     }
     widget.onPressed?.call();

@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import 'app/app_scope.dart';
@@ -23,10 +25,10 @@ import 'screens/cohort_detail_screen.dart';
 import 'screens/cohort_list_screen.dart';
 import 'screens/content_screen.dart';
 import 'screens/edit_profile_screen.dart';
+import 'screens/groups/group_workspace_store.dart';
 import 'screens/lesson_screen.dart';
 import 'screens/messages_screen.dart';
-import 'screens/mgmt/mgmt_chat_screen.dart';
-import 'screens/mgmt/mgmt_inbox_screen.dart';
+import 'screens/messaging_contact_profile_screen.dart';
 import 'screens/new_message_screen.dart';
 import 'screens/new_task_screen.dart';
 import 'screens/notifications_screen.dart';
@@ -48,16 +50,23 @@ import 'screens/surveys/surveys_screen.dart';
 import 'screens/tasks/task_detail_screen.dart';
 import 'screens/tasks/tasks_screen.dart';
 import 'screens/today_screen.dart';
+import 'screens/today/today_data.dart';
+import 'screens/today/today_metric_detail_screen.dart';
 import 'theme/sf_theme.dart';
 import 'widgets/sf_button.dart';
+import 'widgets/sf_adaptive_dialog.dart';
 import 'widgets/sf_icons.dart';
 import 'widgets/sf_toast.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
-GoRouter buildRouter(AppState app) => GoRouter(
+GoRouter buildRouter(
+  AppState app, {
+  String initialLocation = '/home',
+  GroupWorkspaceStore? groupStore,
+}) => GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: '/home',
+  initialLocation: initialLocation,
   refreshListenable: app,
   redirect: (context, state) => _redirect(app, state),
   routes: [
@@ -144,10 +153,73 @@ GoRouter buildRouter(AppState app) => GoRouter(
     GoRoute(path: '/cohorts', redirect: (context, state) => '/workspace'),
     GoRoute(path: '/tasks', redirect: (context, state) => '/work'),
     _route('/schedule', const ScheduleScreen(), app),
-    _route('/lesson', const LessonScreen(), app),
-    _route('/attendance', const AttendanceScreen(), app),
-    _route('/cohort', const CohortDetailScreen(), app),
-    _route('/student', const StudentProfileScreen(), app),
+    _route(
+      '/today/lessons',
+      const TodayMetricDetailScreen(kind: TodayMetricKind.lessons),
+      app,
+    ),
+    _route(
+      '/today/attendance',
+      const TodayMetricDetailScreen(kind: TodayMetricKind.attendance),
+      app,
+    ),
+    _route(
+      '/today/performance',
+      const TodayMetricDetailScreen(kind: TodayMetricKind.performance),
+      app,
+    ),
+    GoRoute(
+      path: '/lesson',
+      parentNavigatorKey: _rootNavigatorKey,
+      pageBuilder: (context, state) => _detailPage(
+        state,
+        LessonScreen(
+          slotId: state.uri.queryParameters['slot'],
+          groupId: state.uri.queryParameters['group'],
+          groupLessonId: state.uri.queryParameters['lesson'],
+        ),
+        app,
+      ),
+    ),
+    GoRoute(
+      path: '/attendance',
+      parentNavigatorKey: _rootNavigatorKey,
+      pageBuilder: (context, state) => _detailPage(
+        state,
+        AttendanceScreen(
+          cohortId: state.uri.queryParameters['cohort'],
+          lessonId: state.uri.queryParameters['lesson'],
+          lessonAt: _tryParseDateTime(state.uri.queryParameters['at']),
+          lessonTitle: state.uri.queryParameters['title'],
+          store: groupStore,
+        ),
+        app,
+      ),
+    ),
+    GoRoute(
+      path: '/cohort',
+      parentNavigatorKey: _rootNavigatorKey,
+      pageBuilder: (context, state) => _detailPage(
+        state,
+        CohortDetailScreen(
+          groupId: state.uri.queryParameters['id'],
+          initialTab: _cohortTab(state.uri.queryParameters['tab']),
+        ),
+        app,
+      ),
+    ),
+    GoRoute(
+      path: '/student',
+      parentNavigatorKey: _rootNavigatorKey,
+      pageBuilder: (context, state) => _detailPage(
+        state,
+        StudentProfileScreen(
+          studentId: state.uri.queryParameters['id'],
+          groupId: state.uri.queryParameters['group'],
+        ),
+        app,
+      ),
+    ),
     _route('/cards', const CardsScreen(), app),
     _route('/cards/give', const GiveCardScreen(), app),
     _route('/ai', const AiChatListScreen(), app),
@@ -156,8 +228,6 @@ GoRouter buildRouter(AppState app) => GoRouter(
     _route('/print/new', const NewPrintJobScreen(), app),
     _route('/tasks/detail', const TaskDetailScreen(), app),
     _route('/tasks/new', const NewTaskScreen(), app),
-    _route('/mgmt', const MgmtInboxScreen(), app),
-    _route('/mgmt/chat', const MgmtChatScreen(), app),
     _route('/surveys', const SurveysScreen(), app),
     _route('/surveys/form', const SurveyFormScreen(), app),
     _route('/assignments', const AssignmentsScreen(), app),
@@ -167,7 +237,19 @@ GoRouter buildRouter(AppState app) => GoRouter(
     _route('/content', const ContentScreen(), app),
     _route('/messages', const MessagesScreen(), app),
     _route('/messages/chat', const ChatScreen(), app),
-    _route('/messages/new', const NewMessageScreen(), app),
+    _route('/messages/contact', const MessagingContactProfileScreen(), app),
+    GoRoute(
+      path: '/messages/new',
+      parentNavigatorKey: _rootNavigatorKey,
+      pageBuilder: (context, state) => _detailPage(
+        state,
+        NewMessageScreen(
+          groupId: state.uri.queryParameters['group'],
+          studentId: state.uri.queryParameters['student'],
+        ),
+        app,
+      ),
+    ),
     _route('/notifications', const NotificationsScreen(), app),
     _route('/settings', const SettingsScreen(), app),
     _route('/settings/edit', const EditProfileScreen(), app),
@@ -182,13 +264,13 @@ GoRouter buildRouter(AppState app) => GoRouter(
       path: '/staff/reception',
       parentNavigatorKey: _rootNavigatorKey,
       pageBuilder: (context, state) =>
-          _detailPage(state, const ReceptionWorkspaceScreen(), app),
+          _detailPage(state, _receptionWorkspace(context), app),
     ),
     GoRoute(
       path: '/payments',
       parentNavigatorKey: _rootNavigatorKey,
       pageBuilder: (context, state) =>
-          _detailPage(state, const ReceptionWorkspaceScreen(), app),
+          _detailPage(state, _receptionWorkspace(context), app),
     ),
     GoRoute(
       path: '/staff/audit',
@@ -261,7 +343,7 @@ StaffCapability? _capabilityFor(String path) {
   if (path.startsWith('/print')) return StaffCapability.submitPrintJobs;
   if (path.startsWith('/surveys')) return StaffCapability.answerSurveys;
   if (path.startsWith('/assignments')) return StaffCapability.teachLessons;
-  if (path.startsWith('/messages') || path.startsWith('/mgmt')) {
+  if (path.startsWith('/messages')) {
     return StaffCapability.useStaffMessaging;
   }
   if (path.startsWith('/staff/quality')) {
@@ -284,6 +366,18 @@ StaffCapability? _capabilityFor(String path) {
   return null;
 }
 
+DateTime? _tryParseDateTime(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  return DateTime.tryParse(value)?.toLocal();
+}
+
+int? _cohortTab(String? value) => switch (value) {
+  'students' => 1,
+  'attendance' => 2,
+  'schedule' => 3,
+  _ => null,
+};
+
 GoRoute _route(String path, Widget child, AppState app) => GoRoute(
   path: path,
   parentNavigatorKey: _rootNavigatorKey,
@@ -296,29 +390,50 @@ CustomTransitionPage<void> _detailPage(
   AppState app,
 ) {
   final reduce = app.settings.reducedMotion;
+  Duration scaled(Duration value) => Duration(
+    microseconds: (value.inMicroseconds * app.settings.motionIntensity).round(),
+  );
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
     transitionDuration: reduce
         ? Duration.zero
-        : const Duration(milliseconds: 280),
+        : scaled(const Duration(milliseconds: 420)),
     reverseTransitionDuration: reduce
         ? Duration.zero
-        : const Duration(milliseconds: 220),
+        : scaled(const Duration(milliseconds: 300)),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       if (reduce) return child;
+      final platform = Theme.of(context).platform;
+      if (platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
+        return CupertinoPageTransition(
+          primaryRouteAnimation: CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          ),
+          secondaryRouteAnimation: secondaryAnimation,
+          linearTransition: false,
+          child: child,
+        );
+      }
       final curved = CurvedAnimation(
         parent: animation,
-        curve: Curves.easeOutCubic,
+        curve: Curves.easeOutQuart,
+        reverseCurve: Curves.easeInCubic,
       );
       return FadeTransition(
         opacity: curved,
         child: SlideTransition(
           position: Tween(
-            begin: const Offset(0.045, 0),
+            begin: const Offset(0, 0.025),
             end: Offset.zero,
           ).animate(curved),
-          child: child,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+            alignment: Alignment.topCenter,
+            child: child,
+          ),
         ),
       );
     },
@@ -331,12 +446,13 @@ CustomTransitionPage<void> _fadePage(
   AppState app,
 ) {
   final reduce = app.settings.reducedMotion;
+  final duration = Duration(
+    microseconds: (220000 * app.settings.motionIntensity).round(),
+  );
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
-    transitionDuration: reduce
-        ? Duration.zero
-        : const Duration(milliseconds: 220),
+    transitionDuration: reduce ? Duration.zero : duration,
     transitionsBuilder: (context, animation, secondaryAnimation, child) =>
         FadeTransition(opacity: animation, child: child),
   );
@@ -344,7 +460,8 @@ CustomTransitionPage<void> _fadePage(
 
 Widget _homeRoot(BuildContext context) {
   final app = AppScope.of(context);
-  final session = app.session!;
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   return switch (session.role) {
     StaffRole.teacher => const TodayScreen(),
     StaffRole.assistant ||
@@ -359,6 +476,8 @@ Widget _homeRoot(BuildContext context) {
       onOpenTask: (id) => context.push('/tasks/detail?id=$id'),
       onOpenPrimaryWorkspace: () => context.go('/workspace'),
       onOpenMessages: () => context.go('/inbox'),
+      refreshStore: staffTodayRefreshStore,
+      onRefresh: staffTodayRefreshStore.refresh,
     ),
     StaffRole.auditor => _auditDashboard(context),
   };
@@ -366,27 +485,33 @@ Widget _homeRoot(BuildContext context) {
 
 Widget _workspaceRoot(BuildContext context) {
   final app = AppScope.of(context);
-  return switch (app.session!.role) {
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
+  return switch (session.role) {
     StaffRole.teacher || StaffRole.assistant => const CohortListScreen(),
     StaffRole.methodist => _methodistWorkspace(context),
-    StaffRole.reception => const ReceptionWorkspaceScreen(),
+    StaffRole.reception => _receptionWorkspace(context),
     StaffRole.auditor => _auditSignals(context),
   };
 }
 
 Widget _workRoot(BuildContext context) {
-  final role = AppScope.of(context).session!.role;
+  final session = AppScope.of(context).session;
+  if (session == null) return const SizedBox.shrink();
+  final role = session.role;
   return switch (role) {
     StaffRole.teacher ||
     StaffRole.assistant ||
     StaffRole.methodist => const TasksScreen(),
-    StaffRole.reception => const ReceptionWorkspaceScreen(),
+    StaffRole.reception => _receptionWorkspace(context),
     StaffRole.auditor => _auditCases(context),
   };
 }
 
 Widget _inboxRoot(BuildContext context) {
-  final role = AppScope.of(context).session!.role;
+  final session = AppScope.of(context).session;
+  if (session == null) return const SizedBox.shrink();
+  final role = session.role;
   return role == StaffRole.auditor
       ? const NotificationsScreen()
       : const MessagesScreen();
@@ -394,7 +519,8 @@ Widget _inboxRoot(BuildContext context) {
 
 Widget _moreRoot(BuildContext context) {
   final app = AppScope.of(context);
-  final session = app.session!;
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   return StaffMoreHubScreen(
     role: session.role,
     displayName: session.displayName,
@@ -408,8 +534,10 @@ Widget _moreRoot(BuildContext context) {
 
 Widget _methodistWorkspace(BuildContext context) {
   final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   return MethodistQualityScreen(
-    role: app.session!.role,
+    role: session.role,
     attendanceSheets: app.attendanceSheets,
     cards: app.cards,
     tasks: app.tasks,
@@ -431,37 +559,466 @@ Widget _methodistWorkspace(BuildContext context) {
   );
 }
 
+Widget _receptionWorkspace(BuildContext _) {
+  return Builder(
+    builder: (routeContext) {
+      final session = AppScope.of(routeContext).session;
+      if (session == null) return const SizedBox.shrink();
+      return ReceptionWorkspaceScreen(
+        role: session.role,
+        store: receptionWorkspaceStore,
+        onCreateLead: () => unawaited(
+          _createReceptionLeadDialog(routeContext, receptionWorkspaceStore),
+        ),
+        onCall: (leadId) => unawaited(
+          _showReceptionCallDialog(
+            routeContext,
+            receptionWorkspaceStore,
+            leadId,
+          ),
+        ),
+        onOpenLead: (leadId) => unawaited(
+          _showReceptionLeadDetails(
+            routeContext,
+            receptionWorkspaceStore,
+            leadId,
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Future<void> _createReceptionLeadDialog(
+  BuildContext context,
+  ReceptionWorkspaceStore store,
+) async {
+  final student = TextEditingController();
+  final guardian = TextEditingController();
+  final phone = TextEditingController();
+  final course = TextEditingController();
+  var valid = false;
+  final draft = await showDialog<ReceptionLeadDraft>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) {
+        void validate() => setDialogState(() {
+          valid =
+              student.text.trim().isNotEmpty &&
+              guardian.text.trim().isNotEmpty &&
+              phone.text.trim().isNotEmpty &&
+              course.text.trim().isNotEmpty;
+        });
+
+        return AlertDialog(
+          title: Text(
+            _staffOperationalText(context, uz: 'Yangi lid', en: 'New lead'),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  key: const ValueKey('reception-lead-student'),
+                  controller: student,
+                  textCapitalization: TextCapitalization.words,
+                  onChanged: (_) => validate(),
+                  decoration: InputDecoration(
+                    labelText: _staffOperationalText(
+                      context,
+                      uz: 'O\u2018quvchi ismi',
+                      en: 'Student name',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  key: const ValueKey('reception-lead-guardian'),
+                  controller: guardian,
+                  textCapitalization: TextCapitalization.words,
+                  onChanged: (_) => validate(),
+                  decoration: InputDecoration(
+                    labelText: _staffOperationalText(
+                      context,
+                      uz: 'Ota-ona yoki vasiy',
+                      en: 'Parent or guardian',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  key: const ValueKey('reception-lead-phone'),
+                  controller: phone,
+                  keyboardType: TextInputType.phone,
+                  onChanged: (_) => validate(),
+                  decoration: InputDecoration(
+                    labelText: _staffOperationalText(
+                      context,
+                      uz: 'Telefon raqami',
+                      en: 'Phone number',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  key: const ValueKey('reception-lead-course'),
+                  controller: course,
+                  textCapitalization: TextCapitalization.sentences,
+                  onChanged: (_) => validate(),
+                  decoration: InputDecoration(
+                    labelText: _staffOperationalText(
+                      context,
+                      uz: 'Kurs yoki yo\u2018nalish',
+                      en: 'Course or program',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                _staffOperationalText(
+                  context,
+                  uz: 'Bekor qilish',
+                  en: 'Cancel',
+                ),
+              ),
+            ),
+            FilledButton(
+              key: const ValueKey('reception-create-lead-submit'),
+              onPressed: valid
+                  ? () => Navigator.pop(
+                      dialogContext,
+                      ReceptionLeadDraft(
+                        studentName: student.text,
+                        guardianName: guardian.text,
+                        phone: phone.text,
+                        course: course.text,
+                        source: _staffOperationalText(
+                          context,
+                          uz: 'Qo\u2018lda qo\u2018shildi',
+                          en: 'Manual entry',
+                        ),
+                      ),
+                    )
+                  : null,
+              child: Text(
+                _staffOperationalText(
+                  context,
+                  uz: 'Lidni qo\u2018shish',
+                  en: 'Add lead',
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  student.dispose();
+  guardian.dispose();
+  phone.dispose();
+  course.dispose();
+  if (draft == null) return;
+  final created = await store.createLead(draft);
+  if (!context.mounted) return;
+  SfToast.show(
+    context,
+    title: _staffOperationalText(
+      context,
+      uz: 'Lid qo\u2018shildi',
+      en: 'Lead added',
+    ),
+    message: '${created.studentName} · ${created.course}',
+    tone: SfToastTone.success,
+  );
+}
+
+enum _ReceptionCallAction { copy, record }
+
+Future<void> _showReceptionCallDialog(
+  BuildContext context,
+  ReceptionWorkspaceStore store,
+  String leadId,
+) async {
+  final lead = store.leads.where((item) => item.id == leadId).firstOrNull;
+  if (lead == null) return;
+  final action = await showDialog<_ReceptionCallAction>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(lead.studentName),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _staffOperationalText(
+              dialogContext,
+              uz: 'Bog\u2018lanish raqami',
+              en: 'Contact number',
+            ),
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            lead.phone,
+            key: const ValueKey('reception-call-phone'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(dialogContext, _ReceptionCallAction.copy),
+          child: Text(
+            _staffOperationalText(
+              dialogContext,
+              uz: 'Raqamni nusxalash',
+              en: 'Copy number',
+            ),
+          ),
+        ),
+        FilledButton.icon(
+          key: const ValueKey('reception-record-call'),
+          onPressed: () =>
+              Navigator.pop(dialogContext, _ReceptionCallAction.record),
+          icon: const Icon(Icons.call_outlined),
+          label: Text(
+            _staffOperationalText(
+              dialogContext,
+              uz: 'Suhbatni qayd etish',
+              en: 'Record conversation',
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+  if (action == null || !context.mounted) return;
+  if (action == _ReceptionCallAction.copy) {
+    await Clipboard.setData(ClipboardData(text: lead.phone));
+    if (!context.mounted) return;
+    SfToast.show(
+      context,
+      title: _staffOperationalText(
+        context,
+        uz: 'Raqam nusxalandi',
+        en: 'Number copied',
+      ),
+      message: lead.phone,
+      tone: SfToastTone.success,
+    );
+    return;
+  }
+  await store.recordCall(leadId);
+  if (!context.mounted) return;
+  SfToast.show(
+    context,
+    title: _staffOperationalText(
+      context,
+      uz: 'Aloqa qayd etildi',
+      en: 'Contact recorded',
+    ),
+    message: _staffOperationalText(
+      context,
+      uz: '${lead.studentName} bilan suhbat tarixi yangilandi.',
+      en: '${lead.studentName}\u2019s contact history was updated.',
+    ),
+    tone: SfToastTone.success,
+  );
+}
+
+Future<void> _showReceptionLeadDetails(
+  BuildContext context,
+  ReceptionWorkspaceStore store,
+  String leadId,
+) async {
+  if (!store.leads.any((lead) => lead.id == leadId)) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: SfTheme.colorsOf(context).surface,
+    builder: (sheetContext) => AnimatedBuilder(
+      animation: store,
+      builder: (context, _) {
+        final lead = store.leads.where((item) => item.id == leadId).firstOrNull;
+        if (lead == null) return const SizedBox.shrink();
+        final next = lead.stage.next;
+        return SafeArea(
+          top: false,
+          child: ListView(
+            key: const ValueKey('reception-lead-details'),
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 22),
+            children: [
+              Text(
+                lead.studentName,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${_receptionStageText(context, lead.stage)} · ${lead.course}',
+              ),
+              const SizedBox(height: 18),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.person_outline_rounded),
+                title: Text(
+                  _staffOperationalText(
+                    context,
+                    uz: 'Bog\u2018lanish shaxsi',
+                    en: 'Contact person',
+                  ),
+                ),
+                subtitle: Text(lead.guardianName),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.phone_outlined),
+                title: Text(
+                  _staffOperationalText(context, uz: 'Telefon', en: 'Phone'),
+                ),
+                subtitle: SelectableText(lead.phone),
+                trailing: IconButton(
+                  tooltip: _staffOperationalText(
+                    context,
+                    uz: 'Raqamni nusxalash',
+                    en: 'Copy number',
+                  ),
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: lead.phone));
+                    if (context.mounted) {
+                      SfToast.show(
+                        context,
+                        message: _staffOperationalText(
+                          context,
+                          uz: 'Telefon raqami nusxalandi.',
+                          en: 'Phone number copied.',
+                        ),
+                        tone: SfToastTone.success,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy_rounded),
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.campaign_outlined),
+                title: Text(
+                  _staffOperationalText(context, uz: 'Manba', en: 'Source'),
+                ),
+                subtitle: Text(lead.source),
+              ),
+              if (lead.note != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.notes_rounded),
+                  title: Text(
+                    _staffOperationalText(context, uz: 'Izoh', en: 'Note'),
+                  ),
+                  subtitle: Text(lead.note!),
+                ),
+              if (lead.lastContactAt != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.history_rounded),
+                  title: Text(
+                    _staffOperationalText(
+                      context,
+                      uz: 'So\u2018nggi aloqa',
+                      en: 'Last contact',
+                    ),
+                  ),
+                  subtitle: Text(lead.lastContactAt!.toLocal().toString()),
+                ),
+              if (next != null) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  key: const ValueKey('reception-details-advance'),
+                  onPressed: () => store.advanceLead(lead.id),
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  label: Text(
+                    _staffOperationalText(
+                      context,
+                      uz: '${next.label} bosqichiga o\u2018tkazish',
+                      en: 'Move to the next stage',
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
+String _staffOperationalText(
+  BuildContext context, {
+  required String uz,
+  required String en,
+}) => Localizations.maybeLocaleOf(context)?.languageCode == 'uz' ? uz : en;
+
+String _receptionStageText(BuildContext context, LeadStage stage) {
+  if (Localizations.maybeLocaleOf(context)?.languageCode == 'uz') {
+    return stage.label;
+  }
+  return switch (stage) {
+    LeadStage.newLead => 'New',
+    LeadStage.contacted => 'Contacted',
+    LeadStage.trialBooked => 'Trial booked',
+    LeadStage.tested => 'Tested',
+    LeadStage.enrolled => 'Enrolled',
+    LeadStage.lost => 'Closed',
+  };
+}
+
 Widget _auditDashboard(BuildContext context) {
   final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   return AuditorDashboardScreen(
-    role: app.session!.role,
+    role: session.role,
     anomalies: app.auditAnomalies,
     cases: app.auditCases,
     onOpenSignals: () => context.go('/workspace'),
     onOpenCases: () => context.go('/work'),
     onOpenAuditLog: () => context.push('/staff/audit/log'),
     onOpenSignal: (id) => context.push('/staff/audit/signal/$id'),
+    refreshStore: auditWorkspaceRefreshStore,
+    onRefresh: auditWorkspaceRefreshStore.refresh,
   );
 }
 
 Widget _auditSignals(BuildContext context) {
   final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   return AuditSignalsScreen(
-    role: app.session!.role,
+    role: session.role,
     anomalies: app.auditAnomalies,
     onOpenSignal: (id) => context.push('/staff/audit/signal/$id'),
     onAcknowledge: app.acknowledgeAnomaly,
+    refreshStore: auditWorkspaceRefreshStore,
+    onRefresh: auditWorkspaceRefreshStore.refresh,
   );
 }
 
 Widget _auditSignalDetail(BuildContext context, String id) {
   final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   final item = app.auditAnomalies.where((value) => value.id == id).firstOrNull;
   if (item == null) {
     return const _MissingRecordScreen(message: 'Audit signali topilmadi.');
   }
   return AuditSignalDetailScreen(
-    role: app.session!.role,
+    role: session.role,
     anomaly: item,
     onBack: () => context.pop(),
     onAcknowledge: app.acknowledgeAnomaly,
@@ -481,8 +1038,10 @@ Widget _auditSignalDetail(BuildContext context, String id) {
 
 Widget _auditCases(BuildContext context) {
   final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   return AuditCasesScreen(
-    role: app.session!.role,
+    role: session.role,
     cases: app.auditCases,
     onOpenCase: (id) => context.push('/staff/audit/case/$id'),
     onCreateCase: () => unawaited(_createCaseDialog(context, app)),
@@ -491,12 +1050,14 @@ Widget _auditCases(BuildContext context) {
 
 Widget _auditCaseDetail(BuildContext context, String id) {
   final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
   final item = app.auditCases.where((value) => value.id == id).firstOrNull;
   if (item == null) {
     return const _MissingRecordScreen(message: 'Audit holati topilmadi.');
   }
   return AuditCaseDetailScreen(
-    role: app.session!.role,
+    role: session.role,
     auditCase: item,
     onBack: () => context.pop(),
     onAddNote: app.addAuditCaseNote,
@@ -506,17 +1067,13 @@ Widget _auditCaseDetail(BuildContext context, String id) {
 
 Widget _auditLog(BuildContext context) {
   final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
+  final events = _auditEvents(app);
   return ImmutableAuditLogScreen(
-    role: app.session!.role,
-    events: _auditEvents(app),
-    onExport: () async {
-      SfToast.show(
-        context,
-        title: 'Eksport tayyor',
-        message: 'Audit jurnalining CSV nusxasi tekshirildi va tayyorlandi.',
-        tone: SfToastTone.success,
-      );
-    },
+    role: session.role,
+    events: events,
+    onExport: () async => buildAuditCsv(events),
   );
 }
 
@@ -545,24 +1102,14 @@ List<ImmutableAuditEventView> _auditEvents(AppState app) => [
 ];
 
 Future<void> _confirmSignOut(BuildContext context, AppState app) async {
-  final approved = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Hisobdan chiqasizmi?'),
-      content: const Text('Qurilmadagi lokal ish ma’lumotlari saqlanadi.'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Bekor'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Chiqish'),
-        ),
-      ],
-    ),
+  final approved = await showSfConfirmDialog(
+    context,
+    title: 'Hisobdan chiqasizmi?',
+    message: 'Qurilmadagi lokal ish ma’lumotlari saqlanadi.',
+    confirmLabel: 'Chiqish',
+    destructive: true,
   );
-  if (approved == true) await app.signOut();
+  if (approved) await app.signOut();
 }
 
 Future<void> _createCaseDialog(BuildContext context, AppState app) async {

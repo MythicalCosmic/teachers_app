@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/models.dart';
 import '../theme/sf_theme.dart';
 import 'sf_glass_surface.dart';
 import 'sf_pressable.dart';
@@ -65,6 +66,7 @@ class SfAdaptiveBottomNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
+    final sf = SfTheme.of(context);
     final active = selectedColor ?? c.primary;
     final inactive = unselectedColor ?? c.muted;
     final duration = SfMotion.resolve(
@@ -73,48 +75,63 @@ class SfAdaptiveBottomNavigation extends StatelessWidget {
       enabled: motionEnabled,
     );
 
-    return Padding(
-      padding: margin,
-      child: SfGlassSurface(
-        enabled: glassEnabled,
-        platformAdaptive: platformAdaptiveGlass,
-        borderRadius: borderRadius,
-        tintColor: backgroundColor ?? c.surface.withValues(alpha: 0.76),
-        fallbackColor: backgroundColor ?? c.surface,
-        shadows: const [
-          BoxShadow(
-            color: Color(0x1A1A1E18),
-            blurRadius: 24,
-            offset: Offset(0, 8),
-          ),
-        ],
-        child: SafeArea(
-          top: false,
-          bottom: safeBottom,
-          minimum: safeBottom
-              ? const EdgeInsets.only(bottom: 2)
-              : EdgeInsets.zero,
+    return SafeArea(
+      top: false,
+      bottom: safeBottom,
+      minimum: safeBottom ? const EdgeInsets.only(bottom: 6) : EdgeInsets.zero,
+      child: Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
           child: Padding(
-            padding: padding,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (var index = 0; index < destinations.length; index++)
-                  Expanded(
-                    child: _SfBottomDestinationItem(
-                      destination: destinations[index],
-                      selected: index == activeIndex,
-                      activeColor: active,
-                      inactiveColor: inactive,
-                      duration: duration,
-                      motionEnabled: motionEnabled,
-                      hapticsEnabled: hapticsEnabled,
-                      onPressed: onDestinationSelected == null
-                          ? null
-                          : () => onDestinationSelected!(index),
-                    ),
-                  ),
+            padding: margin,
+            child: SfGlassSurface(
+              enabled: glassEnabled || sf.usesGlass,
+              platformAdaptive: platformAdaptiveGlass,
+              blurSigma: sf.visualStyle == AppVisualStyle.liquidGlass ? 30 : 20,
+              borderRadius: borderRadius,
+              tintColor:
+                  backgroundColor ??
+                  c.surface.withValues(alpha: sf.navigationOpacity),
+              fallbackColor: (backgroundColor ?? c.surface).withValues(
+                alpha: sf.navigationOpacity,
+              ),
+              translucentFallback: true,
+              shadows: [
+                BoxShadow(
+                  color: c.ink.withValues(alpha: sf.dark ? 0.28 : 0.12),
+                  blurRadius: 28,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: c.primary.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
               ],
+              child: Padding(
+                padding: padding,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (var index = 0; index < destinations.length; index++)
+                      Expanded(
+                        child: _SfBottomDestinationItem(
+                          destination: destinations[index],
+                          selected: index == activeIndex,
+                          activeColor: active,
+                          inactiveColor: inactive,
+                          duration: duration,
+                          motionEnabled: motionEnabled,
+                          hapticsEnabled: hapticsEnabled,
+                          onPressed: onDestinationSelected == null
+                              ? null
+                              : () => onDestinationSelected!(index),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -168,7 +185,7 @@ class _SfBottomDestinationItem extends StatelessWidget {
           return AnimatedContainer(
             duration: duration,
             curve: SfMotion.enter,
-            constraints: const BoxConstraints(minHeight: 52),
+            constraints: const BoxConstraints(minHeight: 50),
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
             decoration: BoxDecoration(
               color: background,

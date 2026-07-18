@@ -11,19 +11,44 @@ import '../widgets/sf_icons.dart';
 import '../widgets/sf_scaffold.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
+import 'groups/group_attendance_capture_screen.dart';
+import 'groups/group_l10n.dart';
+import 'groups/group_workspace_store.dart';
 
 class AttendanceScreen extends StatelessWidget {
-  const AttendanceScreen({super.key});
+  const AttendanceScreen({
+    super.key,
+    this.cohortId,
+    this.lessonId,
+    this.lessonAt,
+    this.lessonTitle,
+    this.store,
+  });
+
+  final String? cohortId;
+  final String? lessonId;
+  final DateTime? lessonAt;
+  final String? lessonTitle;
+  final GroupWorkspaceStore? store;
 
   @override
   Widget build(BuildContext context) {
+    final selectedCohortId = cohortId;
+    if (selectedCohortId != null && selectedCohortId.trim().isNotEmpty) {
+      return GroupAttendanceCaptureScreen(
+        groupId: selectedCohortId,
+        lessonId: lessonId,
+        lessonAt: lessonAt,
+        lessonTitle: lessonTitle,
+        store: store,
+      );
+    }
     final state = AppScope.of(context);
     if (state.attendanceSheets.isEmpty) {
-      return const Scaffold(
+      return Scaffold(
         body: SfEmptyState(
-          title: 'Davomat varaqasi yo‘q',
-          message:
-              'Jadvaldagi dars boshlanganda varaq avtomatik paydo bo‘ladi.',
+          title: context.gt('empty_sheet'),
+          message: context.gt('empty_sheet_message'),
         ),
       );
     }
@@ -36,12 +61,14 @@ class AttendanceScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
         children: [
           SfHintCard(
-            title: sheet.isSubmitted ? 'Davomat yuborilgan' : 'Tez belgilash',
+            title: sheet.isSubmitted
+                ? context.gt('submitted')
+                : context.gt('quick_mark'),
             message: sheet.isSubmitted
-                ? 'Bu varaq yakunlangan va endi o‘zgartirib bo‘lmaydi.'
+                ? context.gt('sheet_locked')
                 : canEdit
-                ? 'Har bir o‘quvchi holatini tanlang. Yo‘q va sababli holatlar uchun izoh so‘raladi.'
-                : 'Sizning rolingiz davomatni o‘zgartirishga ruxsat bermaydi.',
+                ? context.gt('mark_instructions')
+                : context.gt('no_permission'),
             tone: sheet.isSubmitted
                 ? SfHintTone.success
                 : canEdit
@@ -82,7 +109,7 @@ class _AttendanceHeader extends StatelessWidget {
             child: Row(
               children: [
                 IconButton(
-                  tooltip: 'Orqaga',
+                  tooltip: context.gt('back'),
                   onPressed: context.pop,
                   icon: Icon(SfIcons.arrowL, color: c.primary),
                 ),
@@ -95,7 +122,7 @@ class _AttendanceHeader extends StatelessWidget {
                       style: SfType.ui(size: 11, color: c.muted),
                     ),
                     Text(
-                      'Davomat',
+                      context.gt('attendance'),
                       style: SfType.ui(
                         size: 15,
                         weight: FontWeight.w800,
@@ -112,22 +139,22 @@ class _AttendanceHeader extends StatelessWidget {
           Row(
             children: [
               _Count(
-                label: 'Bor',
+                label: context.gt('present'),
                 value: counts[AttendanceStatus.present]!,
                 color: c.success,
               ),
               _Count(
-                label: 'Yo‘q',
+                label: context.gt('absent'),
                 value: counts[AttendanceStatus.absent]!,
                 color: c.danger,
               ),
               _Count(
-                label: 'Kech',
+                label: context.gt('late'),
                 value: counts[AttendanceStatus.late]!,
                 color: c.warn,
               ),
               _Count(
-                label: 'Sababli',
+                label: context.gt('excused'),
                 value: counts[AttendanceStatus.excused]!,
                 color: c.muted,
               ),
@@ -196,7 +223,7 @@ class _AttendanceRow extends StatelessWidget {
       note = await _askReason(context, status);
       if (note == null) return;
     } else if (status == AttendanceStatus.late) {
-      note = 'Kechikdi';
+      note = context.gt('late_note');
     }
     final previous = entry.status;
     final previousNote = entry.note;
@@ -211,9 +238,12 @@ class _AttendanceRow extends StatelessWidget {
       SfToast.show(
         context,
         title: entry.studentName,
-        message: '${_statusLabel(status)} deb belgilandi.',
+        message: context.gt(
+          'marked_status',
+          values: {'status': _statusLabel(context, status)},
+        ),
         tone: SfToastTone.success,
-        actionLabel: previous == null ? null : 'Bekor qilish',
+        actionLabel: previous == null ? null : context.gt('undo'),
         onAction: previous == null
             ? null
             : () => AppScope.of(context).markAttendance(
@@ -240,24 +270,27 @@ class _AttendanceRow extends StatelessWidget {
       builder: (dialogContext) => AlertDialog(
         title: Text(
           status == AttendanceStatus.absent
-              ? 'Yo‘qlik sababi'
-              : 'Sababli holat',
+              ? context.gt('absence_reason')
+              : context.gt('excused_reason'),
         ),
         content: TextField(
           controller: controller,
           autofocus: true,
           maxLength: 120,
-          decoration: const InputDecoration(hintText: 'Qisqa sabab yozing'),
+          decoration: InputDecoration(hintText: context.gt('short_reason')),
         ),
         actions: [
-          TextButton(onPressed: dialogContext.pop, child: const Text('Bekor')),
+          TextButton(
+            onPressed: dialogContext.pop,
+            child: Text(context.gt('cancel')),
+          ),
           FilledButton(
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
                 dialogContext.pop(controller.text.trim());
               }
             },
-            child: const Text('Saqlash'),
+            child: Text(context.gt('save')),
           ),
         ],
       ),
@@ -272,7 +305,7 @@ class _AttendanceRow extends StatelessWidget {
     final tone = _statusColor(context, entry.status);
     return Semantics(
       label:
-          '${entry.studentName}, ${entry.status == null ? 'belgilanmagan' : _statusLabel(entry.status!)}',
+          '${entry.studentName}, ${entry.status == null ? context.gt('unmarked') : _statusLabel(context, entry.status!)}',
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
         decoration: BoxDecoration(
@@ -312,14 +345,14 @@ class _AttendanceRow extends StatelessWidget {
             ),
             if (enabled)
               PopupMenuButton<AttendanceStatus>(
-                tooltip: 'Holatni tanlash',
+                tooltip: context.gt('select_status'),
                 initialValue: entry.status,
                 onSelected: (value) => _select(context, value),
                 itemBuilder: (_) => [
                   for (final status in AttendanceStatus.values)
                     PopupMenuItem(
                       value: status,
-                      child: Text(_statusLabel(status)),
+                      child: Text(_statusLabel(context, status)),
                     ),
                 ],
                 child: Container(
@@ -335,8 +368,8 @@ class _AttendanceRow extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Text(
                     entry.status == null
-                        ? 'Tanlash'
-                        : _statusLabel(entry.status!),
+                        ? context.gt('choose')
+                        : _statusLabel(context, entry.status!),
                     style: SfType.ui(
                       size: 11,
                       weight: FontWeight.w800,
@@ -347,7 +380,9 @@ class _AttendanceRow extends StatelessWidget {
               )
             else
               Text(
-                entry.status == null ? '—' : _statusLabel(entry.status!),
+                entry.status == null
+                    ? '—'
+                    : _statusLabel(context, entry.status!),
                 style: SfType.ui(
                   size: 11,
                   weight: FontWeight.w800,
@@ -371,18 +406,16 @@ class _AttendanceFooter extends StatelessWidget {
         await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Davomatni yuborasizmi?'),
-            content: const Text(
-              'Yuborilgandan keyin bu varaqni tahrirlab bo‘lmaydi.',
-            ),
+            title: Text(context.gt('confirm_send')),
+            content: Text(context.gt('confirm_send_body')),
             actions: [
               TextButton(
                 onPressed: () => dialogContext.pop(false),
-                child: const Text('Bekor'),
+                child: Text(context.gt('cancel')),
               ),
               FilledButton(
                 onPressed: () => dialogContext.pop(true),
-                child: const Text('Yuborish'),
+                child: Text(context.gt('send')),
               ),
             ],
           ),
@@ -394,9 +427,11 @@ class _AttendanceFooter extends StatelessWidget {
       if (!context.mounted) return;
       SfToast.show(
         context,
-        title: 'Davomat qabul qilindi',
-        message:
-            '${sheet.cohortName} uchun ${sheet.entries.length} ta holat yuborildi.',
+        title: context.gt('accepted'),
+        message: context.gt(
+          'sent_summary',
+          values: {'group': sheet.cohortName, 'count': sheet.entries.length},
+        ),
         tone: SfToastTone.success,
       );
     } on Object catch (error) {
@@ -423,7 +458,10 @@ class _AttendanceFooter extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$marked / ${sheet.entries.length} belgilangan',
+                  context.gt(
+                    'marked_progress',
+                    values: {'marked': marked, 'total': sheet.entries.length},
+                  ),
                   style: SfType.mono(size: 11, color: c.muted),
                 ),
                 const SizedBox(height: 5),
@@ -440,7 +478,7 @@ class _AttendanceFooter extends StatelessWidget {
           const SizedBox(width: 14),
           SfButton(
             kind: SfButtonKind.primary,
-            label: sheet.isSubmitted ? 'Yuborilgan' : 'Yuborish',
+            label: sheet.isSubmitted ? context.gt('sent') : context.gt('send'),
             trailing: sheet.isSubmitted ? SfIcons.check : SfIcons.arrowR,
             onPressed: enabled && sheet.isComplete
                 ? () => _submit(context)
@@ -452,12 +490,13 @@ class _AttendanceFooter extends StatelessWidget {
   }
 }
 
-String _statusLabel(AttendanceStatus status) => switch (status) {
-  AttendanceStatus.present => 'Bor',
-  AttendanceStatus.absent => 'Yo‘q',
-  AttendanceStatus.late => 'Kech',
-  AttendanceStatus.excused => 'Sababli',
-};
+String _statusLabel(BuildContext context, AttendanceStatus status) =>
+    switch (status) {
+      AttendanceStatus.present => context.gt('present'),
+      AttendanceStatus.absent => context.gt('absent'),
+      AttendanceStatus.late => context.gt('late'),
+      AttendanceStatus.excused => context.gt('excused'),
+    };
 
 Color _statusColor(BuildContext context, AttendanceStatus? status) {
   final c = SfTheme.colorsOf(context);

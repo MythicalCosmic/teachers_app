@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/models.dart';
+import '../router.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_ai_badge.dart';
 import '../widgets/sf_ai_surface.dart';
@@ -10,314 +12,328 @@ import '../widgets/sf_button.dart';
 import '../widgets/sf_card.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_pill.dart';
+import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
-import '../widgets/sf_star.dart';
 import '../widgets/sf_tab_bar.dart';
-import '../router.dart';
+import 'groups/group_l10n.dart';
+import 'groups/group_workspace_store.dart';
 
 class StudentProfileScreen extends StatelessWidget {
-  const StudentProfileScreen({super.key});
+  const StudentProfileScreen({
+    super.key,
+    this.studentId,
+    this.groupId,
+    this.store,
+  });
+
+  final String? studentId;
+  final String? groupId;
+  final GroupWorkspaceStore? store;
 
   @override
   Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
+    final workspace = store ?? groupWorkspaceStore;
+    final group = workspace.groupForStudent(
+      studentId,
+      preferredGroupId: groupId,
+    );
+    final student = workspace.student(studentId, groupId: group?.id);
+    if (group == null || student == null) {
+      return SfScaffold(
+        top: SfNavBar(
+          title: context.gt('student'),
+          leading: IconButton(
+            onPressed: context.pop,
+            icon: const Icon(SfIcons.arrowL),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Text(
+              _copy(
+                context,
+                'O‘quvchi ma’lumotlari topilmadi.',
+                'Данные ученика не найдены.',
+                'Student record was not found.',
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final history = workspace
+        .history(group.id)
+        .where((record) => record.statuses.containsKey(student.id))
+        .toList(growable: false);
+    final attendance = workspace.studentAttendanceRate(group.id, student.id);
+    final absences = history
+        .where((row) => row.statuses[student.id] == AttendanceStatus.absent)
+        .length;
+    final late = history
+        .where((row) => row.statuses[student.id] == AttendanceStatus.late)
+        .length;
+    final colors = SfTheme.colorsOf(context);
+
     return SfScaffold(
       tab: SfTab.cohort,
-      onTabChanged: (t) => handleTab(context, SfTab.values.indexOf(t)),
+      onTabChanged: (tab) => handleTab(context, SfTab.values.indexOf(tab)),
       top: SfNavBar(
-        title: 'O‘quvchi',
-        leading: GestureDetector(
-          onTap: () => context.pop(),
+        title: context.gt('student'),
+        subtitle: '${group.name} · ${student.id}',
+        leading: SfPressable(
+          key: const ValueKey('student-back-action'),
+          onPressed: context.pop,
+          semanticLabel: context.gt('back_group'),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(SfIcons.arrowL, size: 18),
-              SizedBox(width: 2),
-              Text('9-B'),
+            children: [
+              const Icon(SfIcons.arrowL, size: 18),
+              const SizedBox(width: 4),
+              Text(group.name),
             ],
           ),
         ),
-        actions: const [
-          Icon(SfIcons.chat),
-          SizedBox(width: 12),
-          Icon(SfIcons.more),
+        actions: [
+          IconButton(
+            key: const ValueKey('student-message-action'),
+            tooltip: _copy(context, 'Xabar yozish', 'Написать', 'Message'),
+            onPressed: () => context.push(_messageLocation(group, student)),
+            icon: const Icon(SfIcons.chat),
+          ),
+          PopupMenuButton<_StudentAction>(
+            key: const ValueKey('student-more-actions'),
+            tooltip: _copy(context, 'Amallar', 'Действия', 'Actions'),
+            icon: const Icon(SfIcons.more),
+            onSelected: (action) =>
+                _handleAction(context, action, group, student),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: _StudentAction.group,
+                child: Text(
+                  _copy(
+                    context,
+                    'Guruhni ochish',
+                    'Открыть группу',
+                    'Open group',
+                  ),
+                ),
+              ),
+              PopupMenuItem(
+                value: _StudentAction.attendance,
+                child: Text(
+                  _copy(
+                    context,
+                    'Davomat olish',
+                    'Отметить',
+                    'Take attendance',
+                  ),
+                ),
+              ),
+              PopupMenuItem(
+                value: _StudentAction.contact,
+                child: Text(
+                  _copy(
+                    context,
+                    'Aloqa ma’lumoti',
+                    'Контакт',
+                    'Contact details',
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+        padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
         children: [
-          SfSurfaceCard(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    SfAvatar(name: 'Akmal Akbarov', size: 64, color: c.primary),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Akbarov Akmal',
-                            style: SfType.ui(
-                              size: 20,
-                              weight: FontWeight.w800,
-                              color: c.ink,
-                              letterSpacing: -0.4,
-                              height: 1.15,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'DEMO-2026-00042',
-                            style: SfType.mono(size: 11, color: c.muted),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: const [
-                              SfPill(tone: SfPillTone.primary, label: '9-B'),
-                              SizedBox(width: 6),
-                              SfPill(tone: SfPillTone.accent, label: 'Yulduz'),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    for (final s in [
-                      ('↑12', 'Up karta', const Color(0xFF7A4F0E)),
-                      ('↓1', 'Down karta', c.danger),
-                      ('96', 'Davomat %', c.success),
-                    ])
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: c.surface2,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  s.$1,
-                                  style: SfType.mono(
-                                    size: 20,
-                                    weight: FontWeight.w700,
-                                    color: s.$3,
-                                    height: 1,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  s.$2.toUpperCase(),
-                                  style: SfType.eyebrow(
-                                    color: c.muted,
-                                    size: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
-              children: [
-                Text(
-                  'Karta tarixi',
-                  style: SfType.ui(
-                    size: 13,
-                    weight: FontWeight.w700,
-                    color: c.ink,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '13 ta',
-                  style: SfType.ui(
-                    size: 11,
-                    weight: FontWeight.w600,
-                    color: c.primary,
-                  ),
-                ),
-                Icon(SfIcons.chevR, size: 11, color: c.primary),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          SfSurfaceCard(
-            child: Column(
-              children: [
-                for (final r in const [
-                  (
-                    '19 May · 09:42',
-                    'Yulduz karta',
-                    'Mustaqil yechim · 3-misol',
-                    'up',
-                  ),
-                  (
-                    '17 May · 10:18',
-                    'Aktivlik',
-                    'Sinfdoshlariga yordam berdi',
-                    'up',
-                  ),
-                  (
-                    '12 May · 11:30',
-                    'Yulduz karta',
-                    'Daftar — namunaviy',
-                    'up',
-                  ),
-                  (
-                    '8 May · 09:05',
-                    'Ogohlantirish',
-                    'Darsda telefon bilan band',
-                    'down',
-                  ),
-                  (
-                    '5 May · 14:22',
-                    'Yulduz karta',
-                    'Olimpiada · 2-bosqich',
-                    'up',
-                  ),
-                ])
-                  _CardRow(date: r.$1, type: r.$2, reason: r.$3, kind: r.$4),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          SfButton(
-            kind: SfButtonKind.soft,
-            block: true,
-            label: 'Karta berish',
-            leading: SfIcons.plus,
-            onPressed: () => context.push('/cards/give'),
-          ),
-          const SizedBox(height: 18),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              'Ota-ona aloqasi',
-              style: SfType.ui(size: 13, weight: FontWeight.w700, color: c.ink),
-            ),
-          ),
-          const SizedBox(height: 8),
+          _StudentHero(group: group, student: student, attendance: attendance),
+          const SizedBox(height: 12),
           Row(
             children: [
-              for (final g in [
-                ('Akbarov Anvar', 'Ota · birinchi', '+998 90 222 11 33'),
-                ('Akbarova Dilnoza', 'Ona', '+998 91 444 55 66'),
-              ])
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: SfSurfaceCard(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SfAvatar(name: g.$1, size: 32),
-                          const SizedBox(height: 8),
-                          Text(
-                            g.$1,
-                            style: SfType.ui(
-                              size: 13,
-                              weight: FontWeight.w600,
-                              color: c.ink,
-                              height: 1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            g.$2,
-                            style: SfType.ui(size: 10, color: c.muted),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            g.$3,
-                            style: SfType.mono(size: 11, color: c.primary),
-                          ),
-                        ],
-                      ),
-                    ),
+              Expanded(
+                child: _QuickAction(
+                  icon: SfIcons.chat,
+                  label: _copy(context, 'Xabar', 'Сообщение', 'Message'),
+                  onPressed: () =>
+                      context.push(_messageLocation(group, student)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _QuickAction(
+                  icon: Icons.how_to_reg_rounded,
+                  label: context.gt('attendance'),
+                  onPressed: () => context.push(
+                    '/attendance?cohort=${Uri.encodeQueryComponent(group.id)}',
                   ),
                 ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _QuickAction(
+                  icon: Icons.star_outline_rounded,
+                  label: _copy(context, 'Karta', 'Карта', 'Card'),
+                  onPressed: () => context.push(
+                    Uri(
+                      path: '/cards/give',
+                      queryParameters: {
+                        'student': student.id,
+                        'group': group.id,
+                      },
+                    ).toString(),
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 18),
-          SfAiSurface(
-            borderRadius: BorderRadius.circular(16),
+          _SectionHeading(
+            title: _copy(
+              context,
+              'Davomat tarixi',
+              'История посещаемости',
+              'Attendance history',
+            ),
+            caption: _copy(
+              context,
+              '${history.length} dars · $absences yo‘q · $late kech',
+              '${history.length} уроков · $absences пропусков · $late опозданий',
+              '${history.length} lessons · $absences absent · $late late',
+            ),
+          ),
+          const SizedBox(height: 8),
+          SfSurfaceCard(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SfAiBadge(label: 'O‘quvchi haqida'),
-                const SizedBox(height: 10),
-                Text(
-                  '"Akmal — sinfning eng kuchli o‘quvchilaridan. Bu oy 12 ta Up karta oldi. Olimpiada tayyorgarligi tavsiya etiladi."',
-                  style: SfType.display(size: 16, color: c.ink, height: 1.4),
+                for (final entry in history.take(6).toList().asMap().entries)
+                  _AttendanceRow(
+                    record: entry.value,
+                    status: entry.value.statuses[student.id]!,
+                    showDivider: entry.key < history.take(6).length - 1,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _SectionHeading(
+            title: _copy(
+              context,
+              'Karta ko‘rsatkichlari',
+              'Карты и достижения',
+              'Cards and recognition',
+            ),
+            caption: _copy(
+              context,
+              '${student.upCards + student.downCards} ta qayd',
+              '${student.upCards + student.downCards} записей',
+              '${student.upCards + student.downCards} records',
+            ),
+          ),
+          const SizedBox(height: 8),
+          SfSurfaceCard(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              children: [
+                _CardMetric(
+                  value: student.upCards,
+                  label: _copy(context, 'Up karta', 'Up карты', 'Up cards'),
+                  color: colors.success,
                 ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  children: const [
-                    SfPill(tone: SfPillTone.ai, label: 'Qo‘shimcha mashq'),
-                    SfPill(tone: SfPillTone.ai, label: 'Olimpiada nomzodi'),
-                  ],
+                const SizedBox(width: 10),
+                _CardMetric(
+                  value: student.downCards,
+                  label: _copy(
+                    context,
+                    'Down karta',
+                    'Down карты',
+                    'Down cards',
+                  ),
+                  color: colors.danger,
+                ),
+                const SizedBox(width: 10),
+                _CardMetric(
+                  value: (student.upCards - student.downCards)
+                      .clamp(0, 99)
+                      .toInt(),
+                  label: _copy(context, 'Balans', 'Баланс', 'Balance'),
+                  color: colors.primary,
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
+          SfAiSurface(
+            borderRadius: BorderRadius.circular(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SfAiBadge(
+                  label: _copy(
+                    context,
+                    'O‘quvchi tahlili',
+                    'Анализ ученика',
+                    'Student insight',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  attendance >= 92
+                      ? _copy(
+                          context,
+                          '${student.name} ${attendance.round()}% davomatni ushlab turibdi. ${student.upCards} ta ijobiy karta kuchli va barqaror ishtirokni ko‘rsatadi.',
+                          '${student.name}: посещаемость ${attendance.round()}%. ${student.upCards} положительных карт показывают стабильную работу.',
+                          '${student.name} is sustaining ${attendance.round()}% attendance. ${student.upCards} positive cards indicate reliable engagement.',
+                        )
+                      : _copy(
+                          context,
+                          '${student.name} bilan individual suhbat tavsiya etiladi: davomat ${attendance.round()}%, $absences ta qoldirilgan dars bor.',
+                          'Рекомендуется личная беседа: посещаемость ${attendance.round()}%, пропусков — $absences.',
+                          'Plan an individual check-in: attendance is ${attendance.round()}% with $absences missed lessons.',
+                        ),
+                  style: SfType.display(
+                    size: 16,
+                    color: colors.ink,
+                    height: 1.42,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
           SfSurfaceCard(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(15),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: c.successSoft,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  alignment: Alignment.center,
-                  child: Icon(SfIcons.check, size: 20, color: c.success),
-                ),
-                const SizedBox(width: 12),
+                SfAvatar(name: student.name, size: 42),
+                const SizedBox(width: 11),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'To‘lov · may oyi',
+                        _copy(context, 'Aloqa', 'Контакт', 'Contact'),
                         style: SfType.ui(
-                          size: 13,
-                          weight: FontWeight.w700,
-                          color: c.ink,
+                          size: 12,
+                          weight: FontWeight.w800,
+                          color: colors.ink,
                         ),
                       ),
                       Text(
-                        '600 000 so‘m · 7 may, Click',
-                        style: SfType.mono(size: 11, color: c.muted),
+                        student.phone,
+                        style: SfType.mono(size: 11, color: colors.primary),
                       ),
                     ],
                   ),
                 ),
-                const SfPill(tone: SfPillTone.success, label: 'To‘langan'),
+                SfButton(
+                  kind: SfButtonKind.soft,
+                  label: _copy(context, 'Ko‘rish', 'Открыть', 'View'),
+                  onPressed: () => _showContact(context, student),
+                ),
               ],
             ),
           ),
@@ -325,80 +341,368 @@ class StudentProfileScreen extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _handleAction(
+    BuildContext context,
+    _StudentAction action,
+    TeacherGroup group,
+    GroupStudent student,
+  ) async {
+    switch (action) {
+      case _StudentAction.group:
+        context.push('/cohort?id=${Uri.encodeQueryComponent(group.id)}');
+      case _StudentAction.attendance:
+        context.push(
+          '/attendance?cohort=${Uri.encodeQueryComponent(group.id)}',
+        );
+      case _StudentAction.contact:
+        await _showContact(context, student);
+    }
+  }
 }
 
-class _CardRow extends StatelessWidget {
-  final String date;
-  final String type;
-  final String reason;
-  final String kind;
-  const _CardRow({
-    required this.date,
-    required this.type,
-    required this.reason,
-    required this.kind,
+class _StudentHero extends StatelessWidget {
+  const _StudentHero({
+    required this.group,
+    required this.student,
+    required this.attendance,
   });
+
+  final TeacherGroup group;
+  final GroupStudent student;
+  final double attendance;
 
   @override
   Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    final isUp = kind == 'up';
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: c.border)),
+    final colors = SfTheme.colorsOf(context);
+    return SfSurfaceCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SfAvatar(name: student.name, size: 64, color: colors.primary),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      student.name,
+                      key: const ValueKey('student-profile-name'),
+                      style: SfType.ui(
+                        size: 20,
+                        weight: FontWeight.w800,
+                        color: colors.ink,
+                        letterSpacing: -.35,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      student.id,
+                      style: SfType.mono(size: 10.5, color: colors.muted),
+                    ),
+                    const SizedBox(height: 7),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        SfPill(tone: SfPillTone.primary, label: group.name),
+                        SfPill(tone: SfPillTone.accent, label: group.level),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _HeroMetric(
+                value: '${student.upCards}',
+                label: _copy(context, 'Up karta', 'Up карты', 'Up cards'),
+                color: colors.success,
+              ),
+              _HeroMetric(
+                value: '${student.downCards}',
+                label: _copy(context, 'Down karta', 'Down карты', 'Down cards'),
+                color: colors.danger,
+              ),
+              _HeroMetric(
+                value: '${attendance.round()}%',
+                label: context.gt('attendance'),
+                color: colors.primary,
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SfTheme.colorsOf(context);
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: colors.surface2,
+          borderRadius: BorderRadius.circular(13),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: SfType.mono(
+                size: 19,
+                weight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SfType.eyebrow(size: 8, color: colors.muted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SfTheme.colorsOf(context);
+    return SfPressable(
+      onPressed: onPressed,
+      haptic: true,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colors.border),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: colors.primary, size: 19),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SfType.ui(
+                size: 10,
+                weight: FontWeight.w700,
+                color: colors.ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.title, required this.caption});
+  final String title;
+  final String caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SfTheme.colorsOf(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: SfType.ui(
+              size: 14,
+              weight: FontWeight.w800,
+              color: colors.ink,
+            ),
+          ),
+        ),
+        Text(caption, style: SfType.ui(size: 10, color: colors.muted)),
+      ],
+    );
+  }
+}
+
+class _AttendanceRow extends StatelessWidget {
+  const _AttendanceRow({
+    required this.record,
+    required this.status,
+    required this.showDivider,
+  });
+  final GroupAttendanceRecord record;
+  final AttendanceStatus status;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SfTheme.colorsOf(context);
+    final tone = switch (status) {
+      AttendanceStatus.present => colors.success,
+      AttendanceStatus.absent => colors.danger,
+      AttendanceStatus.late => colors.warn,
+      AttendanceStatus.excused => colors.muted,
+    };
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        border: showDivider
+            ? Border(bottom: BorderSide(color: colors.border))
+            : null,
+      ),
       child: Row(
         children: [
           Container(
-            width: 28,
-            height: 36,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isUp
-                    ? const [Color(0xFFF6E0AC), Color(0xFFE9C272)]
-                    : const [Color(0xFFF0C9BE), Color(0xFFD88A75)],
-              ),
-              border: Border.all(
-                color: isUp ? const Color(0xFFC49A3A) : const Color(0xFFA14026),
-              ),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            alignment: Alignment.center,
-            child: SfStar(
-              size: 12,
-              color: isUp ? const Color(0xFF7A4F0E) : const Color(0xFF5C1A0C),
-            ),
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(color: tone, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  type,
+                  record.lessonTitle,
                   style: SfType.ui(
-                    size: 13,
+                    size: 12,
                     weight: FontWeight.w700,
-                    color: isUp ? c.ink : c.danger,
+                    color: colors.ink,
                   ),
                 ),
                 Text(
-                  '"$reason"',
-                  style: SfType.display(
-                    size: 11,
-                    color: c.muted,
-                    style: FontStyle.italic,
-                  ),
+                  '${record.lessonAt.day}.${record.lessonAt.month.toString().padLeft(2, '0')}.${record.lessonAt.year} · ${record.lessonAt.hour.toString().padLeft(2, '0')}:${record.lessonAt.minute.toString().padLeft(2, '0')}',
+                  style: SfType.mono(size: 9.5, color: colors.muted),
                 ),
               ],
             ),
           ),
-          Text(date, style: SfType.mono(size: 10, color: c.muted)),
+          SfPill(
+            tone: status == AttendanceStatus.absent
+                ? SfPillTone.danger
+                : status == AttendanceStatus.late
+                ? SfPillTone.warn
+                : SfPillTone.success,
+            label: _statusText(context, status),
+          ),
         ],
       ),
     );
   }
 }
+
+class _CardMetric extends StatelessWidget {
+  const _CardMetric({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+  final int value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SfTheme.colorsOf(context);
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$value',
+              style: SfType.mono(
+                size: 22,
+                weight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SfType.ui(size: 9.5, color: colors.muted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _StudentAction { group, attendance, contact }
+
+String _messageLocation(TeacherGroup group, GroupStudent student) => Uri(
+  path: '/messages/new',
+  queryParameters: {'group': group.id, 'student': student.id},
+).toString();
+
+Future<void> _showContact(BuildContext context, GroupStudent student) =>
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(student.name),
+        content: SelectableText('${student.id}\n${student.phone}'),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_copy(context, 'Tayyor', 'Готово', 'Done')),
+          ),
+        ],
+      ),
+    );
+
+String _statusText(BuildContext context, AttendanceStatus status) =>
+    switch (status) {
+      AttendanceStatus.present => context.gt('present'),
+      AttendanceStatus.absent => context.gt('absent'),
+      AttendanceStatus.late => context.gt('late'),
+      AttendanceStatus.excused => context.gt('excused'),
+    };
+
+String _copy(BuildContext context, String uz, String ru, String en) =>
+    switch (Localizations.localeOf(context).languageCode) {
+      'en' => en,
+      'ru' => ru,
+      _ => uz,
+    };

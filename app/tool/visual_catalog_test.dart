@@ -3,18 +3,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:starforge_staff/app/app_state.dart';
 import 'package:starforge_staff/data/app_storage.dart';
 import 'package:starforge_staff/data/models.dart';
+import 'package:starforge_staff/features/messaging/messaging_controller.dart';
 import 'package:starforge_staff/main.dart';
+import 'package:starforge_staff/screens/today/today_data.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _iPhoneLogicalSize = Size(393, 852);
 
-Future<AppState> _stateFor(String? username) async {
+Future<AppState> _stateFor(
+  String? username, {
+  AppThemeMode themeMode = AppThemeMode.light,
+}) async {
+  debugSetStaffToday(DateTime(2026, 7, 18));
   final state = await AppState.bootstrap(storage: MemoryAppStorage());
   if (username != null) {
     await state.signIn(username: username, password: 'demo2026');
   }
   await state.updateSettings(
     state.settings.copyWith(
-      themeMode: AppThemeMode.light,
+      themeMode: themeMode,
       palette: AppPalette.daryo,
       hasCompletedWelcome: username != null,
       liquidGlass: true,
@@ -51,6 +58,10 @@ Future<void> _capture(
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
   }
+  if (name == 'teacher_messages') {
+    await tester.runAsync(() => MessagingController.shared.restored);
+    await tester.pump();
+  }
   await expectLater(
     find.byType(Scaffold).first,
     matchesGoldenFile('visual_baselines/$name.png'),
@@ -58,6 +69,9 @@ Future<void> _capture(
 }
 
 void main() {
+  // ignore: invalid_use_of_visible_for_testing_member
+  SharedPreferences.setMockInitialValues({});
+
   testWidgets('login visual baseline', (tester) async {
     _configureIPhoneView(tester);
     final state = (await tester.runAsync(() => _stateFor(null)))!;
@@ -70,6 +84,40 @@ void main() {
     final state = (await tester.runAsync(() => _stateFor('nigora.karimova')))!;
     await _pumpApp(tester, state);
     await _capture(tester, 'teacher_home');
+  });
+
+  testWidgets('teacher workspace visual baselines', (tester) async {
+    _configureIPhoneView(tester);
+    final state = (await tester.runAsync(() => _stateFor('nigora.karimova')))!;
+    await _pumpApp(tester, state);
+
+    await _capture(tester, 'teacher_groups', tabLabel: 'Guruhlar');
+    await _capture(tester, 'teacher_tasks', tabLabel: 'Vazifalar');
+    await _capture(tester, 'teacher_messages', tabLabel: 'Xabarlar');
+    await _capture(tester, 'teacher_more', tabLabel: 'Boshqa');
+
+    final settings = find.text('Sozlamalar');
+    await tester.ensureVisible(settings);
+    await tester.pump();
+    await tester.tap(settings);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await _capture(tester, 'teacher_settings');
+  });
+
+  testWidgets('dark survey visual baseline', (tester) async {
+    _configureIPhoneView(tester);
+    final state = (await tester.runAsync(
+      () => _stateFor('nigora.karimova', themeMode: AppThemeMode.dark),
+    ))!;
+    await _pumpApp(tester, state);
+    await tester.tap(find.byKey(const Key('today-survey-banner')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await expectLater(
+      find.byType(Scaffold).last,
+      matchesGoldenFile('visual_baselines/dark_survey.png'),
+    );
   });
 
   testWidgets('methodist quality visual baseline', (tester) async {

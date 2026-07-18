@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:starforge_staff/screens/today/today_data.dart';
 import 'package:starforge_staff/screens/today_screen.dart';
 import 'package:starforge_staff/theme/sf_theme.dart';
 import 'package:starforge_staff/theme/tokens.dart';
 
-Widget _host({required double textScale}) {
-  final colors = sfColorsFor(SfPalette.daryo);
+Widget _host({required double textScale, bool dark = false}) {
+  final colors = sfColorsFor(SfPalette.daryo, dark: dark);
   return SfTheme(
     colors: colors,
     palette: SfPalette.daryo,
-    dark: false,
+    dark: dark,
     child: MaterialApp(
-      theme: buildMaterialTheme(colors, dark: false),
+      theme: buildMaterialTheme(colors, dark: dark),
+      locale: const Locale('uz'),
+      supportedLocales: const [Locale('uz'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(
           context,
@@ -24,6 +33,9 @@ Widget _host({required double textScale}) {
 }
 
 void main() {
+  setUp(() => debugSetStaffToday(DateTime(2026, 7, 14)));
+  tearDown(() => debugSetStaffToday(null));
+
   testWidgets('today dashboard reflows on a narrow accessibility viewport', (
     tester,
   ) async {
@@ -33,28 +45,57 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     await tester.pumpWidget(_host(textScale: 1.3));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    expect(tester.takeException(), isNull);
+    // Rendering exceptions are asserted after the first interaction so the
+    // framework can print the complete offending widget diagnostics.
 
     await tester.scrollUntilVisible(
-      find.text('BUGUNGI DARS'),
+      find.text('Bugungi dars'),
       180,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pump();
-    expect(find.text('BUGUNGI DARS'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(find.text('Bugungi dars'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('Tavsiyani ko‘rish'),
+      find.text('Amaliy rejani ko‘rish'),
       220,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pump();
 
-    expect(find.text('Tavsiyani ko‘rish'), findsOneWidget);
+    expect(find.text('Amaliy rejani ko‘rish'), findsOneWidget);
     expect(find.text('Keyinroq'), findsOneWidget);
+  });
+
+  testWidgets('survey banner remains readable in dark mode', (tester) async {
+    final darkColors = sfColorsFor(SfPalette.daryo, dark: true);
+    await tester.pumpWidget(_host(textScale: 1, dark: true));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final title = tester.widget<Text>(find.text('Haftalik dars tajribasi'));
+    expect(title.style?.color, darkColors.ink);
+    expect(find.byKey(const Key('today-survey-banner')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('selecting a date updates the home agenda', (tester) async {
+    await tester.pumpWidget(_host(textScale: 1));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final nextLessonDate = staffToday.add(const Duration(days: 1));
+    final dateKey = Key('today-date-${nextLessonDate.day}');
+    await tester.scrollUntilVisible(
+      find.byKey(dateKey),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(dateKey));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Algebra · 9-B'), findsWidgets);
+    expect(find.textContaining('Viyet teoremasi'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

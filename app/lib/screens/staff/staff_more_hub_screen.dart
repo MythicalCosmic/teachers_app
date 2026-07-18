@@ -5,6 +5,7 @@ import '../../theme/sf_theme.dart';
 import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pill.dart';
+import '../../widgets/sf_pressable.dart';
 import 'staff_surface_widgets.dart';
 
 final class StaffMoreDestination {
@@ -45,99 +46,189 @@ class StaffMoreHubScreen extends StatelessWidget {
   final ValueChanged<String>? onOpenRoute;
   final VoidCallback? onSignOut;
 
-  static const _destinations = [
+  List<StaffMoreDestination> _destinations(BuildContext context) => [
     StaffMoreDestination(
       route: '/content',
-      label: 'Materiallar',
-      description: 'Dars fayllari va umumiy kutubxona',
+      label: _copy(
+        context,
+        uz: 'Materiallar',
+        ru: 'Материалы',
+        en: 'Materials',
+      ),
+      description: _copy(
+        context,
+        uz: 'Dars fayllari va umumiy kutubxona',
+        ru: 'Файлы уроков и общая библиотека',
+        en: 'Lesson files and the shared library',
+      ),
       icon: SfIcons.folder,
     ),
     StaffMoreDestination(
       route: '/messages',
-      label: 'Xabarlar',
-      description: 'Xodimlar va boshqaruv bilan aloqa',
+      label: _copy(context, uz: 'Xabarlar', ru: 'Сообщения', en: 'Messages'),
+      description: _copy(
+        context,
+        uz: 'Xodimlar va boshqaruv bilan aloqa',
+        ru: 'Связь с сотрудниками',
+        en: 'Conversations with other staff',
+      ),
       icon: SfIcons.chat,
       capability: StaffCapability.useStaffMessaging,
       tone: StaffMetricTone.primary,
     ),
     StaffMoreDestination(
       route: '/surveys',
-      label: 'So\u2018rovnomalar',
-      description: 'Topshirilishi kerak bo\u2018lgan so\u2018rovlar',
+      label: _copy(context, uz: 'So‘rovnomalar', ru: 'Опросы', en: 'Surveys'),
+      description: _copy(
+        context,
+        uz: 'Topshirilishi kerak bo‘lgan so‘rovlar',
+        ru: 'Опросы, ожидающие ответа',
+        en: 'Surveys waiting for your response',
+      ),
       icon: SfIcons.flag,
       capability: StaffCapability.answerSurveys,
     ),
     StaffMoreDestination(
       route: '/print',
       label: 'Print',
-      description: 'Filial printerlari va navbat',
+      description: _copy(
+        context,
+        uz: 'Filial printerlari va navbat',
+        ru: 'Принтеры филиала и очередь',
+        en: 'Branch printers and queue',
+      ),
       icon: SfIcons.printer,
       capability: StaffCapability.submitPrintJobs,
     ),
     StaffMoreDestination(
       route: '/cards',
-      label: 'Kartalar',
-      description: 'Up / Down kartalar va tarix',
+      label: _copy(context, uz: 'E’tirof', ru: 'Признание', en: 'Recognition'),
+      description: _copy(
+        context,
+        uz: 'O‘quvchi e’tirofi va tarix',
+        ru: 'Награды учеников и история',
+        en: 'Student recognition and history',
+      ),
       icon: SfIcons.brand,
       capability: StaffCapability.issueCards,
       tone: StaffMetricTone.accent,
     ),
     StaffMoreDestination(
       route: '/staff/quality',
-      label: 'Ta\u2018lim sifati',
-      description: 'Ustoz va guruh signallari',
+      label: _copy(
+        context,
+        uz: 'Ta’lim sifati',
+        ru: 'Качество обучения',
+        en: 'Teaching quality',
+      ),
+      description: _copy(
+        context,
+        uz: 'Ustoz va guruh signallari',
+        ru: 'Сигналы преподавателей и групп',
+        en: 'Teacher and group quality signals',
+      ),
       icon: Icons.school_outlined,
       capability: StaffCapability.viewQualityWorkspace,
       tone: StaffMetricTone.warning,
     ),
     StaffMoreDestination(
       route: '/staff/reception',
-      label: 'Lidlar va qabul',
-      description: 'Murojaatdan guruhgacha bo\u2018lgan oqim',
+      label: _copy(
+        context,
+        uz: 'Lidlar va qabul',
+        ru: 'Лиды и приём',
+        en: 'Leads and reception',
+      ),
+      description: _copy(
+        context,
+        uz: 'Murojaatdan guruhgacha bo‘lgan oqim',
+        ru: 'Путь от обращения до группы',
+        en: 'The flow from inquiry to group',
+      ),
       icon: Icons.phone_in_talk_outlined,
       capability: StaffCapability.viewLeads,
       tone: StaffMetricTone.primary,
     ),
     StaffMoreDestination(
       route: '/payments',
-      label: 'To\u2018lov holati',
-      description: 'Qabulxona uchun to\u2018lov statuslari',
+      label: _copy(
+        context,
+        uz: 'To‘lov holati',
+        ru: 'Статус оплаты',
+        en: 'Payment status',
+      ),
+      description: _copy(
+        context,
+        uz: 'Qabulxona uchun to‘lov statuslari',
+        ru: 'Статусы оплаты для приёмной',
+        en: 'Payment status for reception staff',
+      ),
       icon: Icons.payments_outlined,
       capability: StaffCapability.viewPaymentStatus,
       tone: StaffMetricTone.success,
     ),
     StaffMoreDestination(
       route: '/staff/audit',
-      label: 'Audit markazi',
-      description: 'Signallar, holatlar va nazorat',
+      label: _copy(
+        context,
+        uz: 'Audit markazi',
+        ru: 'Центр аудита',
+        en: 'Audit center',
+      ),
+      description: _copy(
+        context,
+        uz: 'Signallar, holatlar va nazorat',
+        ru: 'Сигналы, кейсы и контроль',
+        en: 'Signals, cases and controls',
+      ),
       icon: SfIcons.shield,
       capability: StaffCapability.viewAuditWorkspace,
       tone: StaffMetricTone.danger,
     ),
     StaffMoreDestination(
       route: '/staff/audit/log',
-      label: 'O\u2018zgarmas jurnal',
-      description: 'Yaxlitlik zanjiri va eksport',
+      label: _copy(
+        context,
+        uz: 'O‘zgarmas jurnal',
+        ru: 'Неизменяемый журнал',
+        en: 'Immutable log',
+      ),
+      description: _copy(
+        context,
+        uz: 'Yaxlitlik zanjiri va eksport',
+        ru: 'Цепочка целостности и экспорт',
+        en: 'Integrity chain and export',
+      ),
       icon: SfIcons.doc,
       capability: StaffCapability.viewImmutableAuditLog,
     ),
     StaffMoreDestination(
       route: '/settings',
-      label: 'Sozlamalar',
-      description: 'Ko\u2018rinish, til va qulaylik',
+      label: _copy(context, uz: 'Sozlamalar', ru: 'Настройки', en: 'Settings'),
+      description: _copy(
+        context,
+        uz: 'Ko‘rinish, til va qulaylik',
+        ru: 'Оформление, язык и комфорт',
+        en: 'Appearance, language and comfort',
+      ),
       icon: SfIcons.settings,
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final visible = _destinations
+    final visible = _destinations(context)
         .where((item) => item.capability == null || role.can(item.capability!))
         .toList();
     return StaffPageScaffold(
-      eyebrow: '${role.uzLabel} · $branchName',
-      title: 'Ko\u2018proq',
-      subtitle: 'Sizga tegishli ish maydonlari va sozlamalar',
+      eyebrow: '${_roleLabel(context, role)} · $branchName',
+      title: _copy(context, uz: 'Ko‘proq', ru: 'Ещё', en: 'More'),
+      subtitle: _copy(
+        context,
+        uz: 'Sizga tegishli ish maydonlari va sozlamalar',
+        ru: 'Ваши рабочие пространства и настройки',
+        en: 'Your staff workspaces and personal settings',
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
@@ -145,17 +236,35 @@ class StaffMoreHubScreen extends StatelessWidget {
             role: role,
             name: displayName ?? role.uzLabel,
             branch: branchName,
+            onTap: onOpenRoute == null
+                ? null
+                : () => onOpenRoute!('/settings/edit'),
           ),
           const SizedBox(height: 14),
           StaffHintCard(
-            title: 'Rol bo\u2018yicha xavfsiz',
-            message: _capabilityMessage,
+            title: _copy(
+              context,
+              uz: 'Rol bo‘yicha xavfsiz',
+              ru: 'Безопасно для роли',
+              en: 'Role-safe by design',
+            ),
+            message: _capabilityMessage(context),
             icon: SfIcons.shield,
           ),
           const SizedBox(height: 20),
-          const StaffSectionHeader(
-            title: 'Ish maydonlari',
-            subtitle: 'Faqat joriy rolingizga ruxsat berilgan bo\u2018limlar',
+          StaffSectionHeader(
+            title: _copy(
+              context,
+              uz: 'Ish maydonlari',
+              ru: 'Рабочие пространства',
+              en: 'Workspaces',
+            ),
+            subtitle: _copy(
+              context,
+              uz: 'Faqat joriy rolingizga ruxsat berilgan bo‘limlar',
+              ru: 'Только разрешённые для вашей роли разделы',
+              en: 'Only areas permitted for your current role',
+            ),
           ),
           const SizedBox(height: 10),
           SfSurfaceCard(
@@ -182,21 +291,40 @@ class StaffMoreHubScreen extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: onSignOut,
             icon: const Icon(SfIcons.logout, size: 18),
-            label: const Text('Tizimdan chiqish'),
+            label: Text(
+              _copy(
+                context,
+                uz: 'Tizimdan chiqish',
+                ru: 'Выйти',
+                en: 'Sign out',
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  String get _capabilityMessage {
+  String _capabilityMessage(BuildContext context) {
     return switch (role) {
-      StaffRole.teacher || StaffRole.assistant || StaffRole.methodist =>
-        'Moliyaviy ma\u2018lumotlar bu rolda yashirilgan. Bu yerda rol almashtirish tugmasi yo\u2018q.',
-      StaffRole.reception =>
-        'Faqat qabul uchun kerakli to\u2018lov holati ochiladi; audit va rahbariyat bo\u2018limlari yashirin.',
-      StaffRole.auditor =>
-        'Manba yozuvlari faqat o\u2018qiladi. Holatlar va tekshiruv qaydlarini yozish mumkin.',
+      StaffRole.teacher || StaffRole.assistant || StaffRole.methodist => _copy(
+        context,
+        uz: 'Moliyaviy ma’lumotlar bu rolda yashirilgan. Bu yerda rol almashtirish tugmasi yo‘q.',
+        ru: 'Финансовые данные скрыты для этой роли. Переключателя роли здесь нет.',
+        en: 'Financial data is hidden for this role, and there is no role switcher.',
+      ),
+      StaffRole.reception => _copy(
+        context,
+        uz: 'Faqat qabul uchun kerakli to‘lov holati ochiladi; audit bo‘limlari yashirin.',
+        ru: 'Открыты только нужные приёмной статусы оплаты; аудит скрыт.',
+        en: 'Only reception payment status is available; audit areas stay hidden.',
+      ),
+      StaffRole.auditor => _copy(
+        context,
+        uz: 'Manba yozuvlari faqat o‘qiladi. Holatlar va tekshiruv qaydlarini yozish mumkin.',
+        ru: 'Исходные записи доступны только для чтения; кейсы и заметки можно добавлять.',
+        en: 'Source records are read-only; cases and review notes can be added.',
+      ),
     };
   }
 }
@@ -206,59 +334,95 @@ class _ProfileSummary extends StatelessWidget {
     required this.role,
     required this.name,
     required this.branch,
+    this.onTap,
   });
   final StaffRole role;
   final String name;
   final String branch;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return SfSurfaceCard(
-      padding: const EdgeInsets.all(15),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(color: c.primary, shape: BoxShape.circle),
-            alignment: Alignment.center,
-            child: Text(
-              name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
-              style: SfType.ui(
-                size: 18,
-                weight: FontWeight.w800,
-                color: c.surface,
+    return SfPressable(
+      onPressed: onTap,
+      semanticLabel: _copy(
+        context,
+        uz: 'Profilni ochish',
+        ru: 'Открыть профиль',
+        en: 'Open profile',
+      ),
+      borderRadius: BorderRadius.circular(22),
+      child: SfSurfaceCard(
+        padding: const EdgeInsets.all(15),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: c.primary,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase(),
+                style: SfType.ui(
+                  size: 18,
+                  weight: FontWeight.w800,
+                  color: c.surface,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: SfType.ui(
-                    size: 15,
-                    weight: FontWeight.w800,
-                    color: c.ink,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: SfType.ui(
+                      size: 15,
+                      weight: FontWeight.w800,
+                      color: c.ink,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '$branch · ${role.uzLabel}',
-                  style: SfType.ui(size: 11.5, color: c.muted),
-                ),
-              ],
+                  const SizedBox(height: 2),
+                  Text(
+                    '$branch · ${_roleLabel(context, role)}',
+                    style: SfType.ui(size: 11.5, color: c.muted),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SfPill(tone: SfPillTone.success, label: 'Faol'),
-        ],
+            SfPill(
+              tone: SfPillTone.success,
+              label: _copy(context, uz: 'Faol', ru: 'Активен', en: 'Active'),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: c.muted, size: 18),
+          ],
+        ),
       ),
     );
   }
 }
+
+String _roleLabel(BuildContext context, StaffRole role) =>
+    Localizations.localeOf(context).languageCode == 'en'
+    ? role.label
+    : role.uzLabel;
+
+String _copy(
+  BuildContext context, {
+  required String uz,
+  required String ru,
+  required String en,
+}) => switch (Localizations.localeOf(context).languageCode) {
+  'ru' => ru,
+  'en' => en,
+  _ => uz,
+};
 
 class _MoreRow extends StatelessWidget {
   const _MoreRow({required this.destination, required this.badge, this.onTap});

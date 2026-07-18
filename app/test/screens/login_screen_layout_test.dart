@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:starforge_staff/screens/auth/login_screen.dart';
 import 'package:starforge_staff/theme/sf_theme.dart';
@@ -11,6 +12,13 @@ Widget _host({TextScaler textScaler = TextScaler.noScaling}) {
     palette: SfPalette.daryo,
     dark: false,
     child: MaterialApp(
+      locale: const Locale('uz'),
+      supportedLocales: const [Locale('uz'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: buildMaterialTheme(colors, dark: false),
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: textScaler),

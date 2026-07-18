@@ -74,6 +74,7 @@ class _ReceptionWorkspaceScreenState extends State<ReceptionWorkspaceScreen> {
           'Birinchi murojaatdan guruhga joylashgunga qadar bitta sokin oqim',
       actions: [
         StaffIconButton(
+          key: const ValueKey('reception-add-lead'),
           icon: SfIcons.plus,
           tooltip: 'Yangi lid qo\u2018shish',
           onPressed: widget.onCreateLead,
@@ -201,6 +202,20 @@ class _ReceptionReadyBody extends StatelessWidget {
                       'Yangi murojaatga 15 daqiqa ichida javob bering. Har lid kartasida faqat hozir kerak bo\u2018lgan amal ko\u2018rsatiladi.',
                   icon: Icons.route_outlined,
                 ),
+                if (store.lastRefreshedAt != null) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      '${_receptionText(context, uz: 'Yangilandi', en: 'Updated')} · ${_receptionTime(store.lastRefreshedAt!)}',
+                      key: const ValueKey('reception-refresh-stamp'),
+                      style: SfType.mono(
+                        size: 10.5,
+                        color: SfTheme.colorsOf(context).muted,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 const StaffSectionHeader(
                   title: 'Ish navbati',
@@ -331,6 +346,13 @@ class _LeadCard extends StatelessWidget {
                           '${lead.guardianName} · ${lead.source}',
                           style: SfType.ui(size: 11, color: c.muted),
                         ),
+                        if (lead.lastContactAt != null) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            '${_receptionText(context, uz: 'So\u2018nggi aloqa', en: 'Last contact')} · ${_receptionTime(lead.lastContactAt!)}',
+                            style: SfType.mono(size: 10, color: c.success),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -382,15 +404,15 @@ class _LeadCard extends StatelessWidget {
               child: Row(
                 children: [
                   IconButton(
+                    key: ValueKey('call-lead-${lead.id}'),
                     tooltip: 'Qo\u2018ng\u2018iroq qilish',
-                    onPressed: onCall == null
-                        ? null
-                        : () => onCall!(lead.phone),
+                    onPressed: onCall == null ? null : () => onCall!(lead.id),
                     icon: const Icon(Icons.call_outlined, size: 19),
                     color: c.primary,
                   ),
                   Expanded(
                     child: TextButton(
+                      key: ValueKey('open-lead-${lead.id}'),
                       onPressed: onOpen == null ? null : () => onOpen!(lead.id),
                       child: const Text('Batafsil'),
                     ),
@@ -477,6 +499,18 @@ class _LeadCard extends StatelessWidget {
     controller.dispose();
   }
 }
+
+String _receptionTime(DateTime value) {
+  final local = value.toLocal();
+  String two(int part) => part.toString().padLeft(2, '0');
+  return '${two(local.day)}.${two(local.month)} ${two(local.hour)}:${two(local.minute)}';
+}
+
+String _receptionText(
+  BuildContext context, {
+  required String uz,
+  required String en,
+}) => Localizations.maybeLocaleOf(context)?.languageCode == 'uz' ? uz : en;
 
 class _ReceptionAccessDenied extends StatelessWidget {
   const _ReceptionAccessDenied();

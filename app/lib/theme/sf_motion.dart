@@ -1,5 +1,24 @@
 import 'package:flutter/widgets.dart';
 
+class SfMotionConfiguration extends InheritedWidget {
+  const SfMotionConfiguration({
+    super.key,
+    required this.enabled,
+    required this.intensity,
+    required super.child,
+  });
+
+  final bool enabled;
+  final double intensity;
+
+  static SfMotionConfiguration? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SfMotionConfiguration>();
+
+  @override
+  bool updateShouldNotify(SfMotionConfiguration oldWidget) =>
+      enabled != oldWidget.enabled || intensity != oldWidget.intensity;
+}
+
 /// Shared motion tokens for the StarForge experience.
 ///
 /// Every component still receives an explicit [enabled] switch so motion can
@@ -23,6 +42,7 @@ abstract final class SfMotion {
   /// a request to avoid non-essential movement.
   static bool isEnabled(BuildContext context, {bool enabled = true}) {
     if (!enabled) return false;
+    if (SfMotionConfiguration.maybeOf(context)?.enabled == false) return false;
     final media = MediaQuery.maybeOf(context);
     if (media == null) return true;
     return !media.disableAnimations && !media.accessibleNavigation;
@@ -33,5 +53,11 @@ abstract final class SfMotion {
     BuildContext context,
     Duration duration, {
     bool enabled = true,
-  }) => isEnabled(context, enabled: enabled) ? duration : instant;
+  }) {
+    if (!isEnabled(context, enabled: enabled)) return instant;
+    final intensity = SfMotionConfiguration.maybeOf(context)?.intensity ?? 1;
+    return Duration(
+      microseconds: (duration.inMicroseconds * intensity).round(),
+    );
+  }
 }

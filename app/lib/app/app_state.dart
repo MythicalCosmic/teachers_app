@@ -100,6 +100,14 @@ final class AppState extends ChangeNotifier {
   List<AuditAnomaly> get auditAnomalies => List.unmodifiable(_auditAnomalies);
   List<AuditCase> get auditCases => List.unmodifiable(_auditCases);
 
+  Future<void> retryPersistence() => _persist();
+
+  void clearPersistenceError() {
+    if (_persistenceError == null) return;
+    _persistenceError = null;
+    notifyListeners();
+  }
+
   int get unreadMessageCount {
     final userId = _session?.userId;
     if (userId == null) return 0;
@@ -122,8 +130,12 @@ final class AppState extends ChangeNotifier {
     await Future<void>.delayed(const Duration(milliseconds: 320));
     final authenticated = DemoSeed.authenticate(username, password);
     if (authenticated == null) {
-      throw const AuthenticationException(
-        'Foydalanuvchi nomi yoki parol noto‘g‘ri.',
+      throw AuthenticationException(
+        _message(
+          uz: 'Foydalanuvchi nomi yoki parol noto‘g‘ri.',
+          ru: 'Неверное имя пользователя или пароль.',
+          en: 'Incorrect username or password.',
+        ),
       );
     }
     _session = authenticated;
@@ -143,12 +155,22 @@ final class AppState extends ChangeNotifier {
   Future<void> updateProfile({
     required String displayName,
     required String email,
+    String? username,
+    String? phone,
+    String? bio,
+    int? avatarColorValue,
   }) async {
     final current = _requireSession();
     final cleanName = displayName.trim();
     final cleanEmail = email.trim();
     if (cleanName.length < 3 || !cleanEmail.contains('@')) {
-      throw ArgumentError('Ism va email manzilini to‘g‘ri kiriting.');
+      throw ArgumentError(
+        _message(
+          uz: 'Ism va email manzilini to‘g‘ri kiriting.',
+          ru: 'Введите корректные имя и адрес почты.',
+          en: 'Enter a valid name and email address.',
+        ),
+      );
     }
     _session = StaffSession(
       userId: current.userId,
@@ -157,6 +179,10 @@ final class AppState extends ChangeNotifier {
       branchId: current.branchId,
       branchName: current.branchName,
       email: cleanEmail,
+      username: username?.trim() ?? current.username,
+      phone: phone?.trim() ?? current.phone,
+      bio: bio?.trim() ?? current.bio,
+      avatarColorValue: avatarColorValue ?? current.avatarColorValue,
     );
     notifyListeners();
     await _persist();
@@ -182,6 +208,18 @@ final class AppState extends ChangeNotifier {
       updateSettings(_settings.copyWith(haptics: value));
   Future<void> setCoachMarks(bool value) =>
       updateSettings(_settings.copyWith(coachMarks: value));
+  Future<void> setVisualStyle(AppVisualStyle value) =>
+      updateSettings(_settings.copyWith(visualStyle: value));
+  Future<void> setFontChoice(AppFontChoice value) =>
+      updateSettings(_settings.copyWith(fontChoice: value));
+  Future<void> setLayoutDensity(AppLayoutDensity value) =>
+      updateSettings(_settings.copyWith(layoutDensity: value));
+  Future<void> setSurfaceOpacity(double value) =>
+      updateSettings(_settings.copyWith(surfaceOpacity: value));
+  Future<void> setNavigationOpacity(double value) =>
+      updateSettings(_settings.copyWith(navigationOpacity: value));
+  Future<void> setMotionIntensity(double value) =>
+      updateSettings(_settings.copyWith(motionIntensity: value));
   Future<void> completeWelcome() =>
       updateSettings(_settings.copyWith(hasCompletedWelcome: true));
 
@@ -193,14 +231,32 @@ final class AppState extends ChangeNotifier {
     String? assigneeId,
     String? assigneeName,
     Iterable<String> checklist = const [],
+    Iterable<String> tags = const [],
   }) async {
     _requireCapability(StaffCapability.createTasks);
     final current = _requireSession();
     final cleanTitle = title.trim();
     if (cleanTitle.length < 3) {
-      throw ArgumentError('Vazifa sarlavhasi juda qisqa.');
+      throw ArgumentError(
+        _message(
+          uz: 'Vazifa sarlavhasi juda qisqa.',
+          ru: 'Название задачи слишком короткое.',
+          en: 'The task title is too short.',
+        ),
+      );
     }
     final now = _clock();
+    final selectedAssigneeId = assigneeId ?? current.userId;
+    if (selectedAssigneeId != current.userId &&
+        !current.can(StaffCapability.assignTasks)) {
+      throw StateError(
+        _message(
+          uz: 'Boshqa xodimga vazifa biriktirishga ruxsat yo‘q.',
+          ru: 'Нет разрешения назначать задачи другим сотрудникам.',
+          en: 'You do not have permission to assign tasks to other staff.',
+        ),
+      );
+    }
     final task = StaffTask(
       id: _newId('task'),
       title: cleanTitle,
@@ -209,14 +265,19 @@ final class AppState extends ChangeNotifier {
       priority: priority,
       creatorId: current.userId,
       creatorName: current.displayName,
-      assigneeId: assigneeId ?? current.userId,
-      assigneeName: assigneeName ?? current.displayName,
+      assigneeId: selectedAssigneeId,
+      assigneeName: selectedAssigneeId == current.userId
+          ? current.displayName
+          : assigneeName ?? selectedAssigneeId,
       dueAt: dueAt ?? now.add(const Duration(days: 2)),
       createdAt: now,
       checklist: [
         for (final entry in checklist.where((value) => value.trim().isNotEmpty))
           TaskChecklistItem(id: _newId('step'), title: entry.trim()),
       ],
+      tags: tags
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty),
     );
     _tasks = [task, ..._tasks];
     notifyListeners();
@@ -227,6 +288,7 @@ final class AppState extends ChangeNotifier {
   Future<void> setTaskStatus(String taskId, TaskStatus status) async {
     _requireCapability(StaffCapability.updateOwnTasks);
     final index = _indexById(_tasks, taskId, (item) => item.id);
+    _requireTaskUpdatePermission(_tasks[index]);
     _tasks[index] = _tasks[index].copyWith(status: status);
     notifyListeners();
     await _persist();
@@ -239,11 +301,194 @@ final class AppState extends ChangeNotifier {
     _requireCapability(StaffCapability.updateOwnTasks);
     final index = _indexById(_tasks, taskId, (item) => item.id);
     final task = _tasks[index];
+    _requireTaskUpdatePermission(task);
     final items = [
       for (final item in task.checklist)
         item.id == checklistId ? item.copyWith(isDone: !item.isDone) : item,
     ];
     _tasks[index] = task.copyWith(checklist: items);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> reorderTaskChecklist(
+    String taskId,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final task = _tasks[index];
+    _requireTaskUpdatePermission(task);
+    final items = task.checklist.toList();
+    if (oldIndex < 0 || oldIndex >= items.length) {
+      throw RangeError.index(oldIndex, items, 'oldIndex');
+    }
+    if (newIndex < 0 || newIndex >= items.length) {
+      throw RangeError.index(newIndex, items, 'newIndex');
+    }
+    final moved = items.removeAt(oldIndex);
+    items.insert(newIndex, moved);
+    _tasks[index] = task.copyWith(checklist: items);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> updateTask(
+    String taskId, {
+    String? title,
+    String? description,
+    TaskStatus? status,
+    TaskPriority? priority,
+    DateTime? dueAt,
+  }) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final current = _tasks[index];
+    _requireTaskUpdatePermission(current);
+    final cleanTitle = title?.trim();
+    if (cleanTitle != null && cleanTitle.length < 3) {
+      throw ArgumentError(
+        _message(
+          uz: 'Vazifa sarlavhasi juda qisqa.',
+          ru: 'Название задачи слишком короткое.',
+          en: 'The task title is too short.',
+        ),
+      );
+    }
+    _tasks[index] = current.copyWith(
+      title: cleanTitle,
+      description: description?.trim(),
+      status: status,
+      priority: priority,
+      dueAt: dueAt,
+    );
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> addTaskChecklistItem(String taskId, String title) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty) {
+      throw ArgumentError(
+        _message(
+          uz: 'Qadam nomini kiriting.',
+          ru: 'Введите название шага.',
+          en: 'Enter a checklist item.',
+        ),
+      );
+    }
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final task = _tasks[index];
+    _requireTaskUpdatePermission(task);
+    _tasks[index] = task.copyWith(
+      checklist: [
+        ...task.checklist,
+        TaskChecklistItem(id: _newId('step'), title: cleanTitle),
+      ],
+    );
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> removeTaskChecklistItem(
+    String taskId,
+    String checklistId,
+  ) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final task = _tasks[index];
+    _requireTaskUpdatePermission(task);
+    _tasks[index] = task.copyWith(
+      checklist: task.checklist.where((item) => item.id != checklistId),
+    );
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> deleteTask(String taskId) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final current = _requireSession();
+    final task = _tasks[index];
+    if (task.assigneeId != current.userId && task.creatorId != current.userId) {
+      throw StateError(
+        _message(
+          uz: 'Bu vazifani o‘chirishga ruxsat yo‘q.',
+          ru: 'Нет разрешения на удаление этой задачи.',
+          en: 'You do not have permission to delete this task.',
+        ),
+      );
+    }
+    _tasks.removeAt(index);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> toggleTaskFavorite(String taskId) async {
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final task = _tasks[index];
+    _tasks[index] = task.copyWith(isFavorite: !task.isFavorite);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> addTaskTag(String taskId, String tag) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final clean = tag.trim();
+    if (clean.isEmpty) return;
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final task = _tasks[index];
+    _requireTaskUpdatePermission(task);
+    if (task.tags.any((value) => value.toLowerCase() == clean.toLowerCase())) {
+      return;
+    }
+    _tasks[index] = task.copyWith(tags: [...task.tags, clean]);
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> removeTaskTag(String taskId, String tag) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final task = _tasks[index];
+    _requireTaskUpdatePermission(task);
+    _tasks[index] = task.copyWith(
+      tags: task.tags.where((value) => value != tag),
+    );
+    notifyListeners();
+    await _persist();
+  }
+
+  Future<void> addTaskComment(String taskId, String body) async {
+    _requireCapability(StaffCapability.updateOwnTasks);
+    final clean = body.trim();
+    if (clean.isEmpty) {
+      throw ArgumentError(
+        _message(
+          uz: 'Izoh bo‘sh bo‘lishi mumkin emas.',
+          ru: 'Комментарий не может быть пустым.',
+          en: 'A comment cannot be empty.',
+        ),
+      );
+    }
+    final current = _requireSession();
+    final index = _indexById(_tasks, taskId, (item) => item.id);
+    final task = _tasks[index];
+    _requireTaskUpdatePermission(task);
+    _tasks[index] = task.copyWith(
+      comments: [
+        ...task.comments,
+        TaskComment(
+          id: _newId('comment'),
+          authorId: current.userId,
+          authorName: current.displayName,
+          body: clean,
+          createdAt: _clock(),
+        ),
+      ],
+    );
     notifyListeners();
     await _persist();
   }
@@ -258,7 +503,13 @@ final class AppState extends ChangeNotifier {
     final index = _indexById(_attendanceSheets, sheetId, (item) => item.id);
     final sheet = _attendanceSheets[index];
     if (sheet.isSubmitted) {
-      throw StateError('Yuborilgan davomatni tahrirlab bo‘lmaydi.');
+      throw StateError(
+        _message(
+          uz: 'Yuborilgan davomatni tahrirlab bo‘lmaydi.',
+          ru: 'Отправленную посещаемость нельзя изменить.',
+          en: 'Submitted attendance cannot be edited.',
+        ),
+      );
     }
     var found = false;
     final entries = [
@@ -271,7 +522,15 @@ final class AppState extends ChangeNotifier {
         else
           entry,
     ];
-    if (!found) throw StateError('O‘quvchi topilmadi.');
+    if (!found) {
+      throw StateError(
+        _message(
+          uz: 'O‘quvchi topilmadi.',
+          ru: 'Ученик не найден.',
+          en: 'Student not found.',
+        ),
+      );
+    }
     _attendanceSheets[index] = sheet.copyWith(entries: entries);
     notifyListeners();
     await _persist();
@@ -282,7 +541,13 @@ final class AppState extends ChangeNotifier {
     final index = _indexById(_attendanceSheets, sheetId, (item) => item.id);
     final sheet = _attendanceSheets[index];
     if (!sheet.isComplete) {
-      throw StateError('Barcha o‘quvchilar uchun holatni belgilang.');
+      throw StateError(
+        _message(
+          uz: 'Barcha o‘quvchilar uchun holatni belgilang.',
+          ru: 'Укажите статус для каждого ученика.',
+          en: 'Choose a status for every student.',
+        ),
+      );
     }
     _attendanceSheets[index] = sheet.copyWith(submittedAt: _clock());
     notifyListeners();
@@ -300,7 +565,13 @@ final class AppState extends ChangeNotifier {
     _requireCapability(StaffCapability.issueCards);
     final current = _requireSession();
     if (reason.trim().length < 4) {
-      throw ArgumentError('Karta sababini aniqroq yozing.');
+      throw ArgumentError(
+        _message(
+          uz: 'Karta sababini aniqroq yozing.',
+          ru: 'Опишите причину подробнее.',
+          en: 'Describe the recognition reason more clearly.',
+        ),
+      );
     }
     final card = RecognitionCard(
       id: _newId('card'),
@@ -325,7 +596,13 @@ final class AppState extends ChangeNotifier {
     final current = _requireSession();
     final cleanBody = body.trim();
     if (cleanBody.isEmpty) {
-      throw ArgumentError('Xabar bo‘sh bo‘lishi mumkin emas.');
+      throw ArgumentError(
+        _message(
+          uz: 'Xabar bo‘sh bo‘lishi mumkin emas.',
+          ru: 'Сообщение не может быть пустым.',
+          en: 'A message cannot be empty.',
+        ),
+      );
     }
     final index = _indexById(_messageThreads, threadId, (item) => item.id);
     final message = ChatMessage(
@@ -383,11 +660,22 @@ final class AppState extends ChangeNotifier {
     final index = _indexById(_surveys, surveyId, (item) => item.id);
     final survey = _surveys[index];
     if (survey.isSubmitted) {
-      throw StateError('So‘rovnoma allaqachon yuborilgan.');
+      throw StateError(
+        _message(
+          uz: 'So‘rovnoma allaqachon yuborilgan.',
+          ru: 'Опрос уже отправлен.',
+          en: 'This survey has already been submitted.',
+        ),
+      );
     }
-    _surveys[index] = survey.copyWith(
-      answers: {...survey.answers, questionId: answer.trim()},
-    );
+    final cleanAnswer = answer.trim();
+    final answers = Map<String, String>.of(survey.answers);
+    if (cleanAnswer.isEmpty) {
+      answers.remove(questionId);
+    } else {
+      answers[questionId] = cleanAnswer;
+    }
+    _surveys[index] = survey.copyWith(answers: answers);
     notifyListeners();
     await _persist();
   }
@@ -401,7 +689,15 @@ final class AppState extends ChangeNotifier {
           question.required &&
           (survey.answers[question.id]?.trim().isEmpty ?? true),
     );
-    if (missing) throw StateError('Majburiy savollarga javob bering.');
+    if (missing) {
+      throw StateError(
+        _message(
+          uz: 'Majburiy savollarga javob bering.',
+          ru: 'Ответьте на обязательные вопросы.',
+          en: 'Answer every required question.',
+        ),
+      );
+    }
     _surveys[index] = survey.copyWith(submittedAt: _clock());
     notifyListeners();
     await _persist();
@@ -420,7 +716,13 @@ final class AppState extends ChangeNotifier {
         copies < 1 ||
         copies > 99 ||
         pageCount < 1) {
-      throw ArgumentError('Print sozlamalarini tekshiring.');
+      throw ArgumentError(
+        _message(
+          uz: 'Print sozlamalarini tekshiring.',
+          ru: 'Проверьте настройки печати.',
+          en: 'Check the print settings.',
+        ),
+      );
     }
     final job = PrintJob(
       id: _newId('print'),
@@ -463,10 +765,22 @@ final class AppState extends ChangeNotifier {
     final job = _printJobs[index];
     if (job.requestedById != current.userId &&
         !can(StaffCapability.managePrintQueue)) {
-      throw StateError('Bu print ishini bekor qilishga ruxsat yo‘q.');
+      throw StateError(
+        _message(
+          uz: 'Bu print ishini bekor qilishga ruxsat yo‘q.',
+          ru: 'Нет разрешения на отмену этой печати.',
+          en: 'You do not have permission to cancel this print job.',
+        ),
+      );
     }
     if (job.status == PrintJobStatus.completed) {
-      throw StateError('Tugagan ishni bekor qilib bo‘lmaydi.');
+      throw StateError(
+        _message(
+          uz: 'Tugagan ishni bekor qilib bo‘lmaydi.',
+          ru: 'Завершённую печать нельзя отменить.',
+          en: 'A completed print job cannot be cancelled.',
+        ),
+      );
     }
     _printJobs[index] = job.copyWith(
       status: PrintJobStatus.cancelled,
@@ -482,11 +796,23 @@ final class AppState extends ChangeNotifier {
     final job = _printJobs[index];
     if (job.requestedById != current.userId &&
         !can(StaffCapability.managePrintQueue)) {
-      throw StateError('Bu print ishini qayta yuborishga ruxsat yo‘q.');
+      throw StateError(
+        _message(
+          uz: 'Bu print ishini qayta yuborishga ruxsat yo‘q.',
+          ru: 'Нет разрешения на повтор этой печати.',
+          en: 'You do not have permission to retry this print job.',
+        ),
+      );
     }
     if (job.status != PrintJobStatus.failed &&
         job.status != PrintJobStatus.cancelled) {
-      throw StateError('Faqat xato yoki bekor qilingan ish qayta yuboriladi.');
+      throw StateError(
+        _message(
+          uz: 'Faqat xato yoki bekor qilingan ish qayta yuboriladi.',
+          ru: 'Повторить можно только ошибочную или отменённую печать.',
+          en: 'Only failed or cancelled print jobs can be retried.',
+        ),
+      );
     }
     _printJobs[index] = job.copyWith(
       status: PrintJobStatus.queued,
@@ -518,7 +844,13 @@ final class AppState extends ChangeNotifier {
     _requireCapability(StaffCapability.manageAuditCases);
     final current = _requireSession();
     if (title.trim().length < 4) {
-      throw ArgumentError('Holat sarlavhasini to‘ldiring.');
+      throw ArgumentError(
+        _message(
+          uz: 'Holat sarlavhasini to‘ldiring.',
+          ru: 'Введите название кейса.',
+          en: 'Enter a case title.',
+        ),
+      );
     }
     final item = AuditCase(
       id: _newId('case'),
@@ -550,7 +882,13 @@ final class AppState extends ChangeNotifier {
   Future<void> addAuditCaseNote(String caseId, String note) async {
     _requireCapability(StaffCapability.manageAuditCases);
     if (note.trim().isEmpty) {
-      throw ArgumentError('Izoh bo‘sh bo‘lishi mumkin emas.');
+      throw ArgumentError(
+        _message(
+          uz: 'Izoh bo‘sh bo‘lishi mumkin emas.',
+          ru: 'Комментарий не может быть пустым.',
+          en: 'A note cannot be empty.',
+        ),
+      );
     }
     final index = _indexById(_auditCases, caseId, (item) => item.id);
     final item = _auditCases[index];
@@ -596,12 +934,49 @@ final class AppState extends ChangeNotifier {
 
   StaffSession _requireSession() {
     final value = _session;
-    if (value == null) throw StateError('Avval tizimga kiring.');
+    if (value == null) {
+      throw StateError(
+        _message(
+          uz: 'Avval tizimga kiring.',
+          ru: 'Сначала войдите в систему.',
+          en: 'Sign in first.',
+        ),
+      );
+    }
     return value;
   }
 
+  bool canUpdateTask(StaffTask task) {
+    final current = _session;
+    if (current == null || !current.can(StaffCapability.updateOwnTasks)) {
+      return false;
+    }
+    return task.assigneeId == current.userId ||
+        task.creatorId == current.userId ||
+        current.can(StaffCapability.assignTasks);
+  }
+
+  void _requireTaskUpdatePermission(StaffTask task) {
+    if (canUpdateTask(task)) return;
+    throw StateError(
+      _message(
+        uz: 'Faqat o‘zingizga tegishli vazifani o‘zgartira olasiz.',
+        ru: 'Можно изменять только свои задачи.',
+        en: 'You can only update tasks assigned to or created by you.',
+      ),
+    );
+  }
+
   void _requireCapability(StaffCapability capability) {
-    if (!can(capability)) throw StateError('Bu amal uchun ruxsat yo‘q.');
+    if (!can(capability)) {
+      throw StateError(
+        _message(
+          uz: 'Bu amal uchun ruxsat yo‘q.',
+          ru: 'Нет разрешения на это действие.',
+          en: 'You do not have permission for this action.',
+        ),
+      );
+    }
   }
 
   String _newId(String prefix) =>
@@ -609,9 +984,27 @@ final class AppState extends ChangeNotifier {
 
   int _indexById<T>(List<T> values, String id, String Function(T) idOf) {
     final index = values.indexWhere((value) => idOf(value) == id);
-    if (index < 0) throw StateError('Ma’lumot topilmadi: $id');
+    if (index < 0) {
+      throw StateError(
+        _message(
+          uz: 'Ma’lumot topilmadi: $id',
+          ru: 'Данные не найдены: $id',
+          en: 'Record not found: $id',
+        ),
+      );
+    }
     return index;
   }
+
+  String _message({
+    required String uz,
+    required String ru,
+    required String en,
+  }) => switch (_settings.locale) {
+    AppLocale.uz => uz,
+    AppLocale.ru => ru,
+    AppLocale.en => en,
+  };
 
   AppSnapshot _snapshotForPersistence() => AppSnapshot(
     session: _persistSession ? _session : null,

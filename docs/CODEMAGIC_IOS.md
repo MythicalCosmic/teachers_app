@@ -12,9 +12,12 @@ until it is signed for a specific iPhone.
 
 1. In Codemagic, add or rescan the repository and select `codemagic.yaml` from
    the repository root (`.`).
-2. Choose **StarForge Staff - Unsigned Release for 3uTools**.
-3. Start a new build from `main`.
-4. Download `StarForge-Staff-unsigned-release.ipa` from **Artifacts**.
+2. Make sure the repository webhook is active in Codemagic.
+3. Push to `main`; **StarForge Staff - Unsigned Release for 3uTools** starts
+   automatically. You can still start the same workflow manually from `main`
+   if webhooks are disabled.
+4. Open the completed build's **Artifacts** and use
+   `StarForge-Staff-unsigned-release.ipa`.
 
 The workflow resolves dependencies, checks formatting, analyzes and tests the
 app, compiles the ARM64 iPhone release, creates both an unsigned IPA and a

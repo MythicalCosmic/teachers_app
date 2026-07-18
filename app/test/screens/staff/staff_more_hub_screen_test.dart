@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:starforge_staff/data/models.dart';
 import 'package:starforge_staff/screens/staff/staff_more_hub_screen.dart';
@@ -12,6 +13,13 @@ Widget _themed(Widget child) {
     palette: SfPalette.marvarid,
     dark: false,
     child: MaterialApp(
+      locale: const Locale('uz'),
+      supportedLocales: const [Locale('uz'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: buildMaterialTheme(colors, dark: false),
       home: child,
     ),
@@ -41,8 +49,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Ta\u2018lim sifati'), findsOneWidget);
-    expect(find.text('To\u2018lov holati'), findsNothing);
+    expect(find.text('Ta’lim sifati'), findsOneWidget);
+    expect(find.text('To‘lov holati'), findsNothing);
     expect(find.textContaining('rol almashtirish'), findsOneWidget);
     expect(find.byTooltip('Rolni almashtirish'), findsNothing);
   });
@@ -60,8 +68,8 @@ void main() {
     );
 
     expect(find.text('Lidlar va qabul'), findsOneWidget);
-    expect(find.text('To\u2018lov holati'), findsOneWidget);
+    expect(find.text('To‘lov holati'), findsOneWidget);
     expect(find.text('Audit markazi'), findsNothing);
-    expect(find.text('Ta\u2018lim sifati'), findsNothing);
+    expect(find.text('Ta’lim sifati'), findsNothing);
   });
 }

@@ -17,11 +17,14 @@ class SfGlassSurface extends StatelessWidget {
   final double blurSigma;
   final Color? tintColor;
   final Color? fallbackColor;
+  final Gradient? gradient;
   final BoxBorder? border;
   final BorderRadiusGeometry borderRadius;
   final List<BoxShadow> shadows;
   final EdgeInsetsGeometry? padding;
   final Clip clipBehavior;
+  final bool specular;
+  final bool translucentFallback;
 
   const SfGlassSurface({
     super.key,
@@ -31,11 +34,14 @@ class SfGlassSurface extends StatelessWidget {
     this.blurSigma = 18,
     this.tintColor,
     this.fallbackColor,
+    this.gradient,
     this.border,
     this.borderRadius = const BorderRadius.all(Radius.circular(22)),
     this.shadows = const [],
     this.padding,
     this.clipBehavior = Clip.antiAlias,
+    this.specular = true,
+    this.translucentFallback = false,
   }) : assert(blurSigma >= 0);
 
   static bool platformSupportsBlur(TargetPlatform platform) =>
@@ -44,24 +50,66 @@ class SfGlassSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
+    final sf = SfTheme.of(context);
     final useBlur =
         enabled &&
         (!platformAdaptive ||
             (!kIsWeb && platformSupportsBlur(defaultTargetPlatform)));
     final resolvedRadius = borderRadius.resolve(Directionality.of(context));
-    final opaqueFallback = (fallbackColor ?? c.surface).withValues(alpha: 1);
+    final fallback = fallbackColor ?? c.surface;
+    final fallbackAlpha = fallback.a < sf.surfaceOpacity
+        ? fallback.a
+        : sf.surfaceOpacity;
+    final opaqueFallback = fallback.withValues(
+      alpha: (enabled && sf.usesGlass) || translucentFallback
+          ? fallbackAlpha
+          : 1,
+    );
     final color = useBlur
-        ? (tintColor ?? c.surface.withValues(alpha: 0.78))
+        ? (tintColor ?? c.surface.withValues(alpha: sf.surfaceOpacity))
         : opaqueFallback;
 
     Widget surface = DecoratedBox(
       decoration: BoxDecoration(
-        color: color,
-        border: border ?? Border.all(color: c.border.withValues(alpha: 0.82)),
+        color: gradient == null ? color : null,
+        gradient: gradient,
+        border:
+            border ??
+            Border.all(
+              color: useBlur
+                  ? Colors.white.withValues(alpha: sf.dark ? 0.16 : 0.64)
+                  : c.border.withValues(alpha: 0.82),
+            ),
         borderRadius: resolvedRadius,
         boxShadow: shadows,
       ),
-      child: padding == null ? child : Padding(padding: padding!, child: child),
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          if (useBlur && specular)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: resolvedRadius,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      stops: const [0, 0.22, 0.54, 1],
+                      colors: [
+                        Colors.white.withValues(alpha: sf.dark ? 0.13 : 0.30),
+                        Colors.white.withValues(alpha: sf.dark ? 0.035 : 0.11),
+                        Colors.transparent,
+                        c.primary.withValues(alpha: sf.dark ? 0.055 : 0.035),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          padding == null ? child : Padding(padding: padding!, child: child),
+        ],
+      ),
     );
 
     if (useBlur) {
