@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,8 +12,10 @@ import '../theme/sf_theme.dart';
 import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_adaptive_dialog.dart';
 import '../widgets/sf_avatar.dart';
+import '../widgets/sf_card.dart';
 import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
+import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
@@ -26,12 +30,19 @@ class MessagesScreen extends StatefulWidget {
 class _MessagesScreenState extends State<MessagesScreen> {
   final _search = TextEditingController();
   final Set<String> _selected = {};
+  late final int _emptyMotivationIndex;
   String? _folderId;
   bool _archived = false;
   MessagingController? _activeController;
 
   MessagingController get _controller =>
       _activeController ?? MessagingController.shared;
+
+  @override
+  void initState() {
+    super.initState();
+    _emptyMotivationIndex = Random().nextInt(5);
+  }
 
   @override
   void dispose() {
@@ -161,31 +172,50 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           message: _controller.backendError,
                           onRetry: () => _controller.refreshThreads(),
                         )
-                      : threads.isEmpty
+                      : threads.isEmpty && _search.text.isNotEmpty
                       ? SfEmptyState(
                           key: ValueKey(
                             'empty-${_archived ? 'archive' : _folderId}-${_search.text}',
                           ),
-                          title: _search.text.isNotEmpty
-                              ? m.text('no_results')
-                              : _archived
+                          title: m.text('no_results'),
+                          message: m.text('try_another_search'),
+                          icon: SfIcons.search,
+                          actionLabel: m.text('clear_search'),
+                          onAction: () {
+                            _search.clear();
+                            setState(() {});
+                          },
+                        )
+                      : threads.isEmpty
+                      ? _MessagesEmptyExperience(
+                          key: ValueKey(
+                            'rich-empty-${_archived ? 'archive' : _folderId}',
+                          ),
+                          title: _archived
                               ? m.text('archive_empty')
                               : m.text('no_chats'),
-                          message: _search.text.isNotEmpty
-                              ? m.text('try_another_search')
+                          message: _archived
+                              ? m.text('empty_archive_message')
+                              : _folderId != null
+                              ? m.text('empty_folder_message')
                               : m.text('start_with_new_message'),
                           icon: _archived
                               ? Icons.archive_rounded
                               : SfIcons.chat,
-                          actionLabel: _search.text.isNotEmpty
-                              ? m.text('clear_search')
-                              : m.text('new_message'),
-                          onAction: _search.text.isNotEmpty
-                              ? () {
-                                  _search.clear();
-                                  setState(() {});
-                                }
-                              : () => context.push('/messages/new'),
+                          motivation: m.text(
+                            'empty_motivation_${_emptyMotivationIndex + 1}',
+                          ),
+                          showReturnToAll: _archived || _folderId != null,
+                          canRefresh: _controller.isProduction,
+                          onCompose: () => context.push('/messages/new'),
+                          onCreateFolder: () => _createFolder(context),
+                          onReturnToAll: () => setState(() {
+                            _archived = false;
+                            _folderId = null;
+                          }),
+                          onRefresh: _controller.isProduction
+                              ? _controller.refreshThreads
+                              : () async {},
                         )
                       : RefreshIndicator(
                           key: ValueKey(
@@ -508,37 +538,56 @@ class _SearchAndFolders extends StatelessWidget {
                     ),
             ),
           ),
-          SizedBox(
-            height: 48,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
-              children: [
-                _FolderChip(
-                  label: m.text('all'),
-                  selected: selectedFolderId == null && !archived,
-                  onTap: () => onFolderSelected(null, false),
-                ),
-                for (final folder in folders)
-                  _FolderChip(
-                    label: m.folderName(folder),
-                    selected: selectedFolderId == folder.id && !archived,
-                    onTap: () => onFolderSelected(folder.id, false),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+            child: SizedBox(
+              height: 40,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        _FolderChip(
+                          label: m.text('all'),
+                          selected: selectedFolderId == null && !archived,
+                          onTap: () => onFolderSelected(null, false),
+                        ),
+                        for (final folder in folders)
+                          _FolderChip(
+                            label: m.folderName(folder),
+                            selected:
+                                selectedFolderId == folder.id && !archived,
+                            onTap: () => onFolderSelected(folder.id, false),
+                          ),
+                        _FolderChip(
+                          label: archivedCount == 0
+                              ? m.text('archive')
+                              : '${m.text('archive')} $archivedCount',
+                          selected: archived,
+                          icon: Icons.archive_outlined,
+                          onTap: () => onFolderSelected(null, true),
+                        ),
+                      ],
+                    ),
                   ),
-                _FolderChip(
-                  label: archivedCount == 0
-                      ? m.text('archive')
-                      : '${m.text('archive')} $archivedCount',
-                  selected: archived,
-                  icon: Icons.archive_outlined,
-                  onTap: () => onFolderSelected(null, true),
-                ),
-                IconButton(
-                  tooltip: m.text('new_folder'),
-                  onPressed: onCreateFolder,
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  SizedBox(
+                    key: const ValueKey('messages-create-folder-pinned'),
+                    width: 42,
+                    height: 40,
+                    child: IconButton.filledTonal(
+                      tooltip: m.text('new_folder'),
+                      onPressed: onCreateFolder,
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.create_new_folder_outlined,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (deviceLocalOrganization)
@@ -550,7 +599,7 @@ class _SearchAndFolders extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Jild, pin, mute va arxiv faqat shu qurilmada saqlanadi.',
+                      m.text('device_local_organization'),
                       style: SfType.ui(size: 10.5, color: c.muted),
                     ),
                   ),
@@ -558,6 +607,312 @@ class _SearchAndFolders extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _MessagesEmptyExperience extends StatelessWidget {
+  const _MessagesEmptyExperience({
+    super.key,
+    required this.title,
+    required this.message,
+    required this.icon,
+    required this.motivation,
+    required this.showReturnToAll,
+    required this.canRefresh,
+    required this.onCompose,
+    required this.onCreateFolder,
+    required this.onReturnToAll,
+    required this.onRefresh,
+  });
+
+  final String title;
+  final String message;
+  final IconData icon;
+  final String motivation;
+  final bool showReturnToAll;
+  final bool canRefresh;
+  final VoidCallback onCompose;
+  final VoidCallback onCreateFolder;
+  final VoidCallback onReturnToAll;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final m = MessagingL10n.of(context);
+    return RefreshIndicator.adaptive(
+      onRefresh: onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: SfMotion.resolve(context, SfMotion.standard),
+            curve: SfMotion.enter,
+            builder: (context, value, child) => Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, 10 * (1 - value)),
+                child: child,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SfSurfaceCard(
+                  key: const ValueKey('messages-empty-status-card'),
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: BoxDecoration(
+                          color: c.successSoft,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(icon, color: c.success, size: 26),
+                      ),
+                      const SizedBox(width: 13),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    style: SfType.ui(
+                                      size: 15,
+                                      weight: FontWeight.w800,
+                                      color: c.ink,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: c.successSoft,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    m.text('empty_message_count'),
+                                    style: SfType.ui(
+                                      size: 9.5,
+                                      weight: FontWeight.w700,
+                                      color: c.success,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 7),
+                            Text(
+                              message,
+                              style: SfType.ui(
+                                size: 11.5,
+                                color: c.ink2,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SfSurfaceCard(
+                  key: const ValueKey('messages-empty-motivation'),
+                  color: c.primarySoft,
+                  padding: const EdgeInsets.all(17),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: c.primary.withValues(alpha: .12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.auto_awesome_rounded,
+                          size: 20,
+                          color: c.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              m.text('empty_motivation_label'),
+                              style: SfType.eyebrow(
+                                size: 9.5,
+                                color: c.primaryInk,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              motivation,
+                              style: SfType.display(
+                                size: 15,
+                                weight: FontWeight.w700,
+                                color: c.ink,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SfSurfaceCard(
+                  key: const ValueKey('messages-empty-actions'),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        m.text('empty_quick_actions'),
+                        style: SfType.ui(
+                          size: 13.5,
+                          weight: FontWeight.w800,
+                          color: c.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 11),
+                      _EmptyMessageAction(
+                        key: const ValueKey('messages-empty-compose'),
+                        icon: Icons.edit_square,
+                        title: m.text('new_message'),
+                        subtitle: m.text('empty_compose_help'),
+                        onTap: onCompose,
+                      ),
+                      const SizedBox(height: 8),
+                      _EmptyMessageAction(
+                        key: ValueKey(
+                          showReturnToAll
+                              ? 'messages-empty-show-all'
+                              : 'messages-empty-create-folder',
+                        ),
+                        icon: showReturnToAll
+                            ? Icons.forum_outlined
+                            : Icons.create_new_folder_outlined,
+                        title: showReturnToAll
+                            ? m.text('empty_back_to_all')
+                            : m.text('new_folder'),
+                        subtitle: showReturnToAll
+                            ? m.text('empty_back_to_all_help')
+                            : m.text('empty_folder_help'),
+                        onTap: showReturnToAll ? onReturnToAll : onCreateFolder,
+                      ),
+                      if (canRefresh) ...[
+                        const SizedBox(height: 8),
+                        _EmptyMessageAction(
+                          key: const ValueKey('messages-empty-refresh'),
+                          icon: Icons.refresh_rounded,
+                          title: m.text('empty_refresh'),
+                          subtitle: m.text('empty_refresh_help'),
+                          onTap: onRefresh,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyMessageAction extends StatelessWidget {
+  const _EmptyMessageAction({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return SfPressable(
+      onPressed: onTap,
+      semanticLabel: title,
+      haptic: true,
+      borderRadius: BorderRadius.circular(17),
+      builder: (context, state, _) => AnimatedContainer(
+        duration: SfMotion.resolve(context, SfMotion.quick),
+        padding: const EdgeInsets.fromLTRB(12, 11, 10, 11),
+        decoration: BoxDecoration(
+          color: state.pressed ? c.surface3 : c.surface2,
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: state.hovered ? c.borderStrong : c.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: c.primarySoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 19, color: c.primary),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: SfType.ui(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      color: c.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: SfType.ui(size: 10, color: c.muted, height: 1.25),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 20, color: c.muted),
+          ],
+        ),
       ),
     );
   }

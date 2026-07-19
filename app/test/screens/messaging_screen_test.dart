@@ -136,6 +136,56 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'an empty inbox keeps truthful guidance and useful actions on a narrow phone',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(393, 852);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final state = (await tester.runAsync(_teacherState))!;
+      await state.setLocale(AppLocale.en);
+      await tester.pumpWidget(_host(state));
+      await _settleMessaging(tester);
+
+      final controller = state.messagingController;
+      final threadIds = controller.threads.map((thread) => thread.id).toList();
+      addTearDown(() => controller.setArchived(threadIds, false));
+      controller.setArchived(threadIds, true);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('messages-empty-status-card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('messages-empty-motivation')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('messages-empty-actions')),
+        findsOneWidget,
+      );
+      expect(find.text('0 conversations'), findsOneWidget);
+      expect(find.text('Quick start'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('messages-empty-compose')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('messages-empty-create-folder')),
+        findsOneWidget,
+      );
+
+      final createFolder = tester.getRect(
+        find.byKey(const ValueKey('messages-create-folder-pinned')),
+      );
+      expect(createFolder.left, greaterThanOrEqualTo(0));
+      expect(createFolder.right, lessThanOrEqualTo(393));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('chat sends text, image and voice with animated composer', (
     tester,
   ) async {

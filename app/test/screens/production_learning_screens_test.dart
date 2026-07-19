@@ -36,14 +36,177 @@ void main() {
       fixture.host(ProductionTodayScreen(controller: fixture.controller)),
     );
     await tester.pump();
+    expect(find.text('3'), findsWidgets);
 
+    await tester.scrollUntilVisible(
+      find.text('Server calculus'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Server calculus'), findsOneWidget);
     expect(find.textContaining('Server Teacher'), findsWidgets);
     expect(fixture.app.centerName, 'Server Academy');
     expect(find.textContaining('Demo'), findsNothing);
-    expect(find.text('3'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'empty today keeps every useful card visible with stable encouragement',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _fixture(responder: _emptyTodayResponse),
+      ))!;
+      addTearDown(fixture.dispose);
+      await tester.runAsync(
+        () => fixture.controller.refreshToday(DateTime.now(), force: true),
+      );
+
+      await tester.pumpWidget(
+        fixture.host(
+          ProductionTodayScreen(
+            controller: fixture.controller,
+            motivationIndexOverride: 0,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      for (var index = 0; index < 3; index++) {
+        final metric = find.byKey(ValueKey('production-today-metric-$index'));
+        expect(metric, findsOneWidget);
+        expect(
+          find.descendant(of: metric, matching: find.text('0')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: metric, matching: find.text('Empty')),
+          findsOneWidget,
+        );
+      }
+      expect(find.text('Your calm creates room for learning'), findsOneWidget);
+      expect(
+        find.textContaining('Every thoughtful minute of preparation'),
+        findsOneWidget,
+      );
+
+      await tester.runAsync(
+        () => fixture.controller.loadDashboard(force: true),
+      );
+      await tester.pump();
+      expect(find.text('Your calm creates room for learning'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('No lessons on this date'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('No lessons on this date'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('production-today-attention-card')),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Pending forms'), findsOneWidget);
+      expect(find.text('Rule acknowledgements'), findsOneWidget);
+      expect(find.text('Upcoming exams'), findsOneWidget);
+      expect(
+        find.text('All clear — nothing is waiting right now.'),
+        findsOneWidget,
+      );
+
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('today encouragement follows the selected app language', (
+    tester,
+  ) async {
+    final fixture = (await tester.runAsync(
+      () => _fixture(responder: _emptyTodayResponse),
+    ))!;
+    addTearDown(fixture.dispose);
+    await tester.runAsync(
+      () => fixture.controller.refreshToday(DateTime.now(), force: true),
+    );
+
+    await tester.pumpWidget(
+      fixture.host(
+        ProductionTodayScreen(
+          controller: fixture.controller,
+          motivationIndexOverride: 1,
+        ),
+        locale: const Locale('uz'),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.text('Kichik tayyorgarlik katta ishonch beradi'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Bugungi sokin vaqtni'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'empty schedule stays useful and every status filter fits a narrow phone',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final fixture = (await tester.runAsync(
+        () => _fixture(
+          responder: (call) => call.path == '/api/v1/schedule/lessons/'
+              ? _pageResponse(<Object?>[])
+              : _learningResponse(call),
+        ),
+      ))!;
+      addTearDown(fixture.dispose);
+      await tester.runAsync(
+        () => fixture.controller.loadLessons(
+          LearningWorkspaceController.weekRange(DateTime.now()),
+          force: true,
+        ),
+      );
+
+      await tester.pumpWidget(
+        fixture.host(ProductionScheduleScreen(controller: fixture.controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('production-empty-lesson-card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('production-empty-schedule-summary')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('production-schedule-motivation')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('production-empty-schedule-actions')),
+        findsOneWidget,
+      );
+      expect(find.text('0 lessons'), findsWidgets);
+      expect(find.text('0 min'), findsOneWidget);
+
+      final all = tester.getRect(
+        find.byKey(const ValueKey('production-schedule-filter-all')),
+      );
+      final cancelled = tester.getRect(
+        find.byKey(const ValueKey('production-schedule-filter-cancelled')),
+      );
+      expect(all.left, greaterThanOrEqualTo(0));
+      expect(cancelled.right, lessThanOrEqualTo(390));
+      expect(cancelled.top, greaterThan(all.top));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('groups search is sent to the server and has no add action', (
     tester,
@@ -326,7 +489,7 @@ final class _Fixture {
   final LearningWorkspaceController controller;
   final List<GoRouter> _routers = [];
 
-  Widget host(Widget screen) {
+  Widget host(Widget screen, {Locale locale = const Locale('en')}) {
     final router = GoRouter(
       routes: [GoRoute(path: '/', builder: (context, state) => screen)],
     );
@@ -340,7 +503,7 @@ final class _Fixture {
         dark: false,
         reducedMotion: true,
         child: MaterialApp.router(
-          locale: const Locale('en'),
+          locale: locale,
           supportedLocales: const [Locale('uz'), Locale('ru'), Locale('en')],
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
@@ -551,6 +714,27 @@ ApiResponse _learningResponse(_LearningCall call) {
       );
   }
   throw StateError('Unexpected learning request: ${call.path}');
+}
+
+ApiResponse _emptyTodayResponse(_LearningCall call) {
+  switch (call.path) {
+    case '/api/v1/teachers/dashboard/':
+      return _response(
+        data: {
+          'groups_count': 0,
+          'students_count': 0,
+          'level_groups': <String, Object?>{},
+          'next_lessons': <Object?>[],
+          'upcoming_exams': <Object?>[],
+          'expected_graduations': <Object?>[],
+          'pending_rule_acknowledgments': 0,
+          'pending_forms': <Object?>[],
+        },
+      );
+    case '/api/v1/schedule/lessons/':
+      return _pageResponse(<Object?>[]);
+  }
+  return _learningResponse(call);
 }
 
 ApiResponse _pageResponse(List<Object?> data) => _response(

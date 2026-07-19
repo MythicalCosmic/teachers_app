@@ -92,6 +92,27 @@ const _copy = <String, Map<String, String>>{
     'try_another_search': 'Boshqa so‘z yoki ism bilan qidiring.',
     'start_with_new_message':
         'Yangi xabar orqali hamkasbingiz bilan suhbatni boshlang.',
+    'empty_message_count': '0 ta suhbat',
+    'empty_archive_message':
+        'Arxivlangan suhbatlar shu yerda ko‘rinadi. Hozircha hech narsa yashirilmagan.',
+    'empty_folder_message': 'Bu jildda hali suhbat yo‘q.',
+    'empty_motivation_label': 'Kichik eslatma',
+    'empty_motivation_1':
+        'Yaxshi hamkorlik ko‘pincha bitta samimiy xabardan boshlanadi.',
+    'empty_motivation_2': 'Aniq va mehrli muloqot kuchli jamoani quradi.',
+    'empty_motivation_3':
+        'Bir daqiqalik suhbat butun kunlik ishni yengillashtirishi mumkin.',
+    'empty_motivation_4':
+        'Savol berish ham, yordam taklif qilish ham jamoaviy kuchdir.',
+    'empty_motivation_5':
+        'Bugungi kichik aloqa ertangi katta natijaga aylanishi mumkin.',
+    'empty_quick_actions': 'Tezkor boshlash',
+    'empty_compose_help': 'Ism yoki username orqali hamkasbingizni toping.',
+    'empty_folder_help': 'Kelajakdagi suhbatlar uchun tartibli joy yarating.',
+    'empty_back_to_all': 'Barcha suhbatlar',
+    'empty_back_to_all_help': 'Asosiy xabarlar ro‘yxatiga qayting.',
+    'empty_refresh': 'Yangilash',
+    'empty_refresh_help': 'Serverdan eng yangi suhbatlarni tekshiring.',
     'clear_search': 'Qidiruvni tozalash',
     'close_search': 'Qidiruvni yopish',
     'new_folder': 'Yangi jild',
@@ -115,6 +136,8 @@ const _copy = <String, Map<String, String>>{
     'all': 'Barchasi',
     'folder_work': 'Ish',
     'folder_important': 'Muhim',
+    'device_local_organization':
+        'Jild, pin, mute va arxiv faqat shu qurilmada saqlanadi.',
     'start_chat': 'Suhbatni boshlang',
     'chat': 'Suhbat',
     'chat_not_found': 'Suhbat topilmadi',
@@ -239,6 +262,28 @@ const _copy = <String, Map<String, String>>{
     'try_another_search': 'Попробуйте другое слово или имя.',
     'start_with_new_message':
         'Начните разговор с коллегой через новое сообщение.',
+    'empty_message_count': '0 чатов',
+    'empty_archive_message':
+        'Архивированные чаты появятся здесь. Сейчас ничего не скрыто.',
+    'empty_folder_message': 'В этой папке пока нет чатов.',
+    'empty_motivation_label': 'Небольшая мысль',
+    'empty_motivation_1':
+        'Хорошее сотрудничество часто начинается с одного искреннего сообщения.',
+    'empty_motivation_2':
+        'Ясное и доброжелательное общение создаёт сильную команду.',
+    'empty_motivation_3':
+        'Минутный разговор может сделать весь рабочий день легче.',
+    'empty_motivation_4':
+        'Задать вопрос и предложить помощь — одинаково сильные командные шаги.',
+    'empty_motivation_5':
+        'Небольшой контакт сегодня может стать большим результатом завтра.',
+    'empty_quick_actions': 'Быстрый старт',
+    'empty_compose_help': 'Найдите коллегу по имени или username.',
+    'empty_folder_help': 'Подготовьте порядок для будущих разговоров.',
+    'empty_back_to_all': 'Все чаты',
+    'empty_back_to_all_help': 'Вернитесь к основному списку сообщений.',
+    'empty_refresh': 'Обновить',
+    'empty_refresh_help': 'Проверьте новые чаты на сервере.',
     'clear_search': 'Очистить поиск',
     'close_search': 'Закрыть поиск',
     'new_folder': 'Новая папка',
@@ -262,6 +307,8 @@ const _copy = <String, Map<String, String>>{
     'all': 'Все',
     'folder_work': 'Работа',
     'folder_important': 'Важное',
+    'device_local_organization':
+        'Папки, закрепление, звук и архив хранятся только на этом устройстве.',
     'start_chat': 'Начните разговор',
     'chat': 'Чат',
     'chat_not_found': 'Чат не найден',
@@ -386,6 +433,28 @@ const _copy = <String, Map<String, String>>{
     'no_chats': 'No conversations',
     'try_another_search': 'Try another word or staff name.',
     'start_with_new_message': 'Start a conversation with a colleague.',
+    'empty_message_count': '0 conversations',
+    'empty_archive_message':
+        'Archived conversations will appear here. Nothing is hidden yet.',
+    'empty_folder_message': 'This folder has no conversations yet.',
+    'empty_motivation_label': 'A small reminder',
+    'empty_motivation_1':
+        'Good collaboration often begins with one thoughtful message.',
+    'empty_motivation_2':
+        'Clear, kind communication is how strong teams are built.',
+    'empty_motivation_3':
+        'A one-minute conversation can make the whole workday easier.',
+    'empty_motivation_4':
+        'Asking a question and offering help are both signs of a strong team.',
+    'empty_motivation_5':
+        'A small connection today can become a meaningful result tomorrow.',
+    'empty_quick_actions': 'Quick start',
+    'empty_compose_help': 'Find a colleague by name or username.',
+    'empty_folder_help': 'Create a tidy place for future conversations.',
+    'empty_back_to_all': 'All conversations',
+    'empty_back_to_all_help': 'Return to the main message list.',
+    'empty_refresh': 'Refresh',
+    'empty_refresh_help': 'Check the server for the latest conversations.',
     'clear_search': 'Clear search',
     'close_search': 'Close search',
     'new_folder': 'New folder',
@@ -409,6 +478,8 @@ const _copy = <String, Map<String, String>>{
     'all': 'All',
     'folder_work': 'Work',
     'folder_important': 'Important',
+    'device_local_organization':
+        'Folders, pins, mute, and archive are stored on this device only.',
     'start_chat': 'Start the conversation',
     'chat': 'Chat',
     'chat_not_found': 'Conversation not found',

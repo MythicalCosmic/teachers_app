@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -22,10 +23,115 @@ import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_tab_bar.dart';
 import '../../widgets/sf_toast.dart';
 
+const _todayMotivations = <_TodayMotivationCopy>[
+  _TodayMotivationCopy(
+    uzTitle: 'Sizning xotirjamligingiz o\'rganishga joy yaratadi',
+    uzBody:
+        'Har bir puxta tayyorlangan daqiqa o\'quvchi uchun ishonchli qadamga aylanadi.',
+    ruTitle: 'Ваше спокойствие создаёт пространство для знаний',
+    ruBody:
+        'Каждая минута вдумчивой подготовки становится уверенным шагом ученика.',
+    enTitle: 'Your calm creates room for learning',
+    enBody:
+        'Every thoughtful minute of preparation becomes a confident step for a student.',
+  ),
+  _TodayMotivationCopy(
+    uzTitle: 'Kichik tayyorgarlik katta ishonch beradi',
+    uzBody:
+        'Bugungi sokin vaqtni ertangi darsni yanada yengil va mazmunli qilish uchun ishlating.',
+    ruTitle: 'Небольшая подготовка даёт большую уверенность',
+    ruBody:
+        'Используйте спокойное время сегодня, чтобы завтрашний урок стал легче и содержательнее.',
+    enTitle: 'Small preparation builds big confidence',
+    enBody:
+        'Use today\'s quiet space to make tomorrow\'s lesson lighter and more meaningful.',
+  ),
+  _TodayMotivationCopy(
+    uzTitle: 'Yaxshi ustoz sokin kunlarda ham o\'sadi',
+    uzBody:
+        'Dam olish, fikrlarni tartiblash va yangi g\'oya topish ham muhim ishning bir qismi.',
+    ruTitle: 'Хороший педагог растёт даже в спокойные дни',
+    ruBody:
+        'Отдых, порядок в мыслях и новая идея — такая же важная часть вашей работы.',
+    enTitle: 'Great teachers grow on quiet days too',
+    enBody:
+        'Rest, a clear mind, and one fresh idea are meaningful parts of the work too.',
+  ),
+  _TodayMotivationCopy(
+    uzTitle: 'Bugungi e\'tiboringiz ertangi natijani yaratadi',
+    uzBody:
+        'Bir materialni yaxshilash yoki bir o\'quvchini eslashning o\'zi ham katta farq qiladi.',
+    ruTitle: 'Сегодняшнее внимание создаёт завтрашний результат',
+    ruBody:
+        'Даже один улучшенный материал или внимание к одному ученику меняют многое.',
+    enTitle: 'Today\'s care shapes tomorrow\'s progress',
+    enBody:
+        'Improving one resource or thinking about one learner can make a real difference.',
+  ),
+  _TodayMotivationCopy(
+    uzTitle: 'Taqvim bo\'sh, lekin kun imkoniyatlarga to\'la',
+    uzBody:
+        'Shoshilmasdan rejalang, kuch to\'plang va keyingi darsga o\'zingizga xos iliqlik olib keling.',
+    ruTitle: 'Расписание свободно, но день полон возможностей',
+    ruBody:
+        'Планируйте без спешки, восстановите силы и принесите своё тепло на следующий урок.',
+    enTitle: 'The schedule is open, and the day is full of possibility',
+    enBody:
+        'Plan without rushing, recharge, and bring your own warmth into the next lesson.',
+  ),
+];
+
+final Random _todayMotivationRandom = Random();
+int? _lastTodayMotivationIndex;
+
+int _resolveTodayMotivationIndex(int? override) {
+  if (override != null) {
+    return override.abs() % _todayMotivations.length;
+  }
+  var index = _todayMotivationRandom.nextInt(_todayMotivations.length);
+  if (_todayMotivations.length > 1 && index == _lastTodayMotivationIndex) {
+    index =
+        (index +
+            1 +
+            _todayMotivationRandom.nextInt(_todayMotivations.length - 1)) %
+        _todayMotivations.length;
+  }
+  _lastTodayMotivationIndex = index;
+  return index;
+}
+
+@immutable
+class _TodayMotivationCopy {
+  const _TodayMotivationCopy({
+    required this.uzTitle,
+    required this.uzBody,
+    required this.ruTitle,
+    required this.ruBody,
+    required this.enTitle,
+    required this.enBody,
+  });
+
+  final String uzTitle;
+  final String uzBody;
+  final String ruTitle;
+  final String ruBody;
+  final String enTitle;
+  final String enBody;
+}
+
 class ProductionTodayScreen extends StatefulWidget {
-  const ProductionTodayScreen({super.key, required this.controller});
+  const ProductionTodayScreen({
+    super.key,
+    required this.controller,
+    this.motivationIndexOverride,
+  });
 
   final LearningWorkspaceController controller;
+
+  /// Keeps motivation-focused widget tests deterministic. Production callers
+  /// leave this null so every newly-created home screen gets a fresh message.
+  @visibleForTesting
+  final int? motivationIndexOverride;
 
   @override
   State<ProductionTodayScreen> createState() => _ProductionTodayScreenState();
@@ -33,11 +139,15 @@ class ProductionTodayScreen extends StatefulWidget {
 
 class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
   late DateTime _selectedDate;
+  late final int _motivationIndex;
 
   @override
   void initState() {
     super.initState();
     _selectedDate = DateUtils.dateOnly(DateTime.now());
+    _motivationIndex = _resolveTodayMotivationIndex(
+      widget.motivationIndexOverride,
+    );
     unawaited(widget.controller.refreshToday(_selectedDate, force: false));
   }
 
@@ -74,6 +184,8 @@ class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
           LearningWorkspaceController.dayRange(_selectedDate),
         );
         final dashboardResource = widget.controller.dashboard;
+        final dashboard = dashboardResource.value;
+        final dashboardLoading = dashboardResource.isLoading;
         final lessons = [...?lessonResource.value]
           ..sort((a, b) => _lessonTime(a).compareTo(_lessonTime(b)));
         final blocking = _blockingState(
@@ -130,20 +242,27 @@ class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
                   padding: const EdgeInsets.fromLTRB(18, 14, 18, 40),
                   children: [
                     _ConnectionStrip(
-                      syncing: app.isSyncing || lessonResource.isLoading,
+                      syncing:
+                          app.isSyncing ||
+                          lessonResource.isLoading ||
+                          dashboardLoading,
                       center: app.centerName,
                       lastSyncedAt: app.lastSyncedAt,
                     ),
                     const SizedBox(height: 13),
-                    if (dashboardResource.value case final dashboard?) ...[
-                      _DashboardMetrics(
-                        dashboard: dashboard,
-                        lessonCount: lessons.length,
-                        onGroups: () => context.go('/workspace'),
-                      ),
-                      const SizedBox(height: 14),
-                    ] else if (dashboardResource.isUnavailable ||
+                    _DashboardMetrics(
+                      dashboard: dashboard,
+                      loading: dashboardLoading,
+                      lessonCount: lessons.length,
+                      onGroups: () => context.go('/workspace'),
+                    ),
+                    const SizedBox(height: 12),
+                    _TodayMotivationCard(
+                      motivation: _todayMotivations[_motivationIndex],
+                    ),
+                    if (dashboardResource.isUnavailable ||
                         dashboardResource.isFailure) ...[
+                      const SizedBox(height: 14),
                       _InlineModuleState(
                         resource: dashboardResource,
                         title: _text(
@@ -207,19 +326,20 @@ class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
                               ],
                             ),
                     ),
-                    if (dashboardResource.value case final dashboard?) ...[
-                      const SizedBox(height: 18),
-                      _SectionLabel(
-                        title: _text(
-                          context,
-                          uz: 'Keyingi muhim ishlar',
-                          ru: 'Следующие важные дела',
-                          en: 'What needs attention',
-                        ),
+                    const SizedBox(height: 18),
+                    _SectionLabel(
+                      title: _text(
+                        context,
+                        uz: 'Keyingi muhim ishlar',
+                        ru: 'Следующие важные дела',
+                        en: 'What needs attention',
                       ),
-                      const SizedBox(height: 10),
-                      _AttentionCard(dashboard: dashboard),
-                    ],
+                    ),
+                    const SizedBox(height: 10),
+                    _AttentionCard(
+                      dashboard: dashboard,
+                      loading: dashboardLoading,
+                    ),
                   ],
                 ),
               ),
@@ -243,6 +363,7 @@ class ProductionScheduleScreen extends StatefulWidget {
 
 class _ProductionScheduleScreenState extends State<ProductionScheduleScreen> {
   late DateTime _selectedDate;
+  late final int _emptyMotivationIndex;
   ProductionScheduleView _view = ProductionScheduleView.week;
   String _status = 'all';
   int? _expandedLesson;
@@ -263,6 +384,7 @@ class _ProductionScheduleScreenState extends State<ProductionScheduleScreen> {
   void initState() {
     super.initState();
     _selectedDate = DateUtils.dateOnly(DateTime.now());
+    _emptyMotivationIndex = Random().nextInt(_scheduleMotivationCount);
     unawaited(widget.controller.loadLessons(_range));
   }
 
@@ -308,13 +430,20 @@ class _ProductionScheduleScreenState extends State<ProductionScheduleScreen> {
     builder: (context, _) {
       final resource = widget.controller.lessons(_range);
       final all = resource.value ?? const <BackendLesson>[];
-      final dayLessons = all.where((lesson) {
+      final selectedDayLessons = all.where((lesson) {
         final start = lesson.startsAt?.toLocal();
-        if (start == null || !DateUtils.isSameDay(start, _selectedDate)) {
-          return false;
-        }
-        return _status == 'all' || lesson.status == _status;
+        return start != null && DateUtils.isSameDay(start, _selectedDate);
       }).toList()..sort((a, b) => _lessonTime(a).compareTo(_lessonTime(b)));
+      final dayLessons = selectedDayLessons
+          .where((lesson) => _status == 'all' || lesson.status == _status)
+          .toList(growable: false);
+      final statusCounts = <String, int>{
+        'all': selectedDayLessons.length,
+        for (final status in const ['scheduled', 'completed', 'cancelled'])
+          status: selectedDayLessons
+              .where((lesson) => lesson.status == status)
+              .length,
+      };
       final blocking = _blockingState(
         context,
         resource,
@@ -379,6 +508,7 @@ class _ProductionScheduleScreenState extends State<ProductionScheduleScreen> {
                         ],
                         _StatusFilters(
                           selected: _status,
+                          counts: statusCounts,
                           onSelected: (value) =>
                               setState(() => _status = value),
                         ),
@@ -393,8 +523,21 @@ class _ProductionScheduleScreenState extends State<ProductionScheduleScreen> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        if (dayLessons.isEmpty)
-                          _EmptyLessonCard(date: _selectedDate)
+                        if (selectedDayLessons.isEmpty)
+                          _EmptyScheduleExperience(
+                            key: ValueKey(
+                              'production-empty-schedule-${_dateKey(_selectedDate)}',
+                            ),
+                            date: _selectedDate,
+                            motivationIndex: _emptyMotivationIndex,
+                            onOpenTasks: () => context.push('/tasks'),
+                            onOpenGroups: () => context.push('/cohorts'),
+                          )
+                        else if (dayLessons.isEmpty)
+                          _EmptyScheduleFilterResult(
+                            status: _status,
+                            onClear: () => setState(() => _status = 'all'),
+                          )
                         else
                           for (
                             var index = 0;
@@ -1529,40 +1672,165 @@ class _ConnectionStrip extends StatelessWidget {
   }
 }
 
+class _TodayMotivationCard extends StatelessWidget {
+  const _TodayMotivationCard({required this.motivation});
+
+  final _TodayMotivationCopy motivation;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final title = _text(
+      context,
+      uz: motivation.uzTitle,
+      ru: motivation.ruTitle,
+      en: motivation.enTitle,
+    );
+    final body = _text(
+      context,
+      uz: motivation.uzBody,
+      ru: motivation.ruBody,
+      en: motivation.enBody,
+    );
+    return TweenAnimationBuilder<double>(
+      duration: SfMotion.resolve(context, SfMotion.emphasized),
+      curve: Curves.easeOutCubic,
+      tween: Tween(begin: 0, end: 1),
+      builder: (context, progress, child) => Opacity(
+        opacity: progress,
+        child: Transform.translate(
+          offset: Offset(0, 8 * (1 - progress)),
+          child: child,
+        ),
+      ),
+      child: Semantics(
+        container: true,
+        label: '$title. $body',
+        child: Container(
+          key: const ValueKey('production-today-motivation'),
+          padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                c.primarySoft,
+                Color.alphaBlend(c.accent.withValues(alpha: .07), c.surface),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(19),
+            border: Border.all(color: c.primary.withValues(alpha: .18)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: c.surface.withValues(alpha: .82),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 20,
+                  color: c.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _text(
+                        context,
+                        uz: 'BUGUNGI ILHOM',
+                        ru: 'ВДОХНОВЕНИЕ НА СЕГОДНЯ',
+                        en: 'TODAY\'S ENCOURAGEMENT',
+                      ),
+                      style: SfType.eyebrow(size: 8.5, color: c.primary),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      title,
+                      style: SfType.ui(
+                        size: 13.5,
+                        weight: FontWeight.w800,
+                        color: c.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      body,
+                      style: SfType.ui(size: 10.5, height: 1.35, color: c.ink2),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DashboardMetrics extends StatelessWidget {
   const _DashboardMetrics({
     required this.dashboard,
+    required this.loading,
     required this.lessonCount,
     required this.onGroups,
   });
 
-  final BackendTeacherDashboard dashboard;
+  final BackendTeacherDashboard? dashboard;
+  final bool loading;
   final int lessonCount;
   final VoidCallback onGroups;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    final metrics = [
+    final metrics = <(IconData, int?, String, Color)>[
       (
         Icons.groups_2_outlined,
-        '${dashboard.groupsCount}',
+        dashboard?.groupsCount,
         _text(context, uz: 'Guruh', ru: 'Группы', en: 'Groups'),
         c.primary,
       ),
       (
         Icons.school_outlined,
-        '${dashboard.studentsCount}',
+        dashboard?.studentsCount,
         _text(context, uz: 'O‘quvchi', ru: 'Ученики', en: 'Students'),
         c.accent,
       ),
       (
         Icons.event_note_outlined,
-        '$lessonCount',
+        lessonCount,
         _text(context, uz: 'Dars', ru: 'Уроки', en: 'Lessons'),
         c.success,
       ),
     ];
+    String displayValue(int? value) =>
+        value?.toString() ?? (loading ? '…' : '—');
+    String displayStatus(int? value) {
+      if (value == null) {
+        return loading
+            ? _text(context, uz: 'Yuklanmoqda', ru: 'Загрузка', en: 'Loading')
+            : _text(
+                context,
+                uz: 'Mavjud emas',
+                ru: 'Недоступно',
+                en: 'Unavailable',
+              );
+      }
+      return value == 0
+          ? _text(context, uz: 'Bo‘sh', ru: 'Пусто', en: 'Empty')
+          : _text(context, uz: 'Dolzarb', ru: 'Актуально', en: 'Current');
+    }
+
     return Row(
       children: [
         for (var index = 0; index < metrics.length; index++) ...[
@@ -1572,8 +1840,10 @@ class _DashboardMetrics extends StatelessWidget {
               onPressed: index < 2 ? onGroups : () => context.push('/schedule'),
               borderRadius: BorderRadius.circular(18),
               child: Container(
+                key: ValueKey('production-today-metric-$index'),
+                constraints: const BoxConstraints(minHeight: 108),
                 padding: const EdgeInsets.symmetric(
-                  vertical: 14,
+                  vertical: 12,
                   horizontal: 8,
                 ),
                 decoration: BoxDecoration(
@@ -1586,7 +1856,7 @@ class _DashboardMetrics extends StatelessWidget {
                     Icon(metrics[index].$1, size: 19, color: metrics[index].$4),
                     const SizedBox(height: 6),
                     Text(
-                      metrics[index].$2,
+                      displayValue(metrics[index].$2),
                       style: SfType.mono(
                         size: 20,
                         weight: FontWeight.w800,
@@ -1598,6 +1868,17 @@ class _DashboardMetrics extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: SfType.ui(size: 9.5, color: c.muted),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      displayStatus(metrics[index].$2),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: SfType.ui(
+                        size: 8,
+                        weight: FontWeight.w700,
+                        color: metrics[index].$2 == 0 ? c.success : c.muted,
+                      ),
                     ),
                   ],
                 ),
@@ -1611,17 +1892,18 @@ class _DashboardMetrics extends StatelessWidget {
 }
 
 class _AttentionCard extends StatelessWidget {
-  const _AttentionCard({required this.dashboard});
+  const _AttentionCard({required this.dashboard, required this.loading});
 
-  final BackendTeacherDashboard dashboard;
+  final BackendTeacherDashboard? dashboard;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    final items = [
+    final items = <(IconData, int?, String)>[
       (
         Icons.fact_check_outlined,
-        dashboard.pendingForms.length,
+        dashboard?.pendingForms.length,
         _text(
           context,
           uz: 'Kutilayotgan shakllar',
@@ -1631,7 +1913,7 @@ class _AttentionCard extends StatelessWidget {
       ),
       (
         Icons.rule_folder_outlined,
-        dashboard.pendingRuleAcknowledgments,
+        dashboard?.pendingRuleAcknowledgments,
         _text(
           context,
           uz: 'Qoidalar tasdig‘i',
@@ -1641,7 +1923,7 @@ class _AttentionCard extends StatelessWidget {
       ),
       (
         Icons.quiz_outlined,
-        dashboard.upcomingExams.length,
+        dashboard?.upcomingExams.length,
         _text(
           context,
           uz: 'Yaqin imtihonlar',
@@ -1650,7 +1932,31 @@ class _AttentionCard extends StatelessWidget {
         ),
       ),
     ];
+    final allEmpty = dashboard != null && items.every((item) => item.$2 == 0);
+    final statusMessage = allEmpty
+        ? _text(
+            context,
+            uz: 'Hammasi joyida — hozircha hech narsa kutilmayapti.',
+            ru: 'Всё в порядке — сейчас ничего не ожидает.',
+            en: 'All clear — nothing is waiting right now.',
+          )
+        : dashboard == null
+        ? loading
+              ? _text(
+                  context,
+                  uz: 'Ish maydoni tekshirilmoqda…',
+                  ru: 'Проверяем рабочее пространство…',
+                  en: 'Checking your workspace…',
+                )
+              : _text(
+                  context,
+                  uz: 'Hisoblar mavjud emas — yangilash uchun pastga torting.',
+                  ru: 'Данные недоступны — потяните вниз, чтобы обновить.',
+                  en: 'Counts are unavailable — pull down to try again.',
+                )
+        : null;
     return SfSurfaceCard(
+      key: const ValueKey('production-today-attention-card'),
       padding: const EdgeInsets.all(15),
       child: Column(
         children: [
@@ -1679,16 +1985,54 @@ class _AttentionCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${items[index].$2}',
+                  items[index].$2?.toString() ?? (loading ? '…' : '—'),
                   style: SfType.mono(
                     size: 15,
                     weight: FontWeight.w800,
-                    color: items[index].$2 > 0 ? c.warn : c.success,
+                    color: switch (items[index].$2) {
+                      final count? when count > 0 => c.warn,
+                      0 => c.success,
+                      _ => c.muted,
+                    },
                   ),
                 ),
               ],
             ),
             if (index != items.length - 1) Divider(height: 18, color: c.border),
+          ],
+          if (statusMessage != null) ...[
+            Divider(height: 20, color: c.border),
+            Container(
+              key: const ValueKey('production-today-attention-status'),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+              decoration: BoxDecoration(
+                color: allEmpty ? c.successSoft : c.primarySoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    allEmpty
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.sync_rounded,
+                    size: 17,
+                    color: allEmpty ? c.success : c.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      statusMessage,
+                      style: SfType.ui(
+                        size: 10.5,
+                        weight: FontWeight.w600,
+                        color: c.ink2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ],
       ),
@@ -1864,6 +2208,55 @@ class _ProductionDateStrip extends StatelessWidget {
   }
 }
 
+const _scheduleMotivationCount = 5;
+
+class _EmptyScheduleExperience extends StatelessWidget {
+  const _EmptyScheduleExperience({
+    super.key,
+    required this.date,
+    required this.motivationIndex,
+    required this.onOpenTasks,
+    required this.onOpenGroups,
+  });
+
+  final DateTime date;
+  final int motivationIndex;
+  final VoidCallback onOpenTasks;
+  final VoidCallback onOpenGroups;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = SfMotion.resolve(context, SfMotion.standard);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: SfMotion.enter,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, 10 * (1 - value)),
+          child: child,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _EmptyLessonCard(date: date),
+          const SizedBox(height: 12),
+          const _EmptyScheduleSummary(),
+          const SizedBox(height: 12),
+          _ScheduleMotivationCard(index: motivationIndex),
+          const SizedBox(height: 12),
+          _EmptyScheduleNextSteps(
+            onOpenTasks: onOpenTasks,
+            onOpenGroups: onOpenGroups,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _EmptyLessonCard extends StatelessWidget {
   const _EmptyLessonCard({super.key, required this.date});
 
@@ -1873,15 +2266,17 @@ class _EmptyLessonCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
     return SfSurfaceCard(
+      key: const ValueKey('production-empty-lesson-card'),
       padding: const EdgeInsets.all(18),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
               color: c.successSoft,
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(17),
             ),
             alignment: Alignment.center,
             child: Icon(Icons.event_available_rounded, color: c.success),
@@ -1891,23 +2286,49 @@ class _EmptyLessonCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _text(
-                    context,
-                    uz: 'Bu sanada dars yo‘q',
-                    ru: 'На эту дату уроков нет',
-                    en: 'No lessons on this date',
-                  ),
-                  style: SfType.ui(
-                    size: 14,
-                    weight: FontWeight.w800,
-                    color: c.ink,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _text(
+                          context,
+                          uz: 'Bu sanada dars yo‘q',
+                          ru: 'На эту дату уроков нет',
+                          en: 'No lessons on this date',
+                        ),
+                        style: SfType.ui(
+                          size: 14.5,
+                          weight: FontWeight.w800,
+                          color: c.ink,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SfPill(
+                      tone: SfPillTone.success,
+                      label: _text(
+                        context,
+                        uz: '0 dars',
+                        ru: '0 уроков',
+                        en: '0 lessons',
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   _longDate(context, date),
                   style: SfType.ui(size: 11, color: c.muted),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  _text(
+                    context,
+                    uz: 'Bu sana uchun guruh, xona yoki dars vaqti biriktirilmagan.',
+                    ru: 'На эту дату не назначены группа, кабинет или время урока.',
+                    en: 'No group, room, or teaching time is assigned to this date.',
+                  ),
+                  style: SfType.ui(size: 11.5, color: c.ink2, height: 1.35),
                 ),
               ],
             ),
@@ -1916,6 +2337,362 @@ class _EmptyLessonCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EmptyScheduleSummary extends StatelessWidget {
+  const _EmptyScheduleSummary();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final metrics = [
+      (
+        Icons.school_outlined,
+        '0',
+        _text(context, uz: 'Darslar', ru: 'Уроки', en: 'Lessons'),
+      ),
+      (
+        Icons.timelapse_rounded,
+        '0 min',
+        _text(context, uz: 'Dars vaqti', ru: 'Учебное время', en: 'Teaching'),
+      ),
+      (
+        Icons.meeting_room_outlined,
+        '0',
+        _text(context, uz: 'Xonalar', ru: 'Кабинеты', en: 'Rooms'),
+      ),
+    ];
+    return SfSurfaceCard(
+      key: const ValueKey('production-empty-schedule-summary'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var index = 0; index < metrics.length; index++) ...[
+            if (index > 0)
+              Container(
+                width: 1,
+                height: 54,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                color: c.border,
+              ),
+            Expanded(
+              child: Column(
+                children: [
+                  Icon(metrics[index].$1, size: 18, color: c.primary),
+                  const SizedBox(height: 5),
+                  Text(
+                    metrics[index].$2,
+                    style: SfType.mono(
+                      size: 14,
+                      weight: FontWeight.w800,
+                      color: c.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    metrics[index].$3,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: SfType.ui(size: 9.5, color: c.muted, height: 1.15),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleMotivationCard extends StatelessWidget {
+  const _ScheduleMotivationCard({required this.index});
+
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return SfSurfaceCard(
+      key: const ValueKey('production-schedule-motivation'),
+      color: c.primarySoft,
+      padding: const EdgeInsets.all(17),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: c.primary.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.auto_awesome_rounded, color: c.primary, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _text(
+                    context,
+                    uz: 'Bugungi eslatma',
+                    ru: 'Мысль на сегодня',
+                    en: 'A note for today',
+                  ),
+                  style: SfType.eyebrow(size: 9.5, color: c.primaryInk),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _scheduleMotivation(context, index),
+                  style: SfType.display(
+                    size: 15,
+                    weight: FontWeight.w700,
+                    color: c.ink,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyScheduleNextSteps extends StatelessWidget {
+  const _EmptyScheduleNextSteps({
+    required this.onOpenTasks,
+    required this.onOpenGroups,
+  });
+
+  final VoidCallback onOpenTasks;
+  final VoidCallback onOpenGroups;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return SfSurfaceCard(
+      key: const ValueKey('production-empty-schedule-actions'),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _text(
+              context,
+              uz: 'Foydali keyingi qadamlar',
+              ru: 'Полезные следующие шаги',
+              en: 'Useful next steps',
+            ),
+            style: SfType.ui(size: 13.5, weight: FontWeight.w800, color: c.ink),
+          ),
+          const SizedBox(height: 11),
+          _EmptyScheduleAction(
+            key: const ValueKey('production-empty-schedule-tasks'),
+            icon: Icons.task_alt_rounded,
+            title: _text(
+              context,
+              uz: 'Vazifalarni ko‘rib chiqing',
+              ru: 'Проверьте задачи',
+              en: 'Review your tasks',
+            ),
+            subtitle: _text(
+              context,
+              uz: 'Ustuvor ishlar va muddatlarni tekshiring.',
+              ru: 'Проверьте приоритеты и ближайшие сроки.',
+              en: 'Check priorities and upcoming due dates.',
+            ),
+            onTap: onOpenTasks,
+          ),
+          const SizedBox(height: 8),
+          _EmptyScheduleAction(
+            key: const ValueKey('production-empty-schedule-groups'),
+            icon: Icons.groups_2_outlined,
+            title: _text(
+              context,
+              uz: 'Guruhlarni tayyorlang',
+              ru: 'Подготовьтесь к группам',
+              en: 'Prepare for your groups',
+            ),
+            subtitle: _text(
+              context,
+              uz: 'Ro‘yxatlar, materiallar va keyingi mavzularni oching.',
+              ru: 'Откройте списки, материалы и следующие темы.',
+              en: 'Open rosters, materials, and upcoming topics.',
+            ),
+            onTap: onOpenGroups,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyScheduleAction extends StatelessWidget {
+  const _EmptyScheduleAction({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return SfPressable(
+      onPressed: onTap,
+      haptic: true,
+      semanticLabel: title,
+      borderRadius: BorderRadius.circular(17),
+      builder: (context, state, _) => AnimatedContainer(
+        duration: SfMotion.resolve(context, SfMotion.quick),
+        padding: const EdgeInsets.fromLTRB(12, 11, 10, 11),
+        decoration: BoxDecoration(
+          color: state.pressed ? c.surface3 : c.surface2,
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(color: state.hovered ? c.borderStrong : c.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: c.primarySoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 19, color: c.primary),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: SfType.ui(
+                      size: 12,
+                      weight: FontWeight.w700,
+                      color: c.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: SfType.ui(size: 10, color: c.muted, height: 1.25),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 20, color: c.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyScheduleFilterResult extends StatelessWidget {
+  const _EmptyScheduleFilterResult({
+    required this.status,
+    required this.onClear,
+  });
+
+  final String status;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return SfSurfaceCard(
+      key: const ValueKey('production-empty-schedule-filter'),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        children: [
+          Icon(Icons.filter_alt_off_rounded, color: c.muted, size: 31),
+          const SizedBox(height: 9),
+          Text(
+            _text(
+              context,
+              uz: 'Bu holatda dars topilmadi',
+              ru: 'Уроков с этим статусом нет',
+              en: 'No lessons match this status',
+            ),
+            textAlign: TextAlign.center,
+            style: SfType.ui(size: 14, weight: FontWeight.w800, color: c.ink),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _lessonStatusLabel(context, status),
+            style: SfType.ui(size: 11, color: c.muted),
+          ),
+          const SizedBox(height: 13),
+          SfButton(
+            kind: SfButtonKind.soft,
+            leading: Icons.filter_alt_off_rounded,
+            label: _text(
+              context,
+              uz: 'Barcha darslarni ko‘rsatish',
+              ru: 'Показать все уроки',
+              en: 'Show all lessons',
+            ),
+            onPressed: onClear,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _scheduleMotivation(BuildContext context, int index) {
+  final normalized = index % _scheduleMotivationCount;
+  return switch (normalized) {
+    0 => _text(
+      context,
+      uz: 'Bo‘sh jadval — yaxshi darsga puxta tayyorgarlik uchun joy.',
+      ru: 'Свободное расписание — это время для спокойной подготовки к сильному уроку.',
+      en: 'An open calendar leaves room to prepare a truly thoughtful lesson.',
+    ),
+    1 => _text(
+      context,
+      uz: 'Bugungi kichik tayyorgarlik ertangi katta natijani yaratadi.',
+      ru: 'Небольшая подготовка сегодня создаёт большой результат завтра.',
+      en: 'A small bit of preparation today can shape a great result tomorrow.',
+    ),
+    2 => _text(
+      context,
+      uz: 'Sokin kunlar ham ustozlik yo‘lining muhim qismidir.',
+      ru: 'Спокойные дни — тоже важная часть пути учителя.',
+      en: 'Quiet days are an important part of a teacher’s rhythm too.',
+    ),
+    3 => _text(
+      context,
+      uz: 'Bir yaxshi g‘oya keyingi darsni unutilmas qilishi mumkin.',
+      ru: 'Одна хорошая идея может сделать следующий урок незабываемым.',
+      en: 'One good idea can make the next lesson unforgettable.',
+    ),
+    _ => _text(
+      context,
+      uz: 'Dam olish ham, rejalash ham yaxshi ishning bir qismidir.',
+      ru: 'Отдых и планирование — такие же части хорошей работы.',
+      en: 'Rest and planning both belong in a day of meaningful work.',
+    ),
+  };
 }
 
 class _ProductionLessonCard extends StatelessWidget {
@@ -2488,32 +3265,59 @@ class _ScheduleMonthCalendar extends StatelessWidget {
 }
 
 class _StatusFilters extends StatelessWidget {
-  const _StatusFilters({required this.selected, required this.onSelected});
+  const _StatusFilters({
+    required this.selected,
+    required this.counts,
+    required this.onSelected,
+  });
 
   final String selected;
+  final Map<String, int> counts;
   final ValueChanged<String> onSelected;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 36,
-    child: ListView.separated(
-      scrollDirection: Axis.horizontal,
-      itemCount: 4,
-      separatorBuilder: (_, _) => const SizedBox(width: 7),
-      itemBuilder: (context, index) {
-        const values = ['all', 'scheduled', 'completed', 'cancelled'];
-        final value = values[index];
-        return ChoiceChip(
-          selected: selected == value,
-          onSelected: (_) => onSelected(value),
-          label: Text(
-            value == 'all'
-                ? _text(context, uz: 'Hammasi', ru: 'Все', en: 'All')
-                : _lessonStatusLabel(context, value),
-          ),
-        );
-      },
-    ),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      const gap = 7.0;
+      final itemWidth = (constraints.maxWidth - gap) / 2;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [
+          for (final value in const [
+            'all',
+            'scheduled',
+            'completed',
+            'cancelled',
+          ])
+            SizedBox(
+              width: itemWidth,
+              child: ChoiceChip(
+                key: ValueKey('production-schedule-filter-$value'),
+                selected: selected == value,
+                onSelected: (_) => onSelected(value),
+                visualDensity: const VisualDensity(vertical: -1),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                label: SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    '${value == 'all' ? _text(context, uz: 'Hammasi', ru: 'Все', en: 'All') : _lessonStatusLabel(context, value)}  ${counts[value] ?? 0}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: SfType.ui(
+                      size: 11,
+                      weight: selected == value
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    },
   );
 }
 

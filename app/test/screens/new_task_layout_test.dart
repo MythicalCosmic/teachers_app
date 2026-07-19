@@ -8,7 +8,6 @@ import 'package:starforge_staff/screens/new_task_screen.dart';
 import 'package:starforge_staff/theme/sf_theme.dart';
 import 'package:starforge_staff/theme/tokens.dart';
 import 'package:starforge_staff/widgets/sf_button.dart';
-import 'package:starforge_staff/widgets/sf_hint_card.dart';
 
 Future<AppState> _signedInState() async {
   final state = await AppState.bootstrap(storage: MemoryAppStorage());
@@ -95,9 +94,9 @@ void main() {
   );
 
   testWidgets(
-    'template picker reflows and the bottom action never covers content',
+    'large text form sections scroll fully above the distinct sticky action',
     (tester) async {
-      tester.view.physicalSize = const Size(320, 700);
+      tester.view.physicalSize = const Size(393, 852);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -105,34 +104,47 @@ void main() {
       final state = (await tester.runAsync(_signedInState))!;
       addTearDown(state.dispose);
       await tester.pumpWidget(
-        _host(state, textScaler: const TextScaler.linear(1.35)),
+        _host(state, textScaler: const TextScaler.linear(1.4)),
       );
       await tester.pumpAndSettle();
 
-      final blankRect = tester.getRect(
-        find.byKey(const ValueKey('new-task-template-blank')),
-      );
-      final lessonRect = tester.getRect(
-        find.byKey(const ValueKey('new-task-template-lesson')),
-      );
-      final assessmentRect = tester.getRect(
-        find.byKey(const ValueKey('new-task-template-assessment')),
-      );
-      final followUpRect = tester.getRect(
-        find.byKey(const ValueKey('new-task-template-followUp')),
-      );
-      expect(blankRect.top, lessonRect.top);
-      expect(assessmentRect.top, followUpRect.top);
-      expect(assessmentRect.top, greaterThan(blankRect.bottom));
-      expect(followUpRect.right, lessThanOrEqualTo(304));
-      expect(tester.takeException(), isNull);
-
-      await tester.drag(find.byType(ListView), const Offset(0, -3000));
+      await tester.tap(find.byKey(const ValueKey('new-task-template-lesson')));
       await tester.pumpAndSettle();
 
-      final hintRect = tester.getRect(find.byType(SfHintCard));
+      final scroll = find.byKey(const ValueKey('new-task-form-scroll'));
+      final actionBar = find.byKey(
+        const ValueKey('new-task-sticky-action-bar'),
+      );
+      final actionBarRect = tester.getRect(actionBar);
       final actionRect = tester.getRect(find.byType(SfButton));
-      expect(hintRect.bottom, lessThanOrEqualTo(actionRect.top));
+      final actionContainer = tester.widget<Container>(actionBar);
+      final actionDecoration = actionContainer.decoration! as BoxDecoration;
+
+      expect(actionBarRect.left, 0);
+      expect(actionBarRect.right, 393);
+      expect(actionRect.left, greaterThanOrEqualTo(16));
+      expect(actionRect.right, lessThanOrEqualTo(377));
+      expect(actionDecoration.border, isNotNull);
+      expect(actionDecoration.boxShadow, isNotEmpty);
+
+      for (final key in [
+        'new-task-properties-card',
+        'new-task-checklist-card',
+        'new-task-tags-card',
+        'new-task-tip-card',
+      ]) {
+        final section = find.byKey(ValueKey(key));
+        await tester.ensureVisible(section);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getRect(section).bottom,
+          lessThanOrEqualTo(tester.getRect(actionBar).top),
+          reason: '$key should scroll completely above the sticky action',
+        );
+      }
+
+      final list = tester.widget<ListView>(scroll);
+      expect(list.padding, const EdgeInsets.fromLTRB(16, 10, 16, 22));
       expect(find.text('Create task page'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

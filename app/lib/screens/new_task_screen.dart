@@ -321,8 +321,12 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
+          key: const ValueKey('new-task-form-scroll'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 108),
+          // The submit bar is a sibling in [SfScaffold], not an overlay. Keep
+          // only comfortable trailing breathing room instead of reserving its
+          // height a second time.
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 22),
           children: [
             Text(
               _copy(
@@ -497,6 +501,7 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
             ),
             const SizedBox(height: 14),
             SfSurfaceCard(
+              key: const ValueKey('new-task-properties-card'),
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -600,6 +605,7 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
             ),
             const SizedBox(height: 14),
             SfSurfaceCard(
+              key: const ValueKey('new-task-checklist-card'),
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -689,6 +695,7 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
             ),
             const SizedBox(height: 14),
             SfSurfaceCard(
+              key: const ValueKey('new-task-tags-card'),
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -741,6 +748,7 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
             ),
             const SizedBox(height: 14),
             SfHintCard(
+              key: const ValueKey('new-task-tip-card'),
               title: _copy(context, uz: 'Maslahat', ru: 'Совет', en: 'Tip'),
               message: _copy(
                 context,
@@ -754,8 +762,21 @@ class _NewTaskScreenState extends State<NewTaskScreen> {
           ],
         ),
       ),
-      bottom: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      bottom: Container(
+        key: const ValueKey('new-task-sticky-action-bar'),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        decoration: BoxDecoration(
+          color: c.surface,
+          border: Border(top: BorderSide(color: c.border)),
+          boxShadow: [
+            BoxShadow(
+              color: c.ink.withValues(alpha: 0.10),
+              blurRadius: 20,
+              spreadRadius: -12,
+              offset: const Offset(0, -8),
+            ),
+          ],
+        ),
         child: SfButton(
           kind: SfButtonKind.primary,
           block: true,
