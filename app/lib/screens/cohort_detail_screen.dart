@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
 import '../data/models.dart';
+import '../features/learning/learning_workspace_controller.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_ai_badge.dart';
 import '../widgets/sf_ai_surface.dart';
@@ -16,6 +18,7 @@ import '../widgets/sf_scaffold.dart';
 import '../widgets/sf_star.dart';
 import 'groups/group_l10n.dart';
 import 'groups/group_workspace_store.dart';
+import 'learning/production_learning_screens.dart';
 
 class CohortDetailScreen extends StatefulWidget {
   const CohortDetailScreen({
@@ -211,6 +214,17 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.maybeOf(context);
+    if (app?.isProduction == true) {
+      final controller = learningWorkspaceFor(app!);
+      if (controller != null) {
+        return ProductionCohortDetailScreen(
+          controller: controller,
+          groupId: widget.groupId,
+          initialTab: widget.initialTab,
+        );
+      }
+    }
     final groupId = _resolveGroupId();
     final group = _store.group(groupId);
     return AnimatedBuilder(

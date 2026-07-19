@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_scope.dart';
+import '../../data/api/backend_services_api.dart';
 import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
 import '../../utils/formatters.dart';
@@ -17,6 +18,7 @@ import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_toast.dart';
 import '../../widgets/sf_tab_bar.dart';
 import '../../router.dart';
+import '../services/backend_print_screens.dart';
 
 enum _PrintFilter { all, active, problem }
 
@@ -70,6 +72,10 @@ class _PrintScreenState extends State<PrintScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final backend = app.backendApi;
+    if (backend != null) {
+      return BackendPrintScreen(api: BackendServicesApi.fromApi(backend));
+    }
     final session = app.session;
     final c = SfTheme.colorsOf(context);
     if (session == null || !session.can(StaffCapability.submitPrintJobs)) {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/api/backend_services_api.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_ai_badge.dart';
 import '../../widgets/sf_ai_surface.dart';
@@ -12,6 +14,7 @@ import '../../widgets/sf_scaffold.dart';
 import '../../widgets/sf_shell_scope.dart';
 import '../../widgets/sf_star.dart';
 import '../../widgets/sf_tab_bar.dart';
+import '../services/backend_ai_screens.dart';
 import 'ai_workspace_data.dart';
 
 class AiChatListScreen extends StatefulWidget {
@@ -49,6 +52,10 @@ class _AiChatListScreenState extends State<AiChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final backend = AppScope.maybeOf(context)?.backendApi;
+    if (backend != null) {
+      return BackendAiWorkspaceScreen(api: BackendServicesApi.fromApi(backend));
+    }
     final c = SfTheme.colorsOf(context);
     final copy = AiWorkspaceCopy.of(context);
     final usesShellNavigation =

@@ -29,7 +29,8 @@ android {
         applicationId = "uz.starforge.starforge_edu"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // image_picker 1.2.x uses the Android 24+ Photo Picker contract.
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -10,6 +10,8 @@ Future<bool> showSfConfirmDialog(
   String? cancelLabel,
   String? confirmLabel,
   bool destructive = false,
+  Key? cancelKey,
+  Key? confirmKey,
 }) async {
   final resolvedCancel = cancelLabel ?? _defaultLabel(context, cancel: true);
   final resolvedConfirm = confirmLabel ?? _defaultLabel(context, cancel: false);
@@ -19,7 +21,11 @@ Future<bool> showSfConfirmDialog(
   if (apple) {
     return await showCupertinoDialog<bool>(
           context: context,
-          barrierDismissible: true,
+          useRootNavigator: true,
+          // Native confirmation alerts require an explicit choice. This also
+          // prevents an accidental outside tap from accepting an ambiguous
+          // destructive flow.
+          barrierDismissible: false,
           builder: (dialogContext) => CupertinoAlertDialog(
             title: Text(title),
             content: Padding(
@@ -28,10 +34,12 @@ Future<bool> showSfConfirmDialog(
             ),
             actions: [
               CupertinoDialogAction(
+                key: cancelKey,
                 onPressed: () => Navigator.of(dialogContext).pop(false),
                 child: Text(resolvedCancel),
               ),
               CupertinoDialogAction(
+                key: confirmKey,
                 isDefaultAction: !destructive,
                 isDestructiveAction: destructive,
                 onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -46,7 +54,8 @@ Future<bool> showSfConfirmDialog(
   final c = SfTheme.colorsOf(context);
   return await showDialog<bool>(
         context: context,
-        barrierDismissible: true,
+        useRootNavigator: true,
+        barrierDismissible: false,
         builder: (dialogContext) => AlertDialog(
           icon: Icon(
             destructive ? Icons.delete_outline_rounded : Icons.check_rounded,
@@ -56,10 +65,12 @@ Future<bool> showSfConfirmDialog(
           content: Text(message),
           actions: [
             TextButton(
+              key: cancelKey,
               onPressed: () => Navigator.of(dialogContext).pop(false),
               child: Text(resolvedCancel),
             ),
             FilledButton(
+              key: confirmKey,
               style: destructive
                   ? FilledButton.styleFrom(backgroundColor: c.danger)
                   : null,
@@ -98,6 +109,7 @@ Future<T?> showSfActionSheet<T>(
             ),
         ],
         cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
           onPressed: () => Navigator.of(sheetContext).pop(),
           child: Text(resolvedCancel),
         ),

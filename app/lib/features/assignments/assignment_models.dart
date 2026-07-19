@@ -160,6 +160,7 @@ class AssignmentSubmission {
     this.feedbackStep,
     this.feedbackSentAt,
     this.grade,
+    this.serverId,
   });
 
   final String assignmentId;
@@ -174,6 +175,7 @@ class AssignmentSubmission {
   final AssignmentFeedbackStep? feedbackStep;
   final DateTime? feedbackSentAt;
   final int? grade;
+  final int? serverId;
 
   bool get isSubmitted => status != AssignmentSubmissionStatus.notSubmitted;
   bool get needsFeedback =>
@@ -201,6 +203,7 @@ class AssignmentSubmission {
     feedbackStep: feedbackStep ?? this.feedbackStep,
     feedbackSentAt: feedbackSentAt ?? this.feedbackSentAt,
     grade: grade ?? this.grade,
+    serverId: serverId,
   );
 
   Map<String, Object?> toJson() => {
@@ -216,6 +219,7 @@ class AssignmentSubmission {
     'feedbackStep': feedbackStep?.name,
     'feedbackSentAt': feedbackSentAt?.toIso8601String(),
     'grade': grade,
+    'serverId': serverId,
   };
 
   factory AssignmentSubmission.fromJson(Map<String, Object?> json) {
@@ -245,6 +249,7 @@ class AssignmentSubmission {
             ),
       feedbackSentAt: _date(json['feedbackSentAt']),
       grade: (json['grade'] as num?)?.toInt(),
+      serverId: (json['serverId'] as num?)?.toInt(),
     );
   }
 }

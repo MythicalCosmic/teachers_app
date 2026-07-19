@@ -1,10 +1,19 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
 import '../data/app_storage.dart';
+import '../data/api/api_models.dart';
+import '../data/api/backend_models.dart';
+import '../data/api/backend_work_api.dart';
+import '../data/api/notification_realtime.dart';
+import '../data/api/starforge_api.dart';
 import '../data/demo_seed.dart';
 import '../data/models.dart';
+import '../features/messaging/messaging_controller.dart';
+import '../features/messaging/messaging_storage.dart';
+import '../features/notifications/backend_notification_controller.dart';
 
 final class AuthenticationException implements Exception {
   const AuthenticationException(this.message);
@@ -20,6 +29,7 @@ final class AppState extends ChangeNotifier {
     required this._storage,
     required this._clock,
     required AppSnapshot snapshot,
+    this._api,
     String? bootstrapError,
   }) : _session = snapshot.session,
        _settings = snapshot.settings,
@@ -38,6 +48,9 @@ final class AppState extends ChangeNotifier {
 
   final AppStorage _storage;
   final DateTime Function() _clock;
+  final StarforgeApi? _api;
+  MessagingController? _productionMessaging;
+  BackendNotificationController? _productionNotifications;
 
   StaffSession? _session;
   AppSettings _settings;
@@ -52,17 +65,31 @@ final class AppState extends ChangeNotifier {
   List<AuditCase> _auditCases;
 
   bool _persistSession = true;
+  bool _isInitialized = false;
   bool _isPersisting = false;
   String? _persistenceError;
+  String? _syncError;
+  bool _isSyncing = false;
+  DateTime? _lastSyncedAt;
+  bool _tasksLoading = false;
+  bool _tasksAvailable = true;
+  String? _tasksError;
+  bool _formsLoading = false;
+  bool _formsAvailable = true;
+  String? _formsError;
   int _idCounter = 0;
 
   static Future<AppState> bootstrap({
     AppStorage? storage,
     DateTime Function()? clock,
+    StarforgeApi? api,
   }) async {
     final resolvedStorage =
         storage ?? await SharedPreferencesAppStorage.create();
     final resolvedClock = clock ?? DateTime.now;
+    if (api != null && resolvedStorage is SharedPreferencesAppStorage) {
+      await resolvedStorage.migrateLegacyDemoData();
+    }
     var snapshot = DemoSeed.snapshot();
     String? error;
     try {
@@ -75,20 +102,138 @@ final class AppState extends ChangeNotifier {
     } on Object catch (caught) {
       error = 'Saqlangan ma’lumotlar o‘qilmadi: $caught';
     }
-    return AppState._(
+    if (api != null) {
+      snapshot = _remoteSnapshot(settings: snapshot.settings);
+    }
+    final state = AppState._(
       storage: resolvedStorage,
       clock: resolvedClock,
       snapshot: snapshot,
+      api: api,
       bootstrapError: error,
     );
+    if (api != null) state._configureBackendWork(api);
+    state._isInitialized = api == null;
+    if (api != null) {
+      try {
+        await resolvedStorage.write(
+          _snapshotKey,
+          jsonEncode(snapshot.toJson()),
+        );
+      } on Object catch (caught) {
+        state._persistenceError =
+            'Production keshini tozalab bo‘lmadi: $caught';
+      }
+      unawaited(state._restoreRemoteSession());
+    }
+    return state;
   }
 
-  bool get isInitialized => true;
+  static AppSnapshot _remoteSnapshot({required AppSettings settings}) =>
+      AppSnapshot(
+        session: null,
+        settings: settings,
+        tasks: const [],
+        attendanceSheets: const [],
+        cards: const [],
+        messageThreads: const [],
+        notifications: const [],
+        surveys: const [],
+        printJobs: const [],
+        auditAnomalies: const [],
+        auditCases: const [],
+      );
+
+  void _configureBackendWork(StarforgeApi api) {
+    api.setAuthenticationRequiredHandler(_expireRemoteSession);
+    final work = BackendWorkApi.fromApi(api);
+    final messaging = MessagingController(
+      storage: SharedPreferencesMessagingStorage(),
+      backend: work,
+    );
+    final notifications = BackendNotificationController(
+      backend: work,
+      realtime: NotificationRealtimeClient(
+        wsUrl: () => api.connection?.wsUrl,
+        accessToken: () => api.currentAccessToken,
+      ),
+    );
+    messaging.onUnauthorized = _expireRemoteSession;
+    notifications.onUnauthorized = _expireRemoteSession;
+    notifications.onMessageReceived = (threadId) =>
+        messaging.refreshForRealtime(threadId: threadId);
+    messaging.addListener(_notifyFromBackendWork);
+    notifications.addListener(_notifyFromBackendWork);
+    _productionMessaging = messaging;
+    _productionNotifications = notifications;
+  }
+
+  void _notifyFromBackendWork() {
+    if (!hasListeners) return;
+    notifyListeners();
+  }
+
+  void _startBackendRealtime() {
+    if (_session == null) return;
+    unawaited(_productionNotifications?.startRealtime());
+  }
+
+  Future<void> _expireRemoteSession() async {
+    if (_api == null || _session == null) return;
+    await _productionNotifications?.clearSession();
+    _productionMessaging?.clearRemoteSession();
+    _session = null;
+    _tasks = [];
+    _attendanceSheets = [];
+    _cards = [];
+    _messageThreads = [];
+    _notifications = [];
+    _surveys = [];
+    _printJobs = [];
+    _auditAnomalies = [];
+    _auditCases = [];
+    _tasksLoading = false;
+    _tasksAvailable = true;
+    _tasksError = null;
+    _formsLoading = false;
+    _formsAvailable = true;
+    _formsError = null;
+    _syncError =
+        'Sessiya muddati tugadi. Xavfsiz davom etish uchun qayta kiring.';
+    _lastSyncedAt = null;
+    notifyListeners();
+    await _persist();
+  }
+
+  void pauseRealtime() {
+    unawaited(_productionNotifications?.pause());
+  }
+
+  void resumeRealtime() {
+    if (_session != null) unawaited(_productionNotifications?.resume());
+  }
+
+  bool get isInitialized => _isInitialized;
+  bool get isProduction => _api != null;
+  bool get isSyncing => _isSyncing;
+  bool get isOnline => _api == null || (_session != null && _syncError == null);
+  String? get syncError => _syncError;
+  DateTime? get lastSyncedAt => _lastSyncedAt;
+  String get centerName => _api?.connection?.name ?? _session?.branchName ?? '';
+  String get serverHost => _api?.connection?.baseUrl ?? '';
   bool get isPersisting => _isPersisting;
   String? get persistenceError => _persistenceError;
   StaffSession? get session => _session;
+  StarforgeApi? get backendApi => _api;
+  MessagingController get messagingController =>
+      _productionMessaging ?? MessagingController.shared;
+  BackendNotificationController? get backendNotifications =>
+      _productionNotifications;
   AppSettings get settings => _settings;
   List<StaffTask> get tasks => List.unmodifiable(_tasks);
+  bool get tasksLoading => _tasksLoading;
+  bool get tasksAvailable => _tasksAvailable;
+  String? get tasksError => _tasksError;
   List<AttendanceSheet> get attendanceSheets =>
       List.unmodifiable(_attendanceSheets);
   List<RecognitionCard> get cards => List.unmodifiable(_cards);
@@ -96,11 +241,74 @@ final class AppState extends ChangeNotifier {
   List<StaffNotification> get notifications =>
       List.unmodifiable(_notifications);
   List<SurveyAssignment> get surveys => List.unmodifiable(_surveys);
+  bool get formsLoading => _formsLoading;
+  bool get formsAvailable => _formsAvailable;
+  String? get formsError => _formsError;
   List<PrintJob> get printJobs => List.unmodifiable(_printJobs);
   List<AuditAnomaly> get auditAnomalies => List.unmodifiable(_auditAnomalies);
   List<AuditCase> get auditCases => List.unmodifiable(_auditCases);
 
   Future<void> retryPersistence() => _persist();
+
+  Future<void> retryConnection() async {
+    if (_api == null) return;
+    if (_session == null) {
+      await _restoreRemoteSession();
+      return;
+    }
+    _isSyncing = true;
+    _syncError = null;
+    notifyListeners();
+    try {
+      final profile = await _api.me();
+      _session = _sessionFromIdentity(
+        AuthenticatedIdentity(
+          accessToken: '',
+          connection: _api.connection!,
+          profile: profile,
+          principalKind: apiString(profile['principal_kind']),
+          mustChangePassword: apiBool(profile['must_change_password']),
+        ),
+      );
+      _lastSyncedAt = _clock();
+      _startBackendRealtime();
+      unawaited(refreshTasks());
+      unawaited(refreshForms());
+    } on ApiException catch (error) {
+      await _handleRemoteError(error);
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _restoreRemoteSession() async {
+    final api = _api;
+    if (api == null) return;
+    _isInitialized = false;
+    _isSyncing = true;
+    _syncError = null;
+    notifyListeners();
+    api.setLocale(_settings.locale.name);
+    try {
+      final identity = await api.restore();
+      if (identity != null) {
+        _session = _sessionFromIdentity(identity);
+        _lastSyncedAt = _clock();
+        _startBackendRealtime();
+        unawaited(refreshTasks());
+        unawaited(refreshForms());
+      }
+    } on ApiException catch (error) {
+      _syncError = error.message;
+    } on Object catch (error) {
+      _syncError = 'Server sessiyasini tiklab bo‘lmadi: $error';
+    } finally {
+      _isInitialized = true;
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
 
   void clearPersistenceError() {
     if (_persistenceError == null) return;
@@ -109,6 +317,9 @@ final class AppState extends ChangeNotifier {
   }
 
   int get unreadMessageCount {
+    if (_productionMessaging case final messaging?) {
+      return messaging.unreadCount;
+    }
     final userId = _session?.userId;
     if (userId == null) return 0;
     return _messageThreads.fold(
@@ -118,6 +329,7 @@ final class AppState extends ChangeNotifier {
   }
 
   int get unreadNotificationCount =>
+      _productionNotifications?.unreadCount ??
       _notifications.where((item) => !item.isRead).length;
 
   bool can(StaffCapability capability) => _session?.can(capability) ?? false;
@@ -126,7 +338,39 @@ final class AppState extends ChangeNotifier {
     required String username,
     required String password,
     bool persistSession = true,
+    String centerSlug = '',
   }) async {
+    final api = _api;
+    if (api != null) {
+      _isSyncing = true;
+      _syncError = null;
+      notifyListeners();
+      try {
+        api.setLocale(_settings.locale.name);
+        final identity = await api.signIn(
+          centerSlug: centerSlug,
+          username: username,
+          password: password,
+          remember: persistSession,
+        );
+        final authenticated = _sessionFromIdentity(identity);
+        _session = authenticated;
+        _persistSession = false;
+        _lastSyncedAt = _clock();
+        _startBackendRealtime();
+        unawaited(refreshTasks());
+        unawaited(refreshForms());
+        notifyListeners();
+        await _persist();
+        return authenticated;
+      } on ApiException catch (error) {
+        _syncError = error.code == 'invalid_credentials' ? null : error.message;
+        throw AuthenticationException(error.message);
+      } finally {
+        _isSyncing = false;
+        notifyListeners();
+      }
+    }
     await Future<void>.delayed(const Duration(milliseconds: 320));
     final authenticated = DemoSeed.authenticate(username, password);
     if (authenticated == null) {
@@ -146,6 +390,28 @@ final class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    if (_api != null) {
+      await _productionNotifications?.clearSession();
+      _productionMessaging?.clearRemoteSession();
+      await _api.signOut();
+      _tasks = [];
+      _attendanceSheets = [];
+      _cards = [];
+      _messageThreads = [];
+      _notifications = [];
+      _surveys = [];
+      _printJobs = [];
+      _auditAnomalies = [];
+      _auditCases = [];
+      _tasksLoading = false;
+      _tasksAvailable = true;
+      _tasksError = null;
+      _formsLoading = false;
+      _formsAvailable = true;
+      _formsError = null;
+      _syncError = null;
+      _lastSyncedAt = null;
+    }
     _session = null;
     _persistSession = true;
     notifyListeners();
@@ -172,6 +438,35 @@ final class AppState extends ChangeNotifier {
         ),
       );
     }
+    if (_api != null) {
+      try {
+        final parts = cleanName
+            .split(RegExp(r'\s+'))
+            .where((value) => value.isNotEmpty)
+            .toList();
+        final profile = await _api.updateMe({
+          'first_name': parts.firstOrNull ?? '',
+          'last_name': parts.length > 1 ? parts.sublist(1).join(' ') : '',
+          'email': cleanEmail,
+          if (phone != null) 'phone': phone.trim(),
+        });
+        _session = _sessionFromIdentity(
+          AuthenticatedIdentity(
+            accessToken: '',
+            connection: _api.connection!,
+            profile: profile,
+            principalKind: apiString(profile['principal_kind']),
+            mustChangePassword: apiBool(profile['must_change_password']),
+          ),
+        );
+        notifyListeners();
+        await _persist();
+        return;
+      } on ApiException catch (error) {
+        await _handleRemoteError(error);
+        rethrow;
+      }
+    }
     _session = StaffSession(
       userId: current.userId,
       displayName: cleanName,
@@ -183,6 +478,9 @@ final class AppState extends ChangeNotifier {
       phone: phone?.trim() ?? current.phone,
       bio: bio?.trim() ?? current.bio,
       avatarColorValue: avatarColorValue ?? current.avatarColorValue,
+      accountTypeSlug: current.accountTypeSlug,
+      mustChangePassword: current.mustChangePassword,
+      isRemote: current.isRemote,
     );
     notifyListeners();
     await _persist();
@@ -198,8 +496,79 @@ final class AppState extends ChangeNotifier {
       updateSettings(_settings.copyWith(themeMode: value));
   Future<void> setPalette(AppPalette value) =>
       updateSettings(_settings.copyWith(palette: value));
-  Future<void> setLocale(AppLocale value) =>
-      updateSettings(_settings.copyWith(locale: value));
+  Future<void> setLocale(AppLocale value) {
+    _api?.setLocale(value.name);
+    return updateSettings(_settings.copyWith(locale: value));
+  }
+
+  Future<void> requestPasswordReset({
+    required String identifier,
+    String accountType = 'staff',
+  }) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('Password reset is only available with the server.');
+    }
+    await api.requestPasswordReset(
+      identifier: identifier,
+      accountType: accountType,
+    );
+  }
+
+  Future<void> confirmPasswordReset({
+    required String identifier,
+    required String code,
+    required String newPassword,
+    String accountType = 'staff',
+  }) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('Password reset is only available with the server.');
+    }
+    await api.confirmPasswordReset(
+      identifier: identifier,
+      code: code,
+      newPassword: newPassword,
+      accountType: accountType,
+    );
+  }
+
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final api = _api;
+    if (api == null) {
+      throw StateError('Password change is only available with the server.');
+    }
+    try {
+      await api.changePassword(
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      );
+      final current = _requireSession();
+      _session = StaffSession(
+        userId: current.userId,
+        displayName: current.displayName,
+        role: current.role,
+        branchId: current.branchId,
+        branchName: current.branchName,
+        email: current.email,
+        username: current.username,
+        phone: current.phone,
+        bio: current.bio,
+        avatarColorValue: current.avatarColorValue,
+        accountTypeSlug: current.accountTypeSlug,
+        mustChangePassword: false,
+        isRemote: true,
+      );
+      notifyListeners();
+    } on ApiException catch (error) {
+      await _handleRemoteError(error);
+      rethrow;
+    }
+  }
+
   Future<void> setLiquidGlass(bool value) =>
       updateSettings(_settings.copyWith(liquidGlass: value));
   Future<void> setReducedMotion(bool value) =>
@@ -222,6 +591,41 @@ final class AppState extends ChangeNotifier {
       updateSettings(_settings.copyWith(motionIntensity: value));
   Future<void> completeWelcome() =>
       updateSettings(_settings.copyWith(hasCompletedWelcome: true));
+
+  /// Reloads the current staff member's server-owned tasks without replacing
+  /// device-only organization such as favorites, checklists, tags and notes.
+  Future<void> refreshTasks() async {
+    final api = _api;
+    if (api == null || _session == null || _tasksLoading) return;
+    _tasksLoading = true;
+    _tasksError = null;
+    notifyListeners();
+    try {
+      final result = await BackendWorkApi.fromApi(api).myTasks();
+      if (result.isUnavailable) {
+        _tasksAvailable = false;
+        _tasksError = result.error?.message;
+        _tasks = [];
+        return;
+      }
+      _tasksAvailable = true;
+      final currentById = {for (final task in _tasks) task.id: task};
+      _tasks = [
+        for (final task in result.value?.items ?? const <BackendTask>[])
+          _staffTaskFromBackend(task, overlay: currentById['${task.id}']),
+      ];
+      _lastSyncedAt = _clock();
+      await _persist();
+    } on ApiException catch (error) {
+      _tasksError = error.message;
+      await _handleRemoteError(error);
+    } on Object catch (error) {
+      _tasksError = error.toString();
+    } finally {
+      _tasksLoading = false;
+      notifyListeners();
+    }
+  }
 
   Future<StaffTask> createTask({
     required String title,
@@ -257,6 +661,43 @@ final class AppState extends ChangeNotifier {
         ),
       );
     }
+    final api = _api;
+    if (api != null) {
+      final result = await BackendWorkApi.fromApi(api).createTask(
+        title: cleanTitle,
+        description: description.trim(),
+        priority: _backendTaskPriority(priority),
+        assigneeId: int.tryParse(selectedAssigneeId),
+        branchId: int.tryParse(current.branchId),
+        dueAt: dueAt,
+      );
+      if (result.isUnavailable || result.value == null) {
+        throw StateError(
+          result.error?.message ??
+              _message(
+                uz: 'Vazifalar moduli bu rol uchun mavjud emas.',
+                ru: 'Модуль задач недоступен для этой роли.',
+                en: 'The tasks module is unavailable for this role.',
+              ),
+        );
+      }
+      final remote = _staffTaskFromBackend(result.value!);
+      final task = remote.copyWith(
+        checklist: [
+          for (final entry in checklist.where(
+            (value) => value.trim().isNotEmpty,
+          ))
+            TaskChecklistItem(id: _newId('step'), title: entry.trim()),
+        ],
+        tags: tags
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty),
+      );
+      _tasks = [task, ..._tasks.where((item) => item.id != task.id)];
+      notifyListeners();
+      await _persist();
+      return task;
+    }
     final task = StaffTask(
       id: _newId('task'),
       title: cleanTitle,
@@ -289,6 +730,33 @@ final class AppState extends ChangeNotifier {
     _requireCapability(StaffCapability.updateOwnTasks);
     final index = _indexById(_tasks, taskId, (item) => item.id);
     _requireTaskUpdatePermission(_tasks[index]);
+    final api = _api;
+    if (api != null) {
+      final numericId = int.tryParse(taskId);
+      if (numericId == null) {
+        throw StateError('Invalid server task id: $taskId');
+      }
+      final result = await BackendWorkApi.fromApi(
+        api,
+      ).transitionTask(numericId, _backendTaskStatus(status));
+      if (result.isUnavailable || result.value == null) {
+        throw StateError(
+          result.error?.message ??
+              _message(
+                uz: 'Vazifa holatini o\'zgartirishga ruxsat yo\'q.',
+                ru: 'Нет разрешения менять статус задачи.',
+                en: 'You cannot change this task status.',
+              ),
+        );
+      }
+      _tasks[index] = _staffTaskFromBackend(
+        result.value!,
+        overlay: _tasks[index],
+      );
+      notifyListeners();
+      await _persist();
+      return;
+    }
     _tasks[index] = _tasks[index].copyWith(status: status);
     notifyListeners();
     await _persist();
@@ -342,6 +810,22 @@ final class AppState extends ChangeNotifier {
     TaskPriority? priority,
     DateTime? dueAt,
   }) async {
+    if (_api != null) {
+      if (title != null ||
+          description != null ||
+          priority != null ||
+          dueAt != null) {
+        throw StateError(
+          _message(
+            uz: 'Server vazifa tafsilotlarini tahrirlashni hali qo\'llamaydi. Holatni o\'zgartirish mumkin.',
+            ru: 'Сервер пока не поддерживает изменение деталей задачи. Можно изменить статус.',
+            en: 'The server does not yet support editing task details. You can change its status.',
+          ),
+        );
+      }
+      if (status != null) await setTaskStatus(taskId, status);
+      return;
+    }
     _requireCapability(StaffCapability.updateOwnTasks);
     final index = _indexById(_tasks, taskId, (item) => item.id);
     final current = _tasks[index];
@@ -408,6 +892,15 @@ final class AppState extends ChangeNotifier {
   }
 
   Future<void> deleteTask(String taskId) async {
+    if (_api != null) {
+      throw StateError(
+        _message(
+          uz: 'Server vazifalarni o\'chirishni qo\'llamaydi.',
+          ru: 'Сервер не поддерживает удаление задач.',
+          en: 'The server does not support deleting tasks.',
+        ),
+      );
+    }
     _requireCapability(StaffCapability.updateOwnTasks);
     final index = _indexById(_tasks, taskId, (item) => item.id);
     final current = _requireSession();
@@ -651,6 +1144,49 @@ final class AppState extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> refreshForms() async {
+    final api = _api;
+    if (api == null || _session == null || _formsLoading) return;
+    _formsLoading = true;
+    _formsError = null;
+    notifyListeners();
+    try {
+      final work = BackendWorkApi.fromApi(api);
+      final result = await work.forms(status: 'published');
+      if (result.isUnavailable) {
+        _formsAvailable = false;
+        _formsError = result.error?.message;
+        _surveys = [];
+        return;
+      }
+      _formsAvailable = true;
+      final currentById = {for (final form in _surveys) form.id: form};
+      final values = <SurveyAssignment>[];
+      for (var form in result.value?.items ?? const <BackendForm>[]) {
+        if (form.fields.isEmpty) {
+          final detail = await work.form(form.id);
+          if (detail.isAvailable && detail.value != null) {
+            form = detail.value!;
+          }
+        }
+        values.add(
+          _surveyFromBackend(form, overlay: currentById['${form.id}']),
+        );
+      }
+      _surveys = values;
+      _lastSyncedAt = _clock();
+      await _persist();
+    } on ApiException catch (error) {
+      _formsError = error.message;
+      await _handleRemoteError(error);
+    } on Object catch (error) {
+      _formsError = error.toString();
+    } finally {
+      _formsLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> answerSurvey(
     String surveyId,
     String questionId,
@@ -697,6 +1233,41 @@ final class AppState extends ChangeNotifier {
           en: 'Answer every required question.',
         ),
       );
+    }
+    final api = _api;
+    if (api != null) {
+      final formId = int.tryParse(survey.id);
+      if (formId == null) {
+        throw StateError('Invalid server form id: ${survey.id}');
+      }
+      try {
+        final result = await BackendWorkApi.fromApi(api).submitForm(formId, [
+          for (final question in survey.questions)
+            if (survey.answers[question.id]?.trim().isNotEmpty == true)
+              {
+                'field': int.parse(question.id),
+                'value': _surveyAnswerForBackend(
+                  question,
+                  survey.answers[question.id]!,
+                ),
+              },
+        ]);
+        if (result.isUnavailable || result.value == null) {
+          throw StateError(
+            result.error?.message ??
+                _message(
+                  uz: 'Bu so‘rovnomaga javob yuborib bo‘lmaydi.',
+                  ru: 'Нельзя отправить ответ на эту форму.',
+                  en: 'This form cannot accept your response.',
+                ),
+          );
+        }
+      } on ApiException catch (error) {
+        if (error.statusCode != 409) {
+          await _handleRemoteError(error);
+          rethrow;
+        }
+      }
     }
     _surveys[index] = survey.copyWith(submittedAt: _clock());
     notifyListeners();
@@ -914,6 +1485,15 @@ final class AppState extends ChangeNotifier {
   }
 
   Future<void> resetDemoData({bool keepSession = true}) async {
+    if (_api != null) {
+      throw StateError(
+        _message(
+          uz: 'Demo ma’lumotlari production rejimida mavjud emas.',
+          ru: 'Демо-данные недоступны в рабочем режиме.',
+          en: 'Demo data is unavailable in production mode.',
+        ),
+      );
+    }
     final currentSession = keepSession ? _session : null;
     final currentSettings = _settings;
     final seed = DemoSeed.snapshot();
@@ -944,6 +1524,214 @@ final class AppState extends ChangeNotifier {
       );
     }
     return value;
+  }
+
+  StaffSession _sessionFromIdentity(AuthenticatedIdentity identity) {
+    final profile = identity.profile;
+    final principalKind = apiString(profile['principal_kind']);
+    final memberships = apiMaps(profile['role_memberships']);
+    final slugs = memberships
+        .map(
+          (item) => apiString(
+            item['account_type_slug'],
+            fallback: apiString(item['legacy_role']),
+          ).toLowerCase(),
+        )
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    if (principalKind != 'teacher' && principalKind != 'staff') {
+      throw const ApiException(
+        message: 'Bu ilova faqat o‘qituvchi va xodimlar uchun.',
+        statusCode: 403,
+        code: 'staff_app_only',
+      );
+    }
+    const blockedFragments = {'ceo', 'owner', 'director', 'manager'};
+    if (slugs.any(
+      (slug) => blockedFragments.any((blocked) => slug.contains(blocked)),
+    )) {
+      throw const ApiException(
+        message: 'Rahbar hisobi bu xodimlar ilovasida ishlamaydi.',
+        statusCode: 403,
+        code: 'staff_app_only',
+      );
+    }
+    final primarySlug = slugs.isEmpty ? principalKind : slugs.first;
+    final role = principalKind == 'teacher'
+        ? StaffRole.teacher
+        : _staffRoleFor(primarySlug);
+    final membership = memberships.firstOrNull;
+    final branchId = apiString(
+      profile['branch'],
+      fallback: apiString(membership?['branch']),
+    );
+    final fullName = apiString(profile['full_name']);
+    final fallbackName = [
+      apiString(profile['first_name']),
+      apiString(profile['last_name']),
+    ].where((value) => value.isNotEmpty).join(' ');
+    return StaffSession(
+      userId: apiString(profile['id']),
+      displayName: fullName.isNotEmpty
+          ? fullName
+          : fallbackName.isNotEmpty
+          ? fallbackName
+          : apiString(profile['username'], fallback: 'Staff'),
+      role: role,
+      branchId: branchId,
+      branchName: identity.connection.name,
+      email: apiString(profile['email']),
+      username: apiString(profile['username']),
+      phone: apiString(profile['phone']),
+      accountTypeSlug: primarySlug,
+      mustChangePassword:
+          identity.mustChangePassword ||
+          apiBool(profile['must_change_password']),
+      isRemote: true,
+    );
+  }
+
+  StaffRole _staffRoleFor(String slug) {
+    if (slug.contains('audit') || slug.contains('compliance')) {
+      return StaffRole.auditor;
+    }
+    if (slug.contains('method') ||
+        slug.contains('academic') ||
+        slug.contains('quality')) {
+      return StaffRole.methodist;
+    }
+    if (slug.contains('reception') ||
+        slug.contains('registr') ||
+        slug.contains('admission') ||
+        slug.contains('cashier') ||
+        slug.contains('account')) {
+      return StaffRole.reception;
+    }
+    return StaffRole.assistant;
+  }
+
+  StaffTask _staffTaskFromBackend(BackendTask value, {StaffTask? overlay}) {
+    final current = _session;
+    final assigneeId = '${value.assigneeId ?? current?.userId ?? ''}';
+    final creatorId = '${value.createdBy ?? current?.userId ?? ''}';
+    return StaffTask(
+      id: '${value.id}',
+      title: value.title,
+      description: value.description,
+      status: _taskStatusFromBackend(value.status),
+      priority: _taskPriorityFromBackend(value.priority),
+      creatorId: creatorId,
+      creatorName: creatorId == current?.userId
+          ? current!.displayName
+          : creatorId.isEmpty
+          ? 'StarForge staff'
+          : 'Staff #$creatorId',
+      assigneeId: assigneeId,
+      assigneeName: assigneeId == current?.userId
+          ? current!.displayName
+          : assigneeId.isEmpty
+          ? 'Unassigned'
+          : 'Staff #$assigneeId',
+      dueAt:
+          value.dueAt ??
+          value.createdAt?.add(const Duration(days: 2)) ??
+          _clock().add(const Duration(days: 2)),
+      createdAt: value.createdAt ?? _clock(),
+      checklist: overlay?.checklist ?? const [],
+      tags: overlay?.tags ?? const [],
+      comments: overlay?.comments ?? const [],
+      isFavorite: overlay?.isFavorite ?? false,
+    );
+  }
+
+  TaskStatus _taskStatusFromBackend(String value) => switch (value) {
+    'in_progress' => TaskStatus.inProgress,
+    'blocked' => TaskStatus.inReview,
+    'done' || 'cancelled' => TaskStatus.done,
+    _ => TaskStatus.todo,
+  };
+
+  String _backendTaskStatus(TaskStatus value) => switch (value) {
+    TaskStatus.todo => 'open',
+    TaskStatus.inProgress => 'in_progress',
+    TaskStatus.inReview => 'blocked',
+    TaskStatus.done => 'done',
+  };
+
+  TaskPriority _taskPriorityFromBackend(String value) => switch (value) {
+    'low' => TaskPriority.low,
+    'high' => TaskPriority.high,
+    'urgent' => TaskPriority.urgent,
+    _ => TaskPriority.medium,
+  };
+
+  String _backendTaskPriority(TaskPriority value) => switch (value) {
+    TaskPriority.low => 'low',
+    TaskPriority.medium => 'normal',
+    TaskPriority.high => 'high',
+    TaskPriority.urgent => 'urgent',
+  };
+
+  SurveyAssignment _surveyFromBackend(
+    BackendForm value, {
+    SurveyAssignment? overlay,
+  }) => SurveyAssignment(
+    id: '${value.id}',
+    title: value.title,
+    summary: value.description,
+    dueAt: value.closesAt ?? _clock().add(const Duration(days: 7)),
+    questions: [
+      for (final field in value.fields)
+        SurveyQuestion(
+          id: '${field.id}',
+          prompt: field.label,
+          kind: _surveyKindFromBackend(field.fieldType),
+          options: switch (field.fieldType) {
+            'boolean' => const ['true', 'false'],
+            'rating' when field.options.isEmpty => const [
+              '1',
+              '2',
+              '3',
+              '4',
+              '5',
+            ],
+            _ => field.options.map((item) => item.toString()),
+          },
+          required: field.required,
+        ),
+    ],
+    answers: overlay?.answers ?? const {},
+    submittedAt: overlay?.submittedAt,
+  );
+
+  SurveyQuestionKind _surveyKindFromBackend(String value) => switch (value) {
+    'single_choice' => SurveyQuestionKind.singleChoice,
+    'multi_choice' => SurveyQuestionKind.multiChoice,
+    'number' => SurveyQuestionKind.number,
+    'boolean' => SurveyQuestionKind.boolean,
+    'rating' => SurveyQuestionKind.rating,
+    'date' => SurveyQuestionKind.date,
+    _ => SurveyQuestionKind.freeText,
+  };
+
+  Object _surveyAnswerForBackend(SurveyQuestion question, String answer) =>
+      switch (question.kind) {
+        SurveyQuestionKind.number => num.tryParse(answer) ?? answer,
+        SurveyQuestionKind.boolean => answer.toLowerCase() == 'true',
+        SurveyQuestionKind.rating => int.tryParse(answer) ?? answer,
+        SurveyQuestionKind.multiChoice =>
+          answer.split('\u001f').where((item) => item.isNotEmpty).toList(),
+        _ => answer,
+      };
+
+  Future<void> _handleRemoteError(ApiException error) async {
+    if (error.statusCode == 401) {
+      await _expireRemoteSession();
+    }
+    if (error.code != 'invalid_credentials') {
+      _syncError = error.message;
+    }
+    notifyListeners();
   }
 
   bool canUpdateTask(StaffTask task) {
@@ -1007,7 +1795,7 @@ final class AppState extends ChangeNotifier {
   };
 
   AppSnapshot _snapshotForPersistence() => AppSnapshot(
-    session: _persistSession ? _session : null,
+    session: _api == null && _persistSession ? _session : null,
     settings: _settings,
     tasks: _tasks,
     attendanceSheets: _attendanceSheets,
@@ -1035,5 +1823,16 @@ final class AppState extends ChangeNotifier {
       _isPersisting = false;
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    final messaging = _productionMessaging;
+    final notifications = _productionNotifications;
+    messaging?.removeListener(_notifyFromBackendWork);
+    notifications?.removeListener(_notifyFromBackendWork);
+    messaging?.dispose();
+    notifications?.dispose();
+    super.dispose();
   }
 }

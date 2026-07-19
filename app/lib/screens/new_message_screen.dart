@@ -32,8 +32,10 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
   final _message = TextEditingController();
   String? _contactId;
   bool _sending = false;
+  MessagingController? _activeController;
 
-  MessagingController get _controller => MessagingController.shared;
+  MessagingController get _controller =>
+      _activeController ?? MessagingController.shared;
 
   @override
   void dispose() {
@@ -47,7 +49,7 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
     if (_sending || contactId == null || _message.text.trim().isEmpty) return;
     setState(() => _sending = true);
     try {
-      final thread = _controller.createOrOpenDirectThread(contactId);
+      final thread = await _controller.createOrOpenDirectThreadAsync(contactId);
       await _controller.sendText(thread.id, _messageBody());
       if (!mounted) return;
       context.pushReplacement(
@@ -86,6 +88,7 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    _activeController = app.messagingController;
     final m = MessagingL10n.of(context);
     final session = app.session;
     if (session == null || !session.can(StaffCapability.useStaffMessaging)) {

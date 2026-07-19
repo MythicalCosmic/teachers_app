@@ -49,12 +49,12 @@ class SfAdaptiveBottomNavigation extends StatelessWidget {
     required this.destinations,
     required this.activeIndex,
     required this.onDestinationSelected,
-    this.glassEnabled = true,
+    this.glassEnabled = false,
     this.platformAdaptiveGlass = true,
     this.motionEnabled = true,
     this.hapticsEnabled = true,
     this.safeBottom = true,
-    this.margin = const EdgeInsets.fromLTRB(12, 0, 12, 4),
+    this.margin = const EdgeInsets.fromLTRB(8, 0, 8, 4),
     this.padding = const EdgeInsets.fromLTRB(4, 4, 4, 3),
     this.borderRadius = const BorderRadius.all(Radius.circular(21)),
     this.backgroundColor,
@@ -77,64 +77,85 @@ class SfAdaptiveBottomNavigation extends StatelessWidget {
 
     return SafeArea(
       top: false,
+      left: false,
+      right: false,
       bottom: safeBottom,
       minimum: safeBottom ? const EdgeInsets.only(bottom: 2) : EdgeInsets.zero,
-      child: Center(
-        heightFactor: 1,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Padding(
-            padding: margin,
-            child: SfGlassSurface(
-              enabled: glassEnabled || sf.usesGlass,
-              platformAdaptive: platformAdaptiveGlass,
-              blurSigma: sf.visualStyle == AppVisualStyle.liquidGlass ? 30 : 20,
-              borderRadius: borderRadius,
-              tintColor:
-                  backgroundColor ??
-                  c.surface.withValues(alpha: sf.navigationOpacity),
-              fallbackColor: (backgroundColor ?? c.surface).withValues(
-                alpha: sf.navigationOpacity,
-              ),
-              translucentFallback: true,
-              shadows: [
-                BoxShadow(
-                  color: c.ink.withValues(alpha: sf.dark ? 0.28 : 0.12),
-                  blurRadius: 22,
-                  offset: const Offset(0, 8),
-                ),
-                BoxShadow(
-                  color: c.primary.withValues(alpha: 0.06),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final phoneLayout = MediaQuery.sizeOf(context).shortestSide < 600;
+          final width = constraints.maxWidth.isFinite
+              ? phoneLayout
+                    ? constraints.maxWidth
+                    : constraints.maxWidth.clamp(0.0, 920.0).toDouble()
+              : 920.0;
+          return Align(
+            alignment: Alignment.bottomCenter,
+            heightFactor: 1,
+            child: SizedBox(
+              width: width,
               child: Padding(
-                padding: padding,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (var index = 0; index < destinations.length; index++)
-                      Expanded(
-                        child: _SfBottomDestinationItem(
-                          destination: destinations[index],
-                          selected: index == activeIndex,
-                          activeColor: active,
-                          inactiveColor: inactive,
-                          duration: duration,
-                          motionEnabled: motionEnabled,
-                          hapticsEnabled: hapticsEnabled,
-                          onPressed: onDestinationSelected == null
-                              ? null
-                              : () => onDestinationSelected!(index),
-                        ),
-                      ),
+                padding: margin,
+                child: SfGlassSurface(
+                  // A caller may request glass outside a glass-first visual
+                  // style, but the persisted global switch always wins.
+                  enabled: sf.liquidGlass && (glassEnabled || sf.usesGlass),
+                  platformAdaptive: platformAdaptiveGlass,
+                  blurSigma: sf.visualStyle == AppVisualStyle.liquidGlass
+                      ? 30
+                      : 20,
+                  borderRadius: borderRadius,
+                  tintColor:
+                      backgroundColor ??
+                      c.surface.withValues(alpha: sf.navigationOpacity),
+                  fallbackColor: (backgroundColor ?? c.surface).withValues(
+                    alpha: sf.navigationOpacity,
+                  ),
+                  translucentFallback: true,
+                  shadows: [
+                    BoxShadow(
+                      color: c.ink.withValues(alpha: sf.dark ? 0.28 : 0.12),
+                      blurRadius: 22,
+                      offset: const Offset(0, 8),
+                    ),
+                    BoxShadow(
+                      color: c.primary.withValues(alpha: 0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
                   ],
+                  child: Padding(
+                    padding: padding,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        for (
+                          var index = 0;
+                          index < destinations.length;
+                          index++
+                        )
+                          Expanded(
+                            child: _SfBottomDestinationItem(
+                              destination: destinations[index],
+                              selected: index == activeIndex,
+                              activeColor: active,
+                              inactiveColor: inactive,
+                              duration: duration,
+                              motionEnabled: motionEnabled,
+                              hapticsEnabled: hapticsEnabled,
+                              onPressed: onDestinationSelected == null
+                                  ? null
+                                  : () => onDestinationSelected!(index),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -185,8 +206,8 @@ class _SfBottomDestinationItem extends StatelessWidget {
           return AnimatedContainer(
             duration: duration,
             curve: SfMotion.enter,
-            constraints: const BoxConstraints(minHeight: 46),
-            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+            constraints: const BoxConstraints(minHeight: 52),
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
             decoration: BoxDecoration(
               color: background,
               borderRadius: BorderRadius.circular(14),
@@ -201,7 +222,7 @@ class _SfBottomDestinationItem extends StatelessWidget {
                   children: [
                     IconTheme(
                       data: IconThemeData(
-                        size: 21,
+                        size: 22,
                         color: selected ? activeColor : inactiveColor,
                       ),
                       child: selected
@@ -218,7 +239,7 @@ class _SfBottomDestinationItem extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: SfType.ui(
-                    size: 10,
+                    size: 10.5,
                     weight: selected ? FontWeight.w700 : FontWeight.w600,
                     color: selected ? activeColor : inactiveColor,
                     letterSpacing: -0.05,

@@ -54,7 +54,8 @@ class _SurveyFormScreenState extends State<SurveyFormScreen> {
     _questionKeys.clear();
     for (final question in survey.questions) {
       _questionKeys[question.id] = GlobalKey();
-      if (question.kind == SurveyQuestionKind.freeText) {
+      if (question.kind == SurveyQuestionKind.freeText ||
+          question.kind == SurveyQuestionKind.number) {
         _controllers[question.id] = TextEditingController(
           text: survey.answers[question.id] ?? '',
         );
@@ -95,6 +96,7 @@ class _SurveyFormScreenState extends State<SurveyFormScreen> {
   }
 
   Future<void> _saveDraft(SurveyAssignment survey) async {
+    final appState = AppScope.of(context);
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _saving = true);
     try {
@@ -106,8 +108,12 @@ class _SurveyFormScreenState extends State<SurveyFormScreen> {
         title: staffTr(context, 'Qoralama saqlandi', 'Draft saved'),
         message: staffTr(
           context,
-          'Barcha tanlovlaringiz ushbu qurilmada saqlandi.',
-          'All of your selections were saved on this device.',
+          appState.isProduction
+              ? 'Qoralama yuborilguncha joriy seansda saqlanadi.'
+              : 'Barcha tanlovlaringiz ushbu qurilmada saqlandi.',
+          appState.isProduction
+              ? 'The draft is kept in this session until you submit it.'
+              : 'All of your selections were saved on this device.',
         ),
         tone: SfToastTone.success,
       );
@@ -590,7 +596,8 @@ class _QuestionCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          if (question.kind == SurveyQuestionKind.freeText)
+          if (question.kind == SurveyQuestionKind.freeText ||
+              question.kind == SurveyQuestionKind.number)
             SfTextField(
               key: Key('survey-text-${question.id}'),
               controller: controller,
@@ -600,9 +607,12 @@ class _QuestionCard extends StatelessWidget {
                 'Fikringizni ochiq yozing…',
                 'Share your thoughts openly…',
               ),
-              minLines: 4,
-              maxLines: 7,
-              maxLength: 1000,
+              minLines: question.kind == SurveyQuestionKind.number ? 1 : 4,
+              maxLines: question.kind == SurveyQuestionKind.number ? 1 : 7,
+              maxLength: question.kind == SurveyQuestionKind.number ? 32 : 1000,
+              keyboardType: question.kind == SurveyQuestionKind.number
+                  ? const TextInputType.numberWithOptions(decimal: true)
+                  : TextInputType.multiline,
               onChanged: onChanged,
             )
           else if (question.kind == SurveyQuestionKind.rating)
@@ -613,13 +623,26 @@ class _QuestionCard extends StatelessWidget {
               enabled: enabled,
               onChanged: onChanged,
             )
-          else
-            _ChoiceControl(
+          else if (question.kind == SurveyQuestionKind.multiChoice)
+            _MultiChoiceControl(
               questionId: question.id,
               options: question.options,
               value: value,
               enabled: enabled,
               onChanged: onChanged,
+            )
+          else if (question.kind == SurveyQuestionKind.date)
+            _DateControl(value: value, enabled: enabled, onChanged: onChanged)
+          else
+            _ChoiceControl(
+              questionId: question.id,
+              options: question.kind == SurveyQuestionKind.boolean
+                  ? const ['true', 'false']
+                  : question.options,
+              value: value,
+              enabled: enabled,
+              onChanged: onChanged,
+              booleanLabels: question.kind == SurveyQuestionKind.boolean,
             ),
         ],
       ),
@@ -714,7 +737,112 @@ class _ChoiceControl extends StatelessWidget {
     required this.value,
     required this.enabled,
     required this.onChanged,
+    this.booleanLabels = false,
   });
+  final String questionId;
+  final List<String> options;
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+  final bool booleanLabels;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Column(
+      children: [
+        for (final option in options) ...[
+          Builder(
+            builder: (context) {
+              final label = booleanLabels
+                  ? option == 'true'
+                        ? staffTr(context, 'Ha', 'Yes', ru: 'Да')
+                        : staffTr(context, 'Yo‘q', 'No', ru: 'Нет')
+                  : _optionLabel(context, questionId, option);
+              return SfPressable(
+                key: Key('survey-$questionId-choice-$option'),
+                semanticLabel: label,
+                selected: value == option,
+                enabled: enabled,
+                haptic: true,
+                onPressed: enabled ? () => onChanged(option) : null,
+                borderRadius: BorderRadius.circular(15),
+                child: AnimatedContainer(
+                  duration: SfMotion.resolve(context, SfMotion.standard),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 11,
+                  ),
+                  decoration: BoxDecoration(
+                    color: value == option
+                        ? c.primarySoft.withValues(alpha: .62)
+                        : c.surface2.withValues(alpha: .52),
+                    borderRadius: BorderRadius.circular(15),
+                    border: Border.all(
+                      color: value == option ? c.primary : c.border,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: SfMotion.resolve(context, SfMotion.quick),
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: value == option
+                              ? c.primary
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: value == option ? c.primary : c.borderStrong,
+                            width: 1.5,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: value == option
+                            ? Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                  color: c.bg,
+                                  shape: BoxShape.circle,
+                                ),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: SfType.ui(
+                            size: 12,
+                            weight: FontWeight.w700,
+                            color: c.ink,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          if (option != options.last) const SizedBox(height: 7),
+        ],
+      ],
+    );
+  }
+}
+
+class _MultiChoiceControl extends StatelessWidget {
+  const _MultiChoiceControl({
+    required this.questionId,
+    required this.options,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
   final String questionId;
   final List<String> options;
   final String? value;
@@ -723,74 +851,76 @@ class _ChoiceControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
+    final selected = (value ?? '')
+        .split('\u001f')
+        .where((item) => item.isNotEmpty)
+        .toSet();
     return Column(
       children: [
-        for (final option in options) ...[
-          SfPressable(
-            key: Key('survey-$questionId-choice-$option'),
-            semanticLabel: _optionLabel(context, questionId, option),
-            selected: value == option,
-            enabled: enabled,
-            haptic: true,
-            onPressed: enabled ? () => onChanged(option) : null,
-            borderRadius: BorderRadius.circular(15),
-            child: AnimatedContainer(
-              duration: SfMotion.resolve(context, SfMotion.standard),
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-              decoration: BoxDecoration(
-                color: value == option
-                    ? c.primarySoft.withValues(alpha: .62)
-                    : c.surface2.withValues(alpha: .52),
+        for (final option in options)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: CheckboxListTile(
+              key: Key('survey-$questionId-multi-$option'),
+              value: selected.contains(option),
+              enabled: enabled,
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: value == option ? c.primary : c.border,
-                ),
               ),
-              child: Row(
-                children: [
-                  AnimatedContainer(
-                    duration: SfMotion.resolve(context, SfMotion.quick),
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: value == option ? c.primary : Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: value == option ? c.primary : c.borderStrong,
-                        width: 1.5,
-                      ),
-                    ),
-                    alignment: Alignment.center,
-                    child: value == option
-                        ? Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              color: c.bg,
-                              shape: BoxShape.circle,
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _optionLabel(context, questionId, option),
-                      style: SfType.ui(
-                        size: 12,
-                        weight: FontWeight.w700,
-                        color: c.ink,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              title: Text(_optionLabel(context, questionId, option)),
+              onChanged: !enabled
+                  ? null
+                  : (checked) {
+                      final next = Set<String>.of(selected);
+                      checked == true ? next.add(option) : next.remove(option);
+                      onChanged(next.join('\u001f'));
+                    },
             ),
           ),
-          if (option != options.last) const SizedBox(height: 7),
-        ],
       ],
+    );
+  }
+}
+
+class _DateControl extends StatelessWidget {
+  const _DateControl({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = DateTime.tryParse(value ?? '');
+    return OutlinedButton.icon(
+      onPressed: !enabled
+          ? null
+          : () async {
+              final now = DateTime.now();
+              final date = await showDatePicker(
+                context: context,
+                initialDate: selected ?? now,
+                firstDate: DateTime(now.year - 10),
+                lastDate: DateTime(now.year + 10, 12, 31),
+              );
+              if (date != null) {
+                onChanged(
+                  '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+                );
+              }
+            },
+      icon: const Icon(Icons.calendar_month_rounded),
+      label: Text(
+        selected == null
+            ? staffTr(context, 'Sanani tanlang', 'Choose a date')
+            : '${selected.day.toString().padLeft(2, '0')}.${selected.month.toString().padLeft(2, '0')}.${selected.year}',
+      ),
     );
   }
 }

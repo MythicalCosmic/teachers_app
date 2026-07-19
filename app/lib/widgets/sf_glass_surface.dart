@@ -54,16 +54,18 @@ class SfGlassSurface extends StatelessWidget {
     final useBlur =
         enabled &&
         (!platformAdaptive ||
-            (!kIsWeb && platformSupportsBlur(defaultTargetPlatform)));
+            (!kIsWeb && platformSupportsBlur(Theme.of(context).platform)));
     final resolvedRadius = borderRadius.resolve(Directionality.of(context));
     final fallback = fallbackColor ?? c.surface;
     final fallbackAlpha = fallback.a < sf.surfaceOpacity
         ? fallback.a
         : sf.surfaceOpacity;
+    // A translucent color without backdrop blur reads as muddy on Android and
+    // can make text contrast depend on whatever happens to scroll underneath.
+    // Keep non-blur fallbacks comfortably opaque; callers may still request a
+    // subtle translucent treatment for navigation chrome.
     final opaqueFallback = fallback.withValues(
-      alpha: (enabled && sf.usesGlass) || translucentFallback
-          ? fallbackAlpha
-          : 1,
+      alpha: translucentFallback ? fallbackAlpha.clamp(0.90, 1).toDouble() : 1,
     );
     final color = useBlur
         ? (tintColor ?? c.surface.withValues(alpha: sf.surfaceOpacity))

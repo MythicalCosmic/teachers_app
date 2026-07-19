@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import 'app/app_scope.dart';
 import 'app/app_state.dart';
+import 'data/api/backend_services_api.dart';
 import 'data/models.dart';
 import 'screens/ai/ai_chat_list_screen.dart';
 import 'screens/ai/ai_chat_screen.dart';
@@ -16,6 +17,7 @@ import 'screens/assignments/grade_submission_screen.dart';
 import 'screens/assignments/gradebook_screen.dart';
 import 'screens/attendance_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
+import 'screens/auth/forced_password_change_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/welcome_screen.dart';
 import 'screens/cards/cards_screen.dart';
@@ -36,11 +38,13 @@ import 'screens/print/new_print_job_screen.dart';
 import 'screens/print/print_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/search_screen.dart';
+import 'screens/services/backend_audit_log_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/staff/audit_workspace_screens.dart';
 import 'screens/staff/methodist_quality_screen.dart';
 import 'screens/staff/reception_workspace_screen.dart';
 import 'screens/staff/staff_more_hub_screen.dart';
+import 'screens/staff/staff_operations_screen.dart';
 import 'screens/staff/staff_shell_screen.dart';
 import 'screens/staff/staff_today_screen.dart';
 import 'screens/staff/staff_workspace_models.dart';
@@ -87,6 +91,11 @@ GoRouter buildRouter(
       path: '/welcome',
       pageBuilder: (context, state) =>
           _fadePage(state, const WelcomeScreen(), app),
+    ),
+    GoRoute(
+      path: '/password/change-required',
+      pageBuilder: (context, state) =>
+          _fadePage(state, const ForcedPasswordChangeScreen(), app),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) =>
@@ -269,8 +278,23 @@ GoRouter buildRouter(
     GoRoute(
       path: '/payments',
       parentNavigatorKey: _rootNavigatorKey,
-      pageBuilder: (context, state) =>
-          _detailPage(state, _receptionWorkspace(context), app),
+      pageBuilder: (context, state) => _detailPage(
+        state,
+        const StaffOperationModuleScreen(moduleId: 'payments'),
+        app,
+      ),
+    ),
+    _route('/staff/operations', const StaffOperationsHubScreen(), app),
+    GoRoute(
+      path: '/staff/operations/:moduleId',
+      parentNavigatorKey: _rootNavigatorKey,
+      pageBuilder: (context, state) => _detailPage(
+        state,
+        StaffOperationModuleScreen(
+          moduleId: state.pathParameters['moduleId'] ?? '',
+        ),
+        app,
+      ),
     ),
     GoRoute(
       path: '/staff/audit',
@@ -325,9 +349,17 @@ GoRouter buildRouter(
 );
 
 String? _redirect(AppState app, GoRouterState state) {
+  if (!app.isInitialized) return null;
   final path = state.uri.path;
   final authRoute = path == '/login' || path == '/login/forgot';
   if (app.session == null) return authRoute ? null : '/login';
+  final passwordChangeRequired = app.session!.mustChangePassword;
+  if (passwordChangeRequired && path != '/password/change-required') {
+    return '/password/change-required';
+  }
+  if (!passwordChangeRequired && path == '/password/change-required') {
+    return app.settings.hasCompletedWelcome ? '/home' : '/welcome';
+  }
   if (authRoute) {
     return app.settings.hasCompletedWelcome ? '/home' : '/welcome';
   }
@@ -1069,6 +1101,13 @@ Widget _auditLog(BuildContext context) {
   final app = AppScope.of(context);
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
+  final backend = app.backendApi;
+  if (backend != null) {
+    return BackendAuditLogScreen(
+      api: BackendServicesApi.fromApi(backend),
+      baseUrl: backend.connection?.baseUrl,
+    );
+  }
   final events = _auditEvents(app);
   return ImmutableAuditLogScreen(
     role: session.role,

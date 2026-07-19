@@ -49,179 +49,186 @@ class WelcomeScreen extends StatelessWidget {
                       maxWidth: 520,
                       minHeight: constraints.maxHeight - 56,
                     ),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 14),
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: 124,
-                              height: 124,
-                              decoration: BoxDecoration(
-                                color: c.accentSoft,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            SfAvatar(
-                              name: session.displayName,
-                              size: 92,
-                              color: c.primary,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Xush kelibsiz,',
-                          style: SfType.display(size: 22, color: c.ink2),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          firstName,
-                          style: SfType.ui(
-                            size: 27,
-                            weight: FontWeight.w800,
-                            color: c.ink,
-                            letterSpacing: -0.65,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          '${session.role.uzLabel} · ${session.branchName}',
-                          style: SfType.ui(size: 12, color: c.muted),
-                        ),
-                        const SizedBox(height: 22),
-                        SfSurfaceCard(
-                          padding: const EdgeInsets.all(14),
-                          child: Row(
+                    child: IntrinsicHeight(
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 14),
+                          Stack(
+                            alignment: Alignment.center,
                             children: [
                               Container(
-                                width: 44,
-                                height: 44,
+                                width: 124,
+                                height: 124,
                                 decoration: BoxDecoration(
-                                  color: c.primary,
-                                  borderRadius: BorderRadius.circular(13),
-                                ),
-                                alignment: Alignment.center,
-                                child: const SfStar(
-                                  size: 23,
-                                  color: Color(0xFFFFFCF5),
+                                  color: c.accentSoft,
+                                  shape: BoxShape.circle,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      session.branchName,
-                                      style: SfType.ui(
-                                        size: 13,
-                                        weight: FontWeight.w800,
-                                        color: c.ink,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      profile.description,
-                                      style: SfType.ui(
-                                        size: 11,
-                                        color: c.muted,
-                                        height: 1.35,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                              SfAvatar(
+                                name: session.displayName,
+                                size: 92,
+                                color: c.primary,
                               ),
-                              Icon(SfIcons.shield, size: 22, color: c.success),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 13),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (
-                              var index = 0;
-                              index < profile.tags.length;
-                              index++
-                            )
-                              SfPill(
-                                tone: index.isEven
-                                    ? SfPillTone.primary
-                                    : SfPillTone.accent,
-                                label: profile.tags[index],
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            for (final stat in profile.stats)
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
+                          const SizedBox(height: 16),
+                          Text(
+                            'Xush kelibsiz,',
+                            style: SfType.display(size: 22, color: c.ink2),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            firstName,
+                            style: SfType.ui(
+                              size: 27,
+                              weight: FontWeight.w800,
+                              color: c.ink,
+                              letterSpacing: -0.65,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${session.role.uzLabel} · ${session.branchName}',
+                            style: SfType.ui(size: 12, color: c.muted),
+                          ),
+                          const SizedBox(height: 22),
+                          SfSurfaceCard(
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: c.primary,
+                                    borderRadius: BorderRadius.circular(13),
                                   ),
-                                  child: Container(
-                                    constraints: const BoxConstraints(
-                                      minHeight: 74,
-                                    ),
+                                  alignment: Alignment.center,
+                                  child: const SfStar(
+                                    size: 23,
+                                    color: Color(0xFFFFFCF5),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        session.branchName,
+                                        style: SfType.ui(
+                                          size: 13,
+                                          weight: FontWeight.w800,
+                                          color: c.ink,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        profile.description,
+                                        style: SfType.ui(
+                                          size: 11,
+                                          color: c.muted,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  SfIcons.shield,
+                                  size: 22,
+                                  color: c.success,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 13),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (
+                                var index = 0;
+                                index < profile.tags.length;
+                                index++
+                              )
+                                SfPill(
+                                  tone: index.isEven
+                                      ? SfPillTone.primary
+                                      : SfPillTone.accent,
+                                  label: profile.tags[index],
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              for (final stat in profile.stats)
+                                Expanded(
+                                  child: Padding(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 4,
-                                      vertical: 12,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: c.surface,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: c.border),
-                                    ),
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          stat.$1,
-                                          style: SfType.mono(
-                                            size: 21,
-                                            weight: FontWeight.w700,
-                                            color: c.primary,
-                                            height: 1,
+                                    child: Container(
+                                      constraints: const BoxConstraints(
+                                        minHeight: 74,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: c.surface,
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: c.border),
+                                      ),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            stat.$1,
+                                            style: SfType.mono(
+                                              size: 21,
+                                              weight: FontWeight.w700,
+                                              color: c.primary,
+                                              height: 1,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 5),
-                                        Text(
-                                          stat.$2.toUpperCase(),
-                                          textAlign: TextAlign.center,
-                                          style: SfType.eyebrow(
-                                            color: c.muted,
-                                            size: 9.5,
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            stat.$2.toUpperCase(),
+                                            textAlign: TextAlign.center,
+                                            style: SfType.eyebrow(
+                                              color: c.muted,
+                                              size: 9.5,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
-                        ),
-                        const Spacer(),
-                        const SizedBox(height: 28),
-                        SfButton(
-                          kind: SfButtonKind.primary,
-                          block: true,
-                          height: 54,
-                          label: 'Ish maydonini ochish',
-                          trailing: SfIcons.arrowR,
-                          fontSize: 16,
-                          onPressed: () async {
-                            await app.completeWelcome();
-                            if (context.mounted) context.go('/home');
-                          },
-                        ),
-                      ],
+                            ],
+                          ),
+                          const Spacer(),
+                          const SizedBox(height: 28),
+                          SfButton(
+                            kind: SfButtonKind.primary,
+                            block: true,
+                            height: 54,
+                            label: 'Ish maydonini ochish',
+                            trailing: SfIcons.arrowR,
+                            fontSize: 16,
+                            onPressed: () async {
+                              await app.completeWelcome();
+                              if (context.mounted) context.go('/home');
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

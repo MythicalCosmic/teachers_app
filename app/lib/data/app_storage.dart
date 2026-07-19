@@ -21,6 +21,28 @@ final class SharedPreferencesAppStorage implements AppStorage {
     return SharedPreferencesAppStorage(await SharedPreferences.getInstance());
   }
 
+  /// One-time production migration that removes unscoped demo-era workspace
+  /// caches. New server data is never written to these legacy keys.
+  Future<void> migrateLegacyDemoData() async {
+    const marker = 'starforge.staff.production_migration.v1';
+    if (_preferences.getBool(marker) == true) return;
+    const exactKeys = {
+      'starforge.group_workspace.v1',
+      'starforge.content_workspace.v1',
+      'starforge.pending_recovery_request.v1',
+    };
+    final legacyKeys = _preferences.getKeys().where(
+      (key) =>
+          exactKeys.contains(key) ||
+          key.startsWith('starforge.messaging.v1.') ||
+          key.startsWith('starforge.assignments.v1.'),
+    );
+    for (final key in legacyKeys.toList(growable: false)) {
+      await _preferences.remove(key);
+    }
+    await _preferences.setBool(marker, true);
+  }
+
   @override
   Future<String?> read(String key) async => _preferences.getString(key);
 

@@ -30,7 +30,9 @@ class SfSurfaceCard extends StatelessWidget {
 
     return switch (sf.visualStyle) {
       AppVisualStyle.classic => Material(
-        color: (color ?? c.surface).withValues(alpha: sf.surfaceOpacity),
+        color: (color ?? c.surface).withValues(
+          alpha: sf.surfaceOpacity.clamp(0.92, 1).toDouble(),
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: borderRadius,
           side: BorderSide(color: c.border),
@@ -39,7 +41,7 @@ class SfSurfaceCard extends StatelessWidget {
         child: Padding(padding: padding, child: child),
       ),
       AppVisualStyle.glassmorphism => SfGlassSurface(
-        enabled: true,
+        enabled: sf.liquidGlass,
         borderRadius: borderRadius,
         blurSigma: 18,
         tintColor: (color ?? c.surface).withValues(
@@ -58,7 +60,7 @@ class SfSurfaceCard extends StatelessWidget {
         child: content,
       ),
       AppVisualStyle.liquidGlass => SfGlassSurface(
-        enabled: true,
+        enabled: sf.liquidGlass,
         borderRadius: borderRadius,
         blurSigma: 30,
         tintColor: (color ?? c.surface).withValues(
@@ -83,7 +85,9 @@ class SfSurfaceCard extends StatelessWidget {
       ),
       AppVisualStyle.claymorphism => Container(
         decoration: BoxDecoration(
-          color: (color ?? c.surface2).withValues(alpha: sf.surfaceOpacity),
+          color: (color ?? c.surface2).withValues(
+            alpha: sf.surfaceOpacity.clamp(0.90, 1).toDouble(),
+          ),
           borderRadius: borderRadius,
           border: Border.all(color: c.surface.withValues(alpha: 0.72)),
           boxShadow: [
@@ -109,20 +113,22 @@ class SfSurfaceCard extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: color != null
                 ? [color!, color!]
-                : [
-                    c.primarySoft.withValues(alpha: sf.surfaceOpacity),
-                    c.accentSoft.withValues(
-                      alpha: (sf.surfaceOpacity - 0.08)
-                          .clamp(0.45, 0.92)
-                          .toDouble(),
-                    ),
-                  ],
+                : sf.dark
+                ? [c.surface2, c.primarySoft, c.accentSoft]
+                : [c.primarySoft, c.surface, c.accentSoft],
           ),
           borderRadius: borderRadius,
-          border: Border.all(color: c.ink.withValues(alpha: 0.72), width: 1.6),
+          border: Border.all(
+            color: sf.dark
+                ? c.primary.withValues(alpha: 0.72)
+                : c.ink.withValues(alpha: 0.72),
+            width: 1.6,
+          ),
           boxShadow: [
             BoxShadow(
-              color: c.ink.withValues(alpha: 0.74),
+              color: sf.dark
+                  ? Colors.black.withValues(alpha: 0.56)
+                  : c.ink.withValues(alpha: 0.74),
               offset: const Offset(5, 6),
             ),
           ],

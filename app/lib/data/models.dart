@@ -302,6 +302,9 @@ final class StaffSession {
     this.phone = '',
     this.bio = '',
     this.avatarColorValue = 0,
+    this.accountTypeSlug = '',
+    this.mustChangePassword = false,
+    this.isRemote = false,
   });
 
   final String userId;
@@ -314,6 +317,9 @@ final class StaffSession {
   final String phone;
   final String bio;
   final int avatarColorValue;
+  final String accountTypeSlug;
+  final bool mustChangePassword;
+  final bool isRemote;
 
   bool can(StaffCapability capability) => role.can(capability);
 
@@ -328,6 +334,9 @@ final class StaffSession {
     'phone': phone,
     'bio': bio,
     'avatarColorValue': avatarColorValue,
+    'accountTypeSlug': accountTypeSlug,
+    'mustChangePassword': mustChangePassword,
+    'isRemote': isRemote,
   };
 
   factory StaffSession.fromJson(JsonMap json) => StaffSession(
@@ -341,6 +350,9 @@ final class StaffSession {
     phone: json['phone'] as String? ?? '',
     bio: json['bio'] as String? ?? '',
     avatarColorValue: json['avatarColorValue'] as int? ?? 0,
+    accountTypeSlug: json['accountTypeSlug'] as String? ?? '',
+    mustChangePassword: json['mustChangePassword'] as bool? ?? false,
+    isRemote: json['isRemote'] as bool? ?? false,
   );
 }
 
@@ -840,7 +852,15 @@ final class StaffNotification {
   );
 }
 
-enum SurveyQuestionKind { singleChoice, freeText, rating }
+enum SurveyQuestionKind {
+  singleChoice,
+  multiChoice,
+  freeText,
+  number,
+  boolean,
+  rating,
+  date,
+}
 
 final class SurveyQuestion {
   SurveyQuestion({

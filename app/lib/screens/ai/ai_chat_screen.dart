@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/app_scope.dart';
+import '../../data/api/backend_services_api.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_ai_badge.dart';
+import '../../widgets/sf_adaptive_dialog.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pressable.dart';
 import '../../widgets/sf_scaffold.dart';
 import '../../widgets/sf_star.dart';
+import '../services/backend_ai_screens.dart';
 import 'ai_workspace_data.dart';
 
 enum _AiMenuAction { clear, help }
@@ -37,6 +41,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_initialized) return;
+    if (AppScope.maybeOf(context)?.backendApi != null) return;
 
     // Query context is deliberately read from GoRouter here so every group
     // card opens the same reusable workspace with its own data scope.
@@ -122,26 +127,15 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Future<void> _clearConversation() async {
-    final approved =
-        await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(_copy.clearConversationTitle),
-            content: Text(_copy.clearConversationDescription),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text(_copy.cancel),
-              ),
-              FilledButton(
-                key: const Key('ai-confirm-clear'),
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(_copy.clear),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final approved = await showSfConfirmDialog(
+      context,
+      title: _copy.clearConversationTitle,
+      message: _copy.clearConversationDescription,
+      cancelLabel: _copy.cancel,
+      confirmLabel: _copy.clear,
+      destructive: true,
+      confirmKey: const Key('ai-confirm-clear'),
+    );
     if (!approved || !mounted) return;
 
     _requestGeneration++;
@@ -171,6 +165,16 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final backend = AppScope.maybeOf(context)?.backendApi;
+    if (backend != null) {
+      final requestId = int.tryParse(
+        GoRouterState.of(context).uri.queryParameters['request'] ?? '',
+      );
+      return BackendAiRequestDetailScreen(
+        api: BackendServicesApi.fromApi(backend),
+        requestId: requestId,
+      );
+    }
     final c = SfTheme.colorsOf(context);
     return SfScaffold(
       top: _ChatHeader(

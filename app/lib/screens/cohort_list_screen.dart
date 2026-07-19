@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
+import '../features/learning/learning_workspace_controller.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_ai_badge.dart';
 import '../widgets/sf_ai_surface.dart';
@@ -12,6 +14,7 @@ import '../widgets/sf_star.dart';
 import '../widgets/sf_tab_bar.dart';
 import 'groups/group_l10n.dart';
 import 'groups/group_workspace_store.dart';
+import 'learning/production_learning_screens.dart';
 
 class CohortListScreen extends StatefulWidget {
   const CohortListScreen({super.key, this.store});
@@ -187,6 +190,13 @@ class _CohortListScreenState extends State<CohortListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.maybeOf(context);
+    if (app?.isProduction == true) {
+      final controller = learningWorkspaceFor(app!);
+      if (controller != null) {
+        return ProductionCohortListScreen(controller: controller);
+      }
+    }
     final c = SfTheme.colorsOf(context);
     return AnimatedBuilder(
       animation: _store,

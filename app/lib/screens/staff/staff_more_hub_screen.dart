@@ -48,6 +48,23 @@ class StaffMoreHubScreen extends StatelessWidget {
 
   List<StaffMoreDestination> _destinations(BuildContext context) => [
     StaffMoreDestination(
+      route: '/staff/operations',
+      label: _copy(
+        context,
+        uz: 'Xodim xizmatlari',
+        ru: 'Сервисы сотрудников',
+        en: 'Staff services',
+      ),
+      description: _copy(
+        context,
+        uz: 'Ruxsat etilgan ish jarayonlari va markaz vositalari',
+        ru: 'Доступные рабочие процессы и инструменты центра',
+        en: 'Your permitted workflows and center tools',
+      ),
+      icon: Icons.dashboard_customize_outlined,
+      tone: StaffMetricTone.primary,
+    ),
+    StaffMoreDestination(
       route: '/content',
       label: _copy(
         context,

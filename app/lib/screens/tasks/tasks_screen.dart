@@ -62,7 +62,9 @@ class _TasksScreenState extends State<TasksScreen> {
         )
         .length;
     final progress = app.tasks.isEmpty ? 0.0 : done / app.tasks.length;
-    final canCreate = app.can(StaffCapability.createTasks);
+    final canCreate =
+        app.can(StaffCapability.createTasks) &&
+        (!app.isProduction || app.tasksAvailable);
 
     return SfScaffold(
       tab: SfTab.tasks,
@@ -84,89 +86,149 @@ class _TasksScreenState extends State<TasksScreen> {
             ),
         ],
       ),
-      body: CustomScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        slivers: [
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            sliver: SliverToBoxAdapter(
-              child: Column(
-                children: [
-                  _CommandCenter(
-                    progress: progress,
-                    active: active,
-                    overdue: overdue,
-                    dueThisWeek: app.tasks.where(_isThisWeek).length,
-                  ),
-                  const SizedBox(height: 12),
-                  _SearchAndView(
-                    controller: _search,
-                    view: _view,
-                    onSearch: (_) => setState(() {}),
-                    onViewChanged: (view) => setState(() => _view = view),
-                  ),
-                  const SizedBox(height: 10),
-                  _Filters(
-                    value: _filter,
-                    onChanged: (value) => setState(() => _filter = value),
-                  ),
-                  const SizedBox(height: 14),
-                ],
+      body: RefreshIndicator.adaptive(
+        onRefresh: app.refreshTasks,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  children: [
+                    _CommandCenter(
+                      progress: progress,
+                      active: active,
+                      overdue: overdue,
+                      dueThisWeek: app.tasks.where(_isThisWeek).length,
+                    ),
+                    const SizedBox(height: 12),
+                    _SearchAndView(
+                      controller: _search,
+                      view: _view,
+                      onSearch: (_) => setState(() {}),
+                      onViewChanged: (view) => setState(() => _view = view),
+                    ),
+                    const SizedBox(height: 10),
+                    _Filters(
+                      value: _filter,
+                      onChanged: (value) => setState(() => _filter = value),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                ),
               ),
             ),
-          ),
-          if (tasks.isEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 108),
+            if (app.isProduction && app.tasksLoading && app.tasks.isEmpty)
+              SliverToBoxAdapter(
                 child: SizedBox(
-                  height: 320,
+                  height: 360,
+                  child: SfLoadingState(
+                    label: _copy(
+                      context,
+                      uz: 'Vazifalar yangilanmoqda…',
+                      ru: 'Задачи обновляются…',
+                      en: 'Refreshing tasks…',
+                    ),
+                    motionEnabled: !app.settings.reducedMotion,
+                  ),
+                ),
+              )
+            else if (app.isProduction && !app.tasksAvailable)
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 360,
                   child: SfEmptyState(
+                    icon: SfIcons.shield,
                     title: _copy(
                       context,
-                      uz: 'Bu ko‘rinishda vazifa yo‘q',
-                      ru: 'Здесь пока нет задач',
-                      en: 'No tasks in this view',
+                      uz: 'Vazifalar bu rolga ochilmagan',
+                      ru: 'Задачи недоступны для этой роли',
+                      en: 'Tasks are unavailable for this role',
                     ),
-                    message: _copy(
+                    message: app.tasksError,
+                    actionLabel: _copy(
                       context,
-                      uz: 'Qidiruv yoki filtrni o‘zgartiring, yoxud yangi sahifa yarating.',
-                      ru: 'Измените поиск или фильтр либо создайте новую страницу.',
-                      en: 'Adjust the search or filter, or create a new task page.',
+                      uz: 'Qayta tekshirish',
+                      ru: 'Проверить снова',
+                      en: 'Check again',
                     ),
-                    actionLabel: canCreate ? context.tr('new_task') : null,
-                    onAction: canCreate
-                        ? () => context.push('/tasks/new')
-                        : null,
+                    onAction: () => unawaited(app.refreshTasks()),
+                  ),
+                ),
+              )
+            else if (app.isProduction &&
+                app.tasksError != null &&
+                app.tasks.isEmpty)
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 360,
+                  child: SfErrorState(
+                    title: _copy(
+                      context,
+                      uz: 'Vazifalarni yuklab bo‘lmadi',
+                      ru: 'Не удалось загрузить задачи',
+                      en: 'Tasks could not be loaded',
+                    ),
+                    message: app.tasksError,
+                    onRetry: () => unawaited(app.refreshTasks()),
+                  ),
+                ),
+              )
+            else if (tasks.isEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 108),
+                  child: SizedBox(
+                    height: 320,
+                    child: SfEmptyState(
+                      title: _copy(
+                        context,
+                        uz: 'Bu ko‘rinishda vazifa yo‘q',
+                        ru: 'Здесь пока нет задач',
+                        en: 'No tasks in this view',
+                      ),
+                      message: _copy(
+                        context,
+                        uz: 'Qidiruv yoki filtrni o‘zgartiring, yoxud yangi sahifa yarating.',
+                        ru: 'Измените поиск или фильтр либо создайте новую страницу.',
+                        en: 'Adjust the search or filter, or create a new task page.',
+                      ),
+                      actionLabel: canCreate ? context.tr('new_task') : null,
+                      onAction: canCreate
+                          ? () => context.push('/tasks/new')
+                          : null,
+                    ),
+                  ),
+                ),
+              )
+            else if (_view == _TaskView.list)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 108),
+                sliver: SliverList.separated(
+                  itemCount: tasks.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 9),
+                  itemBuilder: (context, index) =>
+                      _TaskPageCard(task: tasks[index]),
+                ),
+              )
+            else if (_view == _TaskView.board)
+              SliverToBoxAdapter(child: _TaskBoard(tasks: tasks))
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 108),
+                sliver: SliverToBoxAdapter(
+                  child: _TaskCalendar(
+                    tasks: tasks,
+                    selectedDate: _selectedDate,
+                    onDateChanged: (value) =>
+                        setState(() => _selectedDate = value),
                   ),
                 ),
               ),
-            )
-          else if (_view == _TaskView.list)
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 108),
-              sliver: SliverList.separated(
-                itemCount: tasks.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 9),
-                itemBuilder: (context, index) =>
-                    _TaskPageCard(task: tasks[index]),
-              ),
-            )
-          else if (_view == _TaskView.board)
-            SliverToBoxAdapter(child: _TaskBoard(tasks: tasks))
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 108),
-              sliver: SliverToBoxAdapter(
-                child: _TaskCalendar(
-                  tasks: tasks,
-                  selectedDate: _selectedDate,
-                  onDateChanged: (value) =>
-                      setState(() => _selectedDate = value),
-                ),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
       bottom: canCreate
           ? Padding(

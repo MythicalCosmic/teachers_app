@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required by release builds for the StarForge REST and WebSocket APIs. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Voice notes request this at the moment the teacher starts recording. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="StarForge Staff"
         android:name="${applicationName}"

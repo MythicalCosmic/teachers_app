@@ -445,58 +445,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             subtitle: session.email,
           ),
-          SfSurfaceCard(
-            child: Column(
-              children: [
-                _ActionRow(
-                  icon: Icons.refresh_rounded,
-                  title: _copy(
-                    context,
-                    uz: 'Demo ma’lumotlarini tiklash',
-                    ru: 'Сбросить демо-данные',
-                    en: 'Reset demo data',
-                  ),
-                  onTap: () async {
-                    final approved = await showSfConfirmDialog(
+          if (!app.isProduction) ...[
+            SfSurfaceCard(
+              child: Column(
+                children: [
+                  _ActionRow(
+                    icon: Icons.refresh_rounded,
+                    title: _copy(
                       context,
-                      title: _copy(
+                      uz: 'Demo ma’lumotlarini tiklash',
+                      ru: 'Сбросить демо-данные',
+                      en: 'Reset demo data',
+                    ),
+                    onTap: () async {
+                      final approved = await showSfConfirmDialog(
                         context,
-                        uz: 'Ma’lumotlar tiklansinmi?',
-                        ru: 'Сбросить данные?',
-                        en: 'Reset the data?',
-                      ),
-                      message: _copy(
-                        context,
-                        uz: 'Vazifa, davomat va xabarlar boshlang‘ich holatga qaytadi.',
-                        ru: 'Задачи, посещаемость и сообщения вернутся к исходному виду.',
-                        en: 'Tasks, attendance and messages return to their original demo state.',
-                      ),
-                      confirmLabel: _copy(
-                        context,
-                        uz: 'Tiklash',
-                        ru: 'Сбросить',
-                        en: 'Reset',
-                      ),
-                      destructive: true,
-                    );
-                    if (!approved || !context.mounted) return;
-                    await app.resetDemoData();
-                    if (context.mounted) {
-                      confirm(
-                        _copy(
+                        title: _copy(
                           context,
-                          uz: 'Demo ma’lumotlari tiklandi.',
-                          ru: 'Демо-данные сброшены.',
-                          en: 'Demo data has been reset.',
+                          uz: 'Ma’lumotlar tiklansinmi?',
+                          ru: 'Сбросить данные?',
+                          en: 'Reset the data?',
                         ),
+                        message: _copy(
+                          context,
+                          uz: 'Vazifa, davomat va xabarlar boshlang‘ich holatga qaytadi.',
+                          ru: 'Задачи, посещаемость и сообщения вернутся к исходному виду.',
+                          en: 'Tasks, attendance and messages return to their original demo state.',
+                        ),
+                        confirmLabel: _copy(
+                          context,
+                          uz: 'Tiklash',
+                          ru: 'Сбросить',
+                          en: 'Reset',
+                        ),
+                        destructive: true,
                       );
-                    }
-                  },
-                ),
-              ],
+                      if (!approved || !context.mounted) return;
+                      await app.resetDemoData();
+                      if (context.mounted) {
+                        confirm(
+                          _copy(
+                            context,
+                            uz: 'Demo ma’lumotlari tiklandi.',
+                            ru: 'Демо-данные сброшены.',
+                            en: 'Demo data has been reset.',
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 18),
+            const SizedBox(height: 18),
+          ],
           SfButton(
             label: _copy(
               context,

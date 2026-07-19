@@ -3,8 +3,10 @@ import 'package:go_router/go_router.dart';
 
 import '../app/app_scope.dart';
 import '../data/models.dart';
+import '../features/learning/learning_workspace_controller.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_avatar.dart';
+import '../widgets/sf_adaptive_dialog.dart';
 import '../widgets/sf_button.dart';
 import '../widgets/sf_hint_card.dart';
 import '../widgets/sf_icons.dart';
@@ -14,6 +16,7 @@ import '../widgets/sf_toast.dart';
 import 'groups/group_attendance_capture_screen.dart';
 import 'groups/group_l10n.dart';
 import 'groups/group_workspace_store.dart';
+import 'learning/production_learning_screens.dart';
 
 class AttendanceScreen extends StatelessWidget {
   const AttendanceScreen({
@@ -33,6 +36,17 @@ class AttendanceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    if (app.isProduction) {
+      final controller = learningWorkspaceFor(app);
+      if (controller != null) {
+        return ProductionAttendanceScreen(
+          controller: controller,
+          cohortId: cohortId,
+          lessonId: lessonId,
+        );
+      }
+    }
     final selectedCohortId = cohortId;
     if (selectedCohortId != null && selectedCohortId.trim().isNotEmpty) {
       return GroupAttendanceCaptureScreen(
@@ -43,7 +57,7 @@ class AttendanceScreen extends StatelessWidget {
         store: store,
       );
     }
-    final state = AppScope.of(context);
+    final state = app;
     if (state.attendanceSheets.isEmpty) {
       return Scaffold(
         body: SfEmptyState(
@@ -402,25 +416,13 @@ class _AttendanceFooter extends StatelessWidget {
   final bool enabled;
 
   Future<void> _submit(BuildContext context) async {
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(context.gt('confirm_send')),
-            content: Text(context.gt('confirm_send_body')),
-            actions: [
-              TextButton(
-                onPressed: () => dialogContext.pop(false),
-                child: Text(context.gt('cancel')),
-              ),
-              FilledButton(
-                onPressed: () => dialogContext.pop(true),
-                child: Text(context.gt('send')),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final confirmed = await showSfConfirmDialog(
+      context,
+      title: context.gt('confirm_send'),
+      message: context.gt('confirm_send_body'),
+      cancelLabel: context.gt('cancel'),
+      confirmLabel: context.gt('send'),
+    );
     if (!confirmed || !context.mounted) return;
     try {
       await AppScope.of(context).submitAttendance(sheet.id);

@@ -2,6 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../../data/api/api_models.dart';
+import '../../data/api/backend_core.dart';
+import '../../data/api/backend_learning_api.dart';
+import '../../data/api/backend_models.dart';
+import '../../data/api/backend_work_api.dart';
+import '../../data/api/starforge_api.dart';
 import 'assignment_models.dart';
 import 'assignment_storage.dart';
 
@@ -16,6 +22,12 @@ class AssignmentController extends ChangeNotifier {
   final DateTime Function() _clock;
   final List<StaffAssignment> _assignments = [];
   final List<AssignmentSubmission> _submissions = [];
+  final List<AssignmentCohort> _remoteCohorts = [];
+  final Map<String, AssignmentResponseType> _responseTypes = {};
+
+  BackendWorkApi? _remoteWork;
+  BackendLearningApi? _remoteLearning;
+  bool _moduleAvailable = true;
 
   String? _ownerId;
   bool _initialized = false;
@@ -29,19 +41,41 @@ class AssignmentController extends ChangeNotifier {
   String? get ownerId => _ownerId;
   bool get isRestoring => _isRestoring;
   Object? get restoreError => _restoreError;
+  bool get isRemote => _remoteWork != null;
+  bool get moduleAvailable => _moduleAvailable;
+  bool get supportsReminders => !isRemote;
   Future<void> get restored => _restored;
   List<StaffAssignment> get assignments => List.unmodifiable(_assignments);
   List<AssignmentSubmission> get submissions => List.unmodifiable(_submissions);
-  List<AssignmentCohort> get availableCohorts => _cohorts;
+  List<AssignmentCohort> get availableCohorts =>
+      List.unmodifiable(isRemote ? _remoteCohorts : _cohorts);
 
-  void initialize({required String ownerId}) {
+  void initialize({required String ownerId, StarforgeApi? api}) {
     final cleanOwner = ownerId.trim().isEmpty ? 'demo-teacher' : ownerId.trim();
-    if (_initialized && _ownerId == cleanOwner) return;
+    final wantsRemote = api != null;
+    if (_initialized &&
+        _ownerId == cleanOwner &&
+        (_remoteWork != null) == wantsRemote) {
+      return;
+    }
     _initialized = true;
     _ownerId = cleanOwner;
     _restoreVersion++;
     _restoreError = null;
     _isRestoring = true;
+    _moduleAvailable = true;
+    if (api != null) {
+      _remoteWork = BackendWorkApi.fromApi(api);
+      _remoteLearning = BackendLearningApi.fromApi(api);
+      _assignments.clear();
+      _submissions.clear();
+      _remoteCohorts.clear();
+      notifyListeners();
+      _restored = _refreshRemote(_restoreVersion);
+      return;
+    }
+    _remoteWork = null;
+    _remoteLearning = null;
     _loadSeed(cleanOwner);
     notifyListeners();
     _restored = _restore(cleanOwner, _restoreVersion);
@@ -54,9 +88,13 @@ class AssignmentController extends ChangeNotifier {
     _restoreError = null;
     _isRestoring = true;
     notifyListeners();
-    _restored = _restore(owner, _restoreVersion);
+    _restored = isRemote
+        ? _refreshRemote(_restoreVersion)
+        : _restore(owner, _restoreVersion);
     await _restored;
   }
+
+  Future<void> refresh() => retryRestore();
 
   StaffAssignment? assignmentById(String? id) {
     if (id == null) return null;
@@ -132,10 +170,39 @@ class AssignmentController extends ChangeNotifier {
     if (cleanInstructions.length < 8) {
       throw ArgumentError('Assignment instructions are too short.');
     }
-    final cohort = _cohorts.where((item) => item.id == cohortId).firstOrNull;
+    final cohort = availableCohorts
+        .where((item) => item.id == cohortId)
+        .firstOrNull;
     if (cohort == null) throw ArgumentError('Unknown cohort.');
     if (!dueAt.isAfter(_clock())) {
       throw ArgumentError('The due date must be in the future.');
+    }
+    final remote = _remoteWork;
+    if (remote != null) {
+      final numericCohortId = int.tryParse(cohort.id);
+      if (numericCohortId == null) {
+        throw StateError('Invalid server cohort id: ${cohort.id}');
+      }
+      try {
+        final created = await remote.createAssignment(
+          cohortId: numericCohortId,
+          title: cleanTitle,
+          description: cleanInstructions,
+          dueAt: dueAt,
+        );
+        final value = _requireRemote(created.value, created.error);
+        final published = await remote.publishAssignment(value.id);
+        final publishedValue = _requireRemote(published.value, published.error);
+        _responseTypes['${publishedValue.id}'] = responseType;
+        final assignment = _assignmentFromBackend(publishedValue);
+        _assignments.insert(0, assignment);
+        notifyListeners();
+        return assignment;
+      } on ApiException catch (error) {
+        _restoreError = error;
+        notifyListeners();
+        rethrow;
+      }
     }
     final now = _clock();
     final assignment = StaffAssignment(
@@ -169,6 +236,11 @@ class AssignmentController extends ChangeNotifier {
     required String studentId,
   }) async {
     _ensureReady();
+    if (isRemote) {
+      throw StateError(
+        'The backend does not expose assignment reminder delivery.',
+      );
+    }
     final index = _submissionIndex(assignmentId, studentId);
     final current = _submissions[index];
     if (current.status != AssignmentSubmissionStatus.notSubmitted) {
@@ -198,6 +270,39 @@ class AssignmentController extends ChangeNotifier {
     final current = _submissions[index];
     if (!current.isSubmitted) {
       throw StateError('Feedback cannot be sent before a submission exists.');
+    }
+    final remote = _remoteWork;
+    if (remote != null) {
+      final submissionId = current.serverId;
+      if (submissionId == null) {
+        throw StateError('The server submission id is unavailable.');
+      }
+      if (step == AssignmentFeedbackStep.conference) {
+        throw StateError(
+          'Conference requests are not supported by the backend.',
+        );
+      }
+      final graded = await remote.gradeSubmission(
+        submissionId,
+        score: '$grade',
+        feedback: cleanFeedback,
+      );
+      _requireRemote(graded.value, graded.error);
+      if (step == AssignmentFeedbackStep.revise) {
+        final returned = await remote.returnSubmission(submissionId);
+        _requireRemote(returned.value, returned.error);
+      }
+      _submissions[index] = current.copyWith(
+        status: step == AssignmentFeedbackStep.revise
+            ? AssignmentSubmissionStatus.revisionRequested
+            : AssignmentSubmissionStatus.feedbackShared,
+        feedback: cleanFeedback,
+        feedbackStep: step,
+        feedbackSentAt: _clock(),
+        grade: grade,
+      );
+      notifyListeners();
+      return;
     }
     final status = switch (step) {
       AssignmentFeedbackStep.ready => AssignmentSubmissionStatus.feedbackShared,
@@ -241,6 +346,150 @@ class AssignmentController extends ChangeNotifier {
     if (_restoreError != null) {
       throw StateError('Assignment data could not be restored.');
     }
+  }
+
+  Future<void> _refreshRemote(int version) async {
+    final work = _remoteWork;
+    final learning = _remoteLearning;
+    if (work == null || learning == null) return;
+    try {
+      final assignmentResult = await work.assignments();
+      if (assignmentResult.isUnavailable) {
+        _moduleAvailable = false;
+        throw StateError(
+          assignmentResult.error?.message ??
+              'Assignments are unavailable for this role.',
+        );
+      }
+      final submissionResult = await work.submissions();
+      final cohortResult = await learning.cohorts(archived: false);
+      if (_restoreVersion != version || !isRemote) return;
+
+      final cohorts = <AssignmentCohort>[];
+      if (cohortResult.isAvailable) {
+        for (final cohort
+            in cohortResult.value?.items ?? const <BackendCohort>[]) {
+          final membersResult = await learning.cohortMembers(cohort.id);
+          if (_restoreVersion != version || !isRemote) return;
+          cohorts.add(
+            AssignmentCohort(
+              id: '${cohort.id}',
+              name: cohort.name,
+              students: [
+                for (final member
+                    in membersResult.value ?? const <BackendCohortMember>[])
+                  AssignmentStudent(
+                    id: '${member.studentId}',
+                    name: member.studentName,
+                  ),
+              ],
+            ),
+          );
+        }
+      }
+
+      _assignments
+        ..clear()
+        ..addAll(
+          (assignmentResult.value?.items ?? const <BackendAssignment>[]).map(
+            _assignmentFromBackend,
+          ),
+        );
+      _submissions
+        ..clear()
+        ..addAll(
+          (submissionResult.value?.items ?? const <BackendSubmission>[]).map(
+            _submissionFromBackend,
+          ),
+        );
+      _remoteCohorts
+        ..clear()
+        ..addAll(cohorts);
+      _moduleAvailable = true;
+      _restoreError = null;
+    } on Object catch (error) {
+      if (_restoreVersion == version && isRemote) {
+        _restoreError = error;
+      }
+    } finally {
+      if (_restoreVersion == version && isRemote) {
+        _isRestoring = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  StaffAssignment _assignmentFromBackend(BackendAssignment value) =>
+      StaffAssignment(
+        id: '${value.id}',
+        ownerId: _ownerId ?? '',
+        title: value.title,
+        instructions: value.description,
+        cohortId: '${value.cohortId}',
+        cohortName: value.cohortName,
+        responseType:
+            _responseTypes['${value.id}'] ??
+            (value.attachments.isEmpty
+                ? AssignmentResponseType.text
+                : AssignmentResponseType.document),
+        dueAt: value.dueAt ?? _clock(),
+        createdAt: value.createdAt ?? _clock(),
+      );
+
+  AssignmentSubmission _submissionFromBackend(BackendSubmission value) {
+    final grade = value.grade;
+    final parsedGrade = double.tryParse(grade?.score ?? '')?.round();
+    final attachmentJson = value.attachments.firstOrNull;
+    final attachment = attachmentJson is Map
+        ? backendMap(attachmentJson)
+        : const <String, Object?>{};
+    return AssignmentSubmission(
+      assignmentId: '${value.assignmentId}',
+      studentId: '${value.studentId}',
+      studentName: value.studentName,
+      status: grade?.graded == true
+          ? AssignmentSubmissionStatus.feedbackShared
+          : switch (value.status) {
+              'returned' || 'revision_requested' =>
+                AssignmentSubmissionStatus.revisionRequested,
+              'submitted' ||
+              'late' => AssignmentSubmissionStatus.feedbackNeeded,
+              _ =>
+                value.submittedAt == null
+                    ? AssignmentSubmissionStatus.notSubmitted
+                    : AssignmentSubmissionStatus.submitted,
+            },
+      submittedAt: value.submittedAt,
+      responseText: value.text,
+      attachment: attachment.isEmpty
+          ? null
+          : AssignmentAttachment(
+              fileName: backendString(
+                attachment['filename'],
+                fallback: backendString(
+                  attachment['name'],
+                  fallback: backendString(attachment['key'], fallback: 'File'),
+                ),
+              ),
+              mediaType: backendString(
+                attachment['content_type'],
+                fallback: 'application/octet-stream',
+              ),
+              byteSize: backendInt(attachment['size_bytes']),
+              summary: 'Server attachment',
+              demoMetadataOnly: false,
+            ),
+      feedback: grade?.feedback ?? '',
+      feedbackStep: grade?.graded == true ? AssignmentFeedbackStep.ready : null,
+      feedbackSentAt: grade?.gradedAt,
+      grade: parsedGrade,
+      serverId: value.id,
+    );
+  }
+
+  T _requireRemote<T>(T? value, ApiException? error) {
+    if (value != null) return value;
+    throw error ?? StateError('The server did not return a record.');
   }
 
   Future<void> _restore(String ownerId, int version) async {

@@ -36,8 +36,10 @@ class _MessagingContactProfileScreenState
   bool _shared = false;
   bool _microphoneMuted = false;
   bool _speakerEnabled = true;
+  MessagingController? _activeController;
 
-  MessagingController get _controller => MessagingController.shared;
+  MessagingController get _controller =>
+      _activeController ?? MessagingController.shared;
 
   @override
   void dispose() {
@@ -48,6 +50,7 @@ class _MessagingContactProfileScreenState
 
   MessagingThread? _thread(BuildContext context) {
     final app = AppScope.of(context);
+    _activeController = app.messagingController;
     final session = app.session;
     if (session != null) {
       _controller.initialize(

@@ -8,6 +8,7 @@ import '../features/messaging/messaging_l10n.dart';
 import '../features/messaging/messaging_models.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_app_bar.dart';
+import '../widgets/sf_adaptive_dialog.dart';
 import '../widgets/sf_avatar.dart';
 import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
@@ -27,8 +28,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
   final Set<String> _selected = {};
   String? _folderId;
   bool _archived = false;
+  MessagingController? _activeController;
 
-  MessagingController get _controller => MessagingController.shared;
+  MessagingController get _controller =>
+      _activeController ?? MessagingController.shared;
 
   @override
   void dispose() {
@@ -47,6 +50,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    _activeController = app.messagingController;
     final m = MessagingL10n.of(context);
     final session = app.session;
     if (session == null || !session.can(StaffCapability.useStaffMessaging)) {
@@ -121,6 +125,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 archived: _archived,
                 folders: _controller.folders,
                 archivedCount: _controller.archivedCount,
+                deviceLocalOrganization: _controller.isProduction,
                 onSearchChanged: (_) => setState(() {}),
                 onFolderSelected: (folderId, archived) => setState(() {
                   _folderId = folderId;
@@ -136,7 +141,27 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     const Duration(milliseconds: 240),
                     enabled: !app.settings.reducedMotion,
                   ),
-                  child: threads.isEmpty
+                  child:
+                      _controller.isProduction &&
+                          _controller.isRefreshing &&
+                          threads.isEmpty
+                      ? const SfLoadingState(
+                          key: ValueKey('production-messages-loading'),
+                          label: 'Suhbatlar serverdan olinmoqda\u2026',
+                        )
+                      : _controller.isProduction &&
+                            threads.isEmpty &&
+                            (_controller.backendUnavailable ||
+                                _controller.backendError != null)
+                      ? SfErrorState(
+                          key: const ValueKey('production-messages-error'),
+                          title: _controller.backendUnavailable
+                              ? 'Suhbatlar bu rol uchun mavjud emas'
+                              : 'Suhbatlar yuklanmadi',
+                          message: _controller.backendError,
+                          onRetry: () => _controller.refreshThreads(),
+                        )
+                      : threads.isEmpty
                       ? SfEmptyState(
                           key: ValueKey(
                             'empty-${_archived ? 'archive' : _folderId}-${_search.text}',
@@ -162,36 +187,42 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                 }
                               : () => context.push('/messages/new'),
                         )
-                      : ListView.builder(
+                      : RefreshIndicator(
                           key: ValueKey(
                             'threads-${_archived ? 'archive' : _folderId}',
                           ),
-                          keyboardDismissBehavior:
-                              ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(12, 6, 12, 28),
-                          itemCount: threads.length,
-                          itemBuilder: (context, index) {
-                            final thread = threads[index];
-                            return _SwipeableThreadTile(
-                              key: ValueKey(thread.id),
-                              thread: thread,
-                              selected: _selected.contains(thread.id),
-                              onTap: () {
-                                if (_selected.isNotEmpty) {
-                                  _toggleSelection(thread.id);
-                                } else {
-                                  _controller.markRead([thread.id]);
-                                  context.push(
-                                    '/messages/chat?thread=${Uri.encodeQueryComponent(thread.id)}',
-                                  );
-                                }
-                              },
-                              onLongPress: () => _toggleSelection(thread.id),
-                              onArchived: () => _controller.setArchived([
-                                thread.id,
-                              ], !_archived),
-                            );
-                          },
+                          onRefresh: _controller.isProduction
+                              ? _controller.refreshThreads
+                              : () async {},
+                          child: ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: const EdgeInsets.fromLTRB(12, 6, 12, 28),
+                            itemCount: threads.length,
+                            itemBuilder: (context, index) {
+                              final thread = threads[index];
+                              return _SwipeableThreadTile(
+                                key: ValueKey(thread.id),
+                                thread: thread,
+                                selected: _selected.contains(thread.id),
+                                onTap: () {
+                                  if (_selected.isNotEmpty) {
+                                    _toggleSelection(thread.id);
+                                  } else {
+                                    _controller.markRead([thread.id]);
+                                    context.push(
+                                      '/messages/chat?thread=${Uri.encodeQueryComponent(thread.id)}',
+                                    );
+                                  }
+                                },
+                                onLongPress: () => _toggleSelection(thread.id),
+                                onArchived: () => _controller.setArchived([
+                                  thread.id,
+                                ], !_archived),
+                              );
+                            },
+                          ),
                         ),
                 ),
               ),
@@ -329,26 +360,15 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   Future<void> _deleteSelected(BuildContext context) async {
     final m = MessagingL10n.of(context);
-    final approved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(m.text('delete_chats_question')),
-        content: Text(
-          m.text('delete_chats_description', {'count': _selected.length}),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(m.text('cancel')),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(m.text('delete')),
-          ),
-        ],
-      ),
+    final approved = await showSfConfirmDialog(
+      context,
+      title: m.text('delete_chats_question'),
+      message: m.text('delete_chats_description', {'count': _selected.length}),
+      cancelLabel: m.text('cancel'),
+      confirmLabel: m.text('delete'),
+      destructive: true,
     );
-    if (approved != true || !mounted || !context.mounted) return;
+    if (!approved || !mounted || !context.mounted) return;
     final deleted = _controller.deleteThreads(_selected);
     _clearSelection();
     SfToast.show(
@@ -444,6 +464,7 @@ class _SearchAndFolders extends StatelessWidget {
     required this.archived,
     required this.folders,
     required this.archivedCount,
+    required this.deviceLocalOrganization,
     required this.onSearchChanged,
     required this.onFolderSelected,
     required this.onCreateFolder,
@@ -454,6 +475,7 @@ class _SearchAndFolders extends StatelessWidget {
   final bool archived;
   final List<MessagingFolder> folders;
   final int archivedCount;
+  final bool deviceLocalOrganization;
   final ValueChanged<String> onSearchChanged;
   final void Function(String? folderId, bool archived) onFolderSelected;
   final VoidCallback onCreateFolder;
@@ -519,6 +541,22 @@ class _SearchAndFolders extends StatelessWidget {
               ],
             ),
           ),
+          if (deviceLocalOrganization)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.phone_iphone_rounded, size: 14, color: c.muted),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Jild, pin, mute va arxiv faqat shu qurilmada saqlanadi.',
+                      style: SfType.ui(size: 10.5, color: c.muted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

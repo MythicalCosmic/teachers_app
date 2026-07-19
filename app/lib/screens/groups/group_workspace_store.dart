@@ -218,7 +218,7 @@ class GroupWorkspaceStore extends ChangeNotifier {
 
   TeacherGroup group(String id) => _groups.firstWhere(
     (group) => group.id == id,
-    orElse: () => _groups.first,
+    orElse: () => throw StateError('Requested group was not found: $id'),
   );
 
   TeacherGroup? tryGroup(String? id) {

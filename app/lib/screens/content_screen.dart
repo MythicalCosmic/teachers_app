@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app/app_scope.dart';
+import '../data/api/backend_services_api.dart';
 import '../data/models.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_app_bar.dart';
@@ -19,6 +20,7 @@ import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
+import 'services/backend_content_screen.dart';
 
 enum _ContentType { all, pdf, video, slide, document }
 
@@ -131,6 +133,10 @@ class _ContentScreenState extends State<ContentScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final backend = app.backendApi;
+    if (backend != null) {
+      return BackendContentScreen(api: BackendServicesApi.fromApi(backend));
+    }
     final c = SfTheme.colorsOf(context);
     final session = app.session;
     if (session == null) return const SizedBox.shrink();
@@ -237,182 +243,194 @@ class _ContentScreenState extends State<ContentScreen> {
           ),
         ],
       ),
-      body: ListView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
-        children: [
-          SfHintCard(
-            compact: true,
-            title: _contentText(
-              context,
-              uz: '${session.role.uzLabel} kutubxonasi',
-              en: '${session.role.label} library',
-            ),
-            message: _contentText(
-              context,
-              uz: 'Material kartalarini ko‘ring, oflayn ro‘yxatga belgilang yoki chop navbatiga yuboring. Demo rejimida haqiqiy fayl uzatish ulanmagan.',
-              en: 'Review material cards, bookmark them for offline planning, or send them to the print queue. Binary file transfer is not connected in demo mode.',
-            ),
-            actionLabel: session.can(StaffCapability.submitPrintJobs)
-                ? _contentText(context, uz: 'Chop navbati', en: 'Print queue')
-                : null,
-            onAction: session.can(StaffCapability.submitPrintJobs)
-                ? () => context.push('/print')
-                : null,
-          ),
-          if (_storageError != null) ...[
-            const SizedBox(height: 10),
+      body: RefreshIndicator.adaptive(
+        onRefresh: _restoreLibrary,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 32),
+          children: [
             SfHintCard(
               compact: true,
-              tone: SfHintTone.danger,
               title: _contentText(
                 context,
-                uz: 'Saqlash muammosi',
-                en: 'Storage problem',
+                uz: '${session.role.uzLabel} kutubxonasi',
+                en: '${session.role.label} library',
               ),
-              message: _storageError!,
-              actionLabel: _contentText(
+              message: _contentText(
                 context,
-                uz: 'Qayta urinish',
-                en: 'Retry',
+                uz: 'Material kartalarini ko‘ring, oflayn ro‘yxatga belgilang yoki chop navbatiga yuboring. Demo rejimida haqiqiy fayl uzatish ulanmagan.',
+                en: 'Review material cards, bookmark them for offline planning, or send them to the print queue. Binary file transfer is not connected in demo mode.',
               ),
-              onAction: () => unawaited(_persistLibrary()),
+              actionLabel: session.can(StaffCapability.submitPrintJobs)
+                  ? _contentText(context, uz: 'Chop navbati', en: 'Print queue')
+                  : null,
+              onAction: session.can(StaffCapability.submitPrintJobs)
+                  ? () => context.push('/print')
+                  : null,
             ),
-          ],
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Text(
-                _contentText(context, uz: 'PAPKALAR', en: 'FOLDERS'),
-                style: SfType.eyebrow(color: c.muted),
-              ),
-              const Spacer(),
-              if (_folder != null)
-                TextButton(
-                  onPressed: () => setState(() => _folder = null),
-                  child: Text(_contentText(context, uz: 'Hammasi', en: 'All')),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columnCount = constraints.maxWidth >= 336 ? 3 : 2;
-              return GridView.builder(
-                key: const ValueKey('content-folder-grid'),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columnCount,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  mainAxisExtent: columnCount == 3 ? 112 : 104,
-                ),
-                itemCount: _folders.length,
-                itemBuilder: (context, index) {
-                  final folder = _folders[index];
-                  return _FolderCard(
-                    key: ValueKey('content-folder-$folder'),
-                    name: folder,
-                    count: _files.where((file) => file.folder == folder).length,
-                    active: _folder == folder,
-                    onPressed: () => setState(() {
-                      _folder = _folder == folder ? null : folder;
-                    }),
-                  );
-                },
-              );
-            },
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _folder == null
-                      ? _contentText(
-                          context,
-                          uz: 'SO‘NGGI FAYLLAR',
-                          en: 'RECENT MATERIALS',
-                        )
-                      : _folder!.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: SfType.eyebrow(color: c.muted),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton.icon(
-                onPressed: () => setState(() => _sortByTitle = !_sortByTitle),
-                icon: Icon(
-                  _sortByTitle
-                      ? Icons.sort_by_alpha_rounded
-                      : Icons.schedule_rounded,
-                  size: 16,
-                ),
-                label: Text(
-                  _sortByTitle
-                      ? _contentText(context, uz: 'Nom bo‘yicha', en: 'By name')
-                      : _contentText(
-                          context,
-                          uz: 'Yangi avval',
-                          en: 'Newest first',
-                        ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (visibleFiles.isEmpty)
-            SfSurfaceCard(
-              child: SfEmptyState(
+            if (_storageError != null) ...[
+              const SizedBox(height: 10),
+              SfHintCard(
                 compact: true,
-                icon: SfIcons.folder,
+                tone: SfHintTone.danger,
                 title: _contentText(
                   context,
-                  uz: 'Material topilmadi',
-                  en: 'No materials found',
+                  uz: 'Saqlash muammosi',
+                  en: 'Storage problem',
                 ),
-                message: _contentText(
-                  context,
-                  uz: 'Izlash yoki tur filtrini tozalab ko‘ring.',
-                  en: 'Clear the search or type filter and try again.',
-                ),
+                message: _storageError!,
                 actionLabel: _contentText(
                   context,
-                  uz: 'Filtrlarni tozalash',
-                  en: 'Clear filters',
+                  uz: 'Qayta urinish',
+                  en: 'Retry',
                 ),
-                onAction: () {
-                  _searchController.clear();
-                  setState(() {
-                    _type = _ContentType.all;
-                    _folder = null;
-                  });
-                },
+                onAction: () => unawaited(_persistLibrary()),
               ),
-            )
-          else
-            SfSurfaceCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  for (var index = 0; index < visibleFiles.length; index++)
-                    _FileTile(
-                      file: visibleFiles[index],
-                      downloaded: _downloadedIds.contains(
-                        visibleFiles[index].id,
-                      ),
-                      showDivider: index != visibleFiles.length - 1,
-                      onOpen: () => _showPreview(visibleFiles[index]),
-                      onDownload: () => _download(visibleFiles[index]),
+            ],
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Text(
+                  _contentText(context, uz: 'PAPKALAR', en: 'FOLDERS'),
+                  style: SfType.eyebrow(color: c.muted),
+                ),
+                const Spacer(),
+                if (_folder != null)
+                  TextButton(
+                    onPressed: () => setState(() => _folder = null),
+                    child: Text(
+                      _contentText(context, uz: 'Hammasi', en: 'All'),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
-          const SizedBox(height: 16),
-          _UploadCard(onPressed: _addResource),
-        ],
+            const SizedBox(height: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columnCount = constraints.maxWidth >= 336 ? 3 : 2;
+                return GridView.builder(
+                  key: const ValueKey('content-folder-grid'),
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columnCount,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    mainAxisExtent: columnCount == 3 ? 112 : 104,
+                  ),
+                  itemCount: _folders.length,
+                  itemBuilder: (context, index) {
+                    final folder = _folders[index];
+                    return _FolderCard(
+                      key: ValueKey('content-folder-$folder'),
+                      name: folder,
+                      count: _files
+                          .where((file) => file.folder == folder)
+                          .length,
+                      active: _folder == folder,
+                      onPressed: () => setState(() {
+                        _folder = _folder == folder ? null : folder;
+                      }),
+                    );
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _folder == null
+                        ? _contentText(
+                            context,
+                            uz: 'SO‘NGGI FAYLLAR',
+                            en: 'RECENT MATERIALS',
+                          )
+                        : _folder!.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: SfType.eyebrow(color: c.muted),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => setState(() => _sortByTitle = !_sortByTitle),
+                  icon: Icon(
+                    _sortByTitle
+                        ? Icons.sort_by_alpha_rounded
+                        : Icons.schedule_rounded,
+                    size: 16,
+                  ),
+                  label: Text(
+                    _sortByTitle
+                        ? _contentText(
+                            context,
+                            uz: 'Nom bo‘yicha',
+                            en: 'By name',
+                          )
+                        : _contentText(
+                            context,
+                            uz: 'Yangi avval',
+                            en: 'Newest first',
+                          ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (visibleFiles.isEmpty)
+              SfSurfaceCard(
+                child: SfEmptyState(
+                  compact: true,
+                  icon: SfIcons.folder,
+                  title: _contentText(
+                    context,
+                    uz: 'Material topilmadi',
+                    en: 'No materials found',
+                  ),
+                  message: _contentText(
+                    context,
+                    uz: 'Izlash yoki tur filtrini tozalab ko‘ring.',
+                    en: 'Clear the search or type filter and try again.',
+                  ),
+                  actionLabel: _contentText(
+                    context,
+                    uz: 'Filtrlarni tozalash',
+                    en: 'Clear filters',
+                  ),
+                  onAction: () {
+                    _searchController.clear();
+                    setState(() {
+                      _type = _ContentType.all;
+                      _folder = null;
+                    });
+                  },
+                ),
+              )
+            else
+              SfSurfaceCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    for (var index = 0; index < visibleFiles.length; index++)
+                      _FileTile(
+                        file: visibleFiles[index],
+                        downloaded: _downloadedIds.contains(
+                          visibleFiles[index].id,
+                        ),
+                        showDivider: index != visibleFiles.length - 1,
+                        onOpen: () => _showPreview(visibleFiles[index]),
+                        onDownload: () => _download(visibleFiles[index]),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 16),
+            _UploadCard(onPressed: _addResource),
+          ],
+        ),
       ),
     );
   }
@@ -604,6 +622,23 @@ class _ContentScreenState extends State<ContentScreen> {
                     ),
                   ),
                 ],
+                if (file.type == _ContentType.video) ...[
+                  const SizedBox(height: 14),
+                  SfHintCard(
+                    compact: true,
+                    icon: Icons.play_circle_outline_rounded,
+                    title: _contentText(
+                      sheetContext,
+                      uz: 'Demo video kartasi',
+                      en: 'Demo video card',
+                    ),
+                    message: _contentText(
+                      sheetContext,
+                      uz: 'Bu demo kartaga video fayli biriktirilmagan. Ishlab chiqarish kutubxonasidagi videolar ilova ichida xavfsiz uzatiladi.',
+                      en: 'No binary video is attached to this demo card. Production library videos stream securely inside the app.',
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 Row(
                   children: [
@@ -630,7 +665,8 @@ class _ContentScreenState extends State<ContentScreen> {
                         },
                       ),
                     ),
-                    if (app.can(StaffCapability.submitPrintJobs)) ...[
+                    if (app.can(StaffCapability.submitPrintJobs) &&
+                        file.type != _ContentType.video) ...[
                       const SizedBox(width: 10),
                       Expanded(
                         child: SfButton(

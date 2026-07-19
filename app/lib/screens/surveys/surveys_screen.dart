@@ -34,67 +34,106 @@ class SurveysScreen extends StatelessWidget {
           '${pending.length} pending · ${submitted.length} submitted',
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
-        children: [
-          if (!canAnswer) ...[
-            SfHintCard(
-              title: staffTr(context, 'Faqat ko‘rish rejimi', 'Read-only mode'),
-              message: staffTr(
+      body: state.isProduction && state.formsLoading && state.surveys.isEmpty
+          ? SfLoadingState(
+              label: staffTr(
                 context,
-                'Sizning rolingiz so‘rovnomalarga javob bera olmaydi.',
-                'Your role cannot answer surveys.',
+                'So‘rovnomalar yangilanmoqda…',
+                'Refreshing forms…',
               ),
-              tone: SfHintTone.info,
-            ),
-            const SizedBox(height: 14),
-          ],
-          if (state.surveys.isEmpty)
-            SfEmptyState(
-              title: staffTr(context, 'So‘rovnoma yo‘q', 'No surveys'),
-              message: staffTr(
-                context,
-                'Yangi so‘rovnoma tayinlanganda shu yerda ko‘rinadi.',
-                'New assigned surveys will appear here.',
-              ),
+              motionEnabled: !state.settings.reducedMotion,
             )
-          else ...[
-            Text(
-              staffTr(context, 'KUTILMOQDA', 'PENDING'),
-              style: SfType.eyebrow(color: c.muted),
-            ),
-            const SizedBox(height: 8),
-            if (pending.isEmpty)
-              SfHintCard(
-                title: staffTr(context, 'Hammasi tayyor', 'All caught up'),
-                message: staffTr(
-                  context,
-                  'Hozir javob berilishi kerak bo‘lgan so‘rovnoma yo‘q.',
-                  'There are no surveys waiting for an answer.',
-                ),
-                tone: SfHintTone.success,
-                compact: true,
-              )
-            else
-              for (final survey in pending) ...[
-                _SurveyCard(survey: survey, enabled: canAnswer),
-                const SizedBox(height: 9),
-              ],
-            if (submitted.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Text(
-                staffTr(context, 'YUBORILGAN', 'SUBMITTED'),
-                style: SfType.eyebrow(color: c.muted),
+          : state.isProduction &&
+                state.formsError != null &&
+                state.surveys.isEmpty
+          ? SfErrorState(
+              title: state.formsAvailable
+                  ? staffTr(
+                      context,
+                      'So‘rovnomalarni yuklab bo‘lmadi',
+                      'Forms could not be loaded',
+                    )
+                  : staffTr(
+                      context,
+                      'Bu rol uchun so‘rovnoma yo‘q',
+                      'Forms are unavailable for this role',
+                    ),
+              message: state.formsError,
+              onRetry: state.refreshForms,
+            )
+          : RefreshIndicator.adaptive(
+              onRefresh: state.refreshForms,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
+                children: [
+                  if (!canAnswer) ...[
+                    SfHintCard(
+                      title: staffTr(
+                        context,
+                        'Faqat ko‘rish rejimi',
+                        'Read-only mode',
+                      ),
+                      message: staffTr(
+                        context,
+                        'Sizning rolingiz so‘rovnomalarga javob bera olmaydi.',
+                        'Your role cannot answer surveys.',
+                      ),
+                      tone: SfHintTone.info,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (state.surveys.isEmpty)
+                    SfEmptyState(
+                      title: staffTr(context, 'So‘rovnoma yo‘q', 'No surveys'),
+                      message: staffTr(
+                        context,
+                        'Yangi so‘rovnoma tayinlanganda shu yerda ko‘rinadi.',
+                        'New assigned surveys will appear here.',
+                      ),
+                    )
+                  else ...[
+                    Text(
+                      staffTr(context, 'KUTILMOQDA', 'PENDING'),
+                      style: SfType.eyebrow(color: c.muted),
+                    ),
+                    const SizedBox(height: 8),
+                    if (pending.isEmpty)
+                      SfHintCard(
+                        title: staffTr(
+                          context,
+                          'Hammasi tayyor',
+                          'All caught up',
+                        ),
+                        message: staffTr(
+                          context,
+                          'Hozir javob berilishi kerak bo‘lgan so‘rovnoma yo‘q.',
+                          'There are no surveys waiting for an answer.',
+                        ),
+                        tone: SfHintTone.success,
+                        compact: true,
+                      )
+                    else
+                      for (final survey in pending) ...[
+                        _SurveyCard(survey: survey, enabled: canAnswer),
+                        const SizedBox(height: 9),
+                      ],
+                    if (submitted.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        staffTr(context, 'YUBORILGAN', 'SUBMITTED'),
+                        style: SfType.eyebrow(color: c.muted),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final survey in submitted) ...[
+                        _SurveyCard(survey: survey, enabled: false),
+                        const SizedBox(height: 9),
+                      ],
+                    ],
+                  ],
+                ],
               ),
-              const SizedBox(height: 8),
-              for (final survey in submitted) ...[
-                _SurveyCard(survey: survey, enabled: false),
-                const SizedBox(height: 9),
-              ],
-            ],
-          ],
-        ],
-      ),
+            ),
     );
   }
 }

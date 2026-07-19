@@ -44,6 +44,7 @@ class _GradeSubmissionScreenState extends State<GradeSubmissionScreen> {
     final app = AppScope.maybeOf(context);
     _controller.initialize(
       ownerId: app?.session?.userId ?? _controller.ownerId ?? 'demo-teacher',
+      api: app?.backendApi,
     );
   }
 

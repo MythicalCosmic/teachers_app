@@ -59,6 +59,7 @@ final class MessagingL10n {
     final raw = error is ArgumentError ? '${error.message}' : '$error';
     if (raw.contains('Video 1 daqiqadan')) return text('video_too_long');
     if (raw.contains('Ovozli xabar juda qisqa')) return text('voice_too_short');
+    if (raw.contains('Ovozli xabar 0.5')) return text('voice_duration_invalid');
     if (raw.contains('Jild nomini')) return text('folder_name_required');
     if (raw.contains('jild allaqachon')) return text('folder_exists');
     if (raw.contains('Xodim topilmadi')) return text('staff_not_found');
@@ -142,6 +143,11 @@ const _copy = <String, Map<String, String>>{
     'seminar_file': 'Seminar yozuvi.mp4',
     'video_over_limit': 'Video · 01:14 · limitdan uzun',
     'messages_copied': 'Xabarlar nusxalandi',
+    'delete_messages_question': 'Xabarlar o‘chirilsinmi?',
+    'delete_messages_description': '{count} ta xabar suhbatdan o‘chiriladi.',
+    'delete_messages_device_description':
+        '{count} ta xabar faqat ushbu qurilmadagi ko‘rinishdan yashiriladi. Serverdagi rasmiy yozuv saqlanadi.',
+    'messages_deleted': '{count} ta xabar olib tashlandi',
     'search_in_chat': 'Suhbatda qidirish',
     'profile': 'Profil',
     'cancel_recording': 'Yozuvni bekor qilish',
@@ -190,6 +196,18 @@ const _copy = <String, Map<String, String>>{
     'restoring_messages': 'Saqlangan suhbatlar tiklanmoqda…',
     'video_too_long': 'Video 1 daqiqadan oshmasligi kerak.',
     'voice_too_short': 'Ovozli xabar juda qisqa.',
+    'voice_duration_invalid':
+        'Ovozli xabar 0.5 soniyadan 1 daqiqagacha bo‘lishi kerak.',
+    'voice_capture_failed':
+        'Ovoz yozilmadi. Mikrofon ruxsati va qurilma sozlamalarini tekshiring.',
+    'voice_permission_denied':
+        'Mikrofonga ruxsat berilmadi. Telefon sozlamalaridan StarForge Staff uchun mikrofonni yoqing.',
+    'voice_unsupported':
+        'Bu qurilma xavfsiz ovoz yozish formatini qo‘llamaydi.',
+    'voice_send_failed':
+        'Ovozli xabar yuborilmadi. Internetni tekshirib qayta urinib ko‘ring.',
+    'voice_play_failed':
+        'Ovozli xabar ochilmadi. Havolani yangilab qayta urinib ko‘ring.',
     'folder_name_required': 'Jild nomini kiriting.',
     'folder_exists': 'Bu nomdagi jild allaqachon mavjud.',
     'message_required': 'Xabar matni bo‘sh bo‘lmasin.',
@@ -273,6 +291,11 @@ const _copy = <String, Map<String, String>>{
     'seminar_file': 'Запись семинара.mp4',
     'video_over_limit': 'Видео · 01:14 · превышает лимит',
     'messages_copied': 'Сообщения скопированы',
+    'delete_messages_question': 'Удалить сообщения?',
+    'delete_messages_description': 'Сообщений будет удалено: {count}.',
+    'delete_messages_device_description':
+        'Сообщений будет скрыто на этом устройстве: {count}. Официальная серверная запись сохранится.',
+    'messages_deleted': 'Удалено сообщений: {count}',
     'search_in_chat': 'Поиск в чате',
     'profile': 'Профиль',
     'cancel_recording': 'Отменить запись',
@@ -321,6 +344,18 @@ const _copy = <String, Map<String, String>>{
     'restoring_messages': 'Восстанавливаем сохранённые чаты…',
     'video_too_long': 'Видео не должно превышать 1 минуту.',
     'voice_too_short': 'Голосовое сообщение слишком короткое.',
+    'voice_duration_invalid':
+        'Голосовое сообщение должно длиться от 0,5 секунды до 1 минуты.',
+    'voice_capture_failed':
+        'Не удалось записать звук. Проверьте доступ к микрофону и настройки устройства.',
+    'voice_permission_denied':
+        'Нет доступа к микрофону. Разрешите микрофон для StarForge Staff в настройках телефона.',
+    'voice_unsupported':
+        'Это устройство не поддерживает безопасный формат записи голоса.',
+    'voice_send_failed':
+        'Не удалось отправить голосовое. Проверьте интернет и попробуйте снова.',
+    'voice_play_failed':
+        'Не удалось открыть голосовое. Обновите ссылку и попробуйте снова.',
     'folder_name_required': 'Введите название папки.',
     'folder_exists': 'Папка с таким названием уже существует.',
     'message_required': 'Введите текст сообщения.',
@@ -403,6 +438,11 @@ const _copy = <String, Map<String, String>>{
     'seminar_file': 'Seminar recording.mp4',
     'video_over_limit': 'Video · 01:14 · over the limit',
     'messages_copied': 'Messages copied',
+    'delete_messages_question': 'Delete messages?',
+    'delete_messages_description': '{count} messages will be deleted.',
+    'delete_messages_device_description':
+        '{count} messages will only be hidden on this device. The official server record is retained.',
+    'messages_deleted': '{count} messages removed',
     'search_in_chat': 'Search conversation',
     'profile': 'Profile',
     'cancel_recording': 'Discard recording',
@@ -451,6 +491,18 @@ const _copy = <String, Map<String, String>>{
     'restoring_messages': 'Restoring saved conversations…',
     'video_too_long': 'Videos must be one minute or shorter.',
     'voice_too_short': 'That voice message is too short.',
+    'voice_duration_invalid':
+        'Voice messages must be between 0.5 seconds and one minute.',
+    'voice_capture_failed':
+        'Audio could not be recorded. Check microphone access and device settings.',
+    'voice_permission_denied':
+        'Microphone access is off. Enable it for StarForge Staff in phone settings.',
+    'voice_unsupported':
+        'This device does not support the secure voice recording format.',
+    'voice_send_failed':
+        'The voice message was not sent. Check your connection and try again.',
+    'voice_play_failed':
+        'The voice message could not be opened. Refresh the link and try again.',
     'folder_name_required': 'Enter a folder name.',
     'folder_exists': 'A folder with this name already exists.',
     'message_required': 'Enter a message.',

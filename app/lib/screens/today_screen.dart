@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../app/app_scope.dart';
+import '../features/learning/learning_workspace_controller.dart';
 import '../router.dart';
 import '../theme/sf_theme.dart';
 import '../widgets/sf_ai_badge.dart';
@@ -16,6 +17,7 @@ import '../widgets/sf_scaffold.dart';
 import '../widgets/sf_star.dart';
 import '../widgets/sf_tab_bar.dart';
 import 'today/today_data.dart';
+import 'learning/production_learning_screens.dart';
 
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key});
@@ -33,6 +35,12 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.maybeOf(context);
+    if (app?.isProduction == true) {
+      final controller = learningWorkspaceFor(app!);
+      if (controller != null) {
+        return ProductionTodayScreen(controller: controller);
+      }
+    }
     final survey = app?.surveys.firstOrNull;
     final featuredLesson = featuredStaffLesson();
     final todaysLessons = lessonsFor(staffToday);
@@ -40,108 +48,121 @@ class _TodayScreenState extends State<TodayScreen> {
       tab: SfTab.home,
       onTabChanged: (tab) => handleTab(context, SfTab.values.indexOf(tab)),
       top: const _Header(),
-      body: ListView(
-        key: const PageStorageKey('teacher-today-scroll'),
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 44),
-        children: [
-          _Reveal(
-            order: 0,
-            child: _SurveyBanner(
-              answered: survey?.answeredCount ?? 1,
-              total: survey?.questions.length ?? 3,
-              submitted: survey?.isSubmitted ?? false,
-              onTap: () => context.push(
-                survey?.isSubmitted == true ? '/surveys' : '/surveys/form',
+      body: RefreshIndicator.adaptive(
+        onRefresh: _refreshLocalWorkspace,
+        child: ListView(
+          key: const PageStorageKey('teacher-today-scroll'),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 44),
+          children: [
+            _Reveal(
+              order: 0,
+              child: _SurveyBanner(
+                answered: survey?.answeredCount ?? 1,
+                total: survey?.questions.length ?? 3,
+                submitted: survey?.isSubmitted ?? false,
+                onTap: () => context.push(
+                  survey?.isSubmitted == true ? '/surveys' : '/surveys/form',
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          _Reveal(
-            order: 1,
-            child: _NextLessonHero(
-              lesson: featuredLesson,
-              onOpen: () => context.push('/lesson?slot=${featuredLesson.id}'),
-              onAttendance: () => context.push(
-                '/attendance?cohort=${groupIdForLesson(featuredLesson)}',
-              ),
-              onMore: () => _showLessonPreview(context, featuredLesson),
-            ),
-          ),
-          const SizedBox(height: 14),
-          _Reveal(
-            order: 2,
-            child: _QuickStats(
-              lessonCount: todaysLessons.length,
-              liveCount: todaysLessons
-                  .where((lesson) => lesson.progress == LessonProgress.live)
-                  .length,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _Reveal(
-            order: 3,
-            child: _AiPanel(
-              expanded: _aiExpanded,
-              dismissed: _aiDismissed,
-              completedSteps: _completedAiSteps,
-              onExpand: () => setState(() => _aiExpanded = !_aiExpanded),
-              onDismiss: () => setState(() => _aiDismissed = true),
-              onRestore: () => setState(() => _aiDismissed = false),
-              onToggleStep: (index) => setState(() {
-                if (!_completedAiSteps.add(index)) {
-                  _completedAiSteps.remove(index);
-                }
-              }),
-            ),
-          ),
-          const SizedBox(height: 22),
-          _SectionHeading(
-            title: staffTr(context, 'Jadval', 'Schedule'),
-            subtitle: staffDayTitle(context, _selectedDate),
-            action: staffTr(context, 'To‘liq jadval', 'Full schedule'),
-            onAction: () => context.push('/schedule'),
-          ),
-          const SizedBox(height: 10),
-          _HomeDateStrip(
-            selected: _selectedDate,
-            onSelected: (date) => setState(() => _selectedDate = date),
-          ),
-          const SizedBox(height: 10),
-          AnimatedSwitcher(
-            duration: SfMotion.resolve(context, SfMotion.emphasized),
-            switchInCurve: SfMotion.enter,
-            switchOutCurve: SfMotion.exit,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween(
-                  begin: const Offset(0.035, 0),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
+            const SizedBox(height: 14),
+            _Reveal(
+              order: 1,
+              child: _NextLessonHero(
+                lesson: featuredLesson,
+                onOpen: () => context.push('/lesson?slot=${featuredLesson.id}'),
+                onAttendance: () => context.push(
+                  '/attendance?cohort=${groupIdForLesson(featuredLesson)}',
+                ),
+                onMore: () => _showLessonPreview(context, featuredLesson),
               ),
             ),
-            child: _ScheduleList(
-              key: ValueKey(_selectedDate.day),
-              date: _selectedDate,
+            const SizedBox(height: 14),
+            _Reveal(
+              order: 2,
+              child: _QuickStats(
+                lessonCount: todaysLessons.length,
+                liveCount: todaysLessons
+                    .where((lesson) => lesson.progress == LessonProgress.live)
+                    .length,
+              ),
             ),
-          ),
-          const SizedBox(height: 22),
-          _SectionHeading(
-            title: staffTr(context, 'Sizning natijangiz', 'Your performance'),
-            subtitle: staffMonthAndWeekLabel(context, staffToday),
-            action: staffTr(context, 'Batafsil', 'Details'),
-            onAction: () => context.push('/today/performance'),
-          ),
-          const SizedBox(height: 10),
-          _TeacherPerformanceCard(
-            onTap: () => context.push('/today/performance'),
-          ),
-          const SizedBox(height: 16),
-          _PrintQueueCard(onTap: () => context.push('/print')),
-        ],
+            const SizedBox(height: 16),
+            _Reveal(
+              order: 3,
+              child: _AiPanel(
+                expanded: _aiExpanded,
+                dismissed: _aiDismissed,
+                completedSteps: _completedAiSteps,
+                onExpand: () => setState(() => _aiExpanded = !_aiExpanded),
+                onDismiss: () => setState(() => _aiDismissed = true),
+                onRestore: () => setState(() => _aiDismissed = false),
+                onToggleStep: (index) => setState(() {
+                  if (!_completedAiSteps.add(index)) {
+                    _completedAiSteps.remove(index);
+                  }
+                }),
+              ),
+            ),
+            const SizedBox(height: 22),
+            _SectionHeading(
+              title: staffTr(context, 'Jadval', 'Schedule'),
+              subtitle: staffDayTitle(context, _selectedDate),
+              action: staffTr(context, 'To‘liq jadval', 'Full schedule'),
+              onAction: () => context.push('/schedule'),
+            ),
+            const SizedBox(height: 10),
+            _HomeDateStrip(
+              selected: _selectedDate,
+              onSelected: (date) => setState(() => _selectedDate = date),
+            ),
+            const SizedBox(height: 10),
+            AnimatedSwitcher(
+              duration: SfMotion.resolve(context, SfMotion.emphasized),
+              switchInCurve: SfMotion.enter,
+              switchOutCurve: SfMotion.exit,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween(
+                    begin: const Offset(0.035, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: _ScheduleList(
+                key: ValueKey(_selectedDate.day),
+                date: _selectedDate,
+              ),
+            ),
+            const SizedBox(height: 22),
+            _SectionHeading(
+              title: staffTr(context, 'Sizning natijangiz', 'Your performance'),
+              subtitle: staffMonthAndWeekLabel(context, staffToday),
+              action: staffTr(context, 'Batafsil', 'Details'),
+              onAction: () => context.push('/today/performance'),
+            ),
+            const SizedBox(height: 10),
+            _TeacherPerformanceCard(
+              onTap: () => context.push('/today/performance'),
+            ),
+            const SizedBox(height: 16),
+            _PrintQueueCard(onTap: () => context.push('/print')),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _refreshLocalWorkspace() async {
+    // Demo data is local, but the interaction mirrors production refresh and
+    // deliberately rebuilds time-sensitive labels after the indicator settles.
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+    if (mounted) setState(() {});
   }
 
   void _showLessonPreview(BuildContext context, TodayLessonData lesson) {
@@ -1345,146 +1366,263 @@ class _SectionHeading extends StatelessWidget {
   }
 }
 
-class _HomeDateStrip extends StatefulWidget {
+class _HomeDateStrip extends StatelessWidget {
   const _HomeDateStrip({required this.selected, required this.onSelected});
   final DateTime selected;
   final ValueChanged<DateTime> onSelected;
 
   @override
-  State<_HomeDateStrip> createState() => _HomeDateStripState();
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final weekStart = selected.subtract(Duration(days: selected.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    final currentWeek = DateUtils.isSameDay(weekStart, staffWeekStart);
+    final range = weekStart.month == weekEnd.month
+        ? '${weekStart.day}\u2013${weekEnd.day} ${staffMonthName(context, weekStart.month)}'
+        : '${weekStart.day} ${staffMonthName(context, weekStart.month)} \u2013 ${weekEnd.day} ${staffMonthName(context, weekEnd.month)}';
+
+    return SfSurfaceCard(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+      borderRadius: BorderRadius.circular(22),
+      child: Column(
+        verticalDirection: VerticalDirection.up,
+        children: [
+          Row(
+            children: [
+              _WeekArrow(
+                key: const Key('today-week-previous'),
+                icon: Icons.chevron_left_rounded,
+                semanticLabel: staffTr(
+                  context,
+                  'Oldingi hafta',
+                  'Previous week',
+                ),
+                onPressed: () =>
+                    onSelected(selected.subtract(const Duration(days: 7))),
+              ),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      range,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: SfType.ui(
+                        size: 12,
+                        weight: FontWeight.w800,
+                        color: c.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      currentWeek
+                          ? staffTr(context, 'Joriy hafta', 'Current week')
+                          : staffTr(
+                              context,
+                              '${lessonsFor(selected).length} ta dars tanlandi',
+                              '${lessonsFor(selected).length} lessons selected',
+                            ),
+                      style: SfType.ui(size: 9.5, color: c.muted),
+                    ),
+                  ],
+                ),
+              ),
+              _WeekArrow(
+                key: const Key('today-week-next'),
+                icon: Icons.chevron_right_rounded,
+                semanticLabel: staffTr(context, 'Keyingi hafta', 'Next week'),
+                onPressed: () =>
+                    onSelected(selected.add(const Duration(days: 7))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          AnimatedSwitcher(
+            duration: SfMotion.resolve(context, SfMotion.emphasized),
+            switchInCurve: SfMotion.enter,
+            switchOutCurve: SfMotion.exit,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween(begin: .985, end: 1.0).animate(animation),
+                child: child,
+              ),
+            ),
+            child: SizedBox(
+              key: ValueKey(
+                'home-week-${weekStart.year}-${weekStart.month}-${weekStart.day}',
+              ),
+              height: 72,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  const gap = 4.0;
+                  const minimumTileWidth = 44.0;
+                  final fittedWidth = (constraints.maxWidth - (gap * 6)) / 7;
+                  final tileWidth = fittedWidth < minimumTileWidth
+                      ? minimumTileWidth
+                      : fittedWidth;
+                  final dates = List<DateTime>.generate(
+                    7,
+                    (index) => weekStart.add(Duration(days: index)),
+                  );
+                  final strip = Row(
+                    children: [
+                      for (var index = 0; index < dates.length; index++) ...[
+                        if (index > 0) const SizedBox(width: gap),
+                        SizedBox(
+                          width: tileWidth,
+                          child: _HomeDateTile(
+                            date: dates[index],
+                            selected: DateUtils.isSameDay(
+                              dates[index],
+                              selected,
+                            ),
+                            onPressed: () => onSelected(dates[index]),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                  if (fittedWidth >= minimumTileWidth) return strip;
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: strip,
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _HomeDateStripState extends State<_HomeDateStrip> {
-  static const _tileWidth = 60.0;
-  static const _gap = 7.0;
-  late final ScrollController _controller;
+class _WeekArrow extends StatelessWidget {
+  const _WeekArrow({
+    super.key,
+    required this.icon,
+    required this.semanticLabel,
+    required this.onPressed,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    final selectedIndex = widget.selected.difference(staffWeekStart).inDays;
-    final leadingIndex = (selectedIndex - 2).clamp(0, 6);
-    _controller = ScrollController(
-      initialScrollOffset: leadingIndex * (_tileWidth + _gap),
-    );
-    _scheduleReveal(animate: false);
-  }
-
-  @override
-  void didUpdateWidget(covariant _HomeDateStrip oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!DateUtils.isSameDay(oldWidget.selected, widget.selected)) {
-      _scheduleReveal(animate: true);
-    }
-  }
-
-  void _scheduleReveal({required bool animate}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_controller.hasClients) return;
-      final selectedIndex = widget.selected
-          .difference(staffWeekStart)
-          .inDays
-          .clamp(0, 6);
-      final viewport = _controller.position.viewportDimension;
-      final desired =
-          selectedIndex * (_tileWidth + _gap) - (viewport - _tileWidth) / 2;
-      final target = desired.clamp(
-        _controller.position.minScrollExtent,
-        _controller.position.maxScrollExtent,
-      );
-      if (animate) {
-        _controller.animateTo(
-          target,
-          duration: SfMotion.resolve(context, SfMotion.standard),
-          curve: SfMotion.enter,
-        );
-      } else {
-        _controller.jumpTo(target);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  final IconData icon;
+  final String semanticLabel;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
-    return SizedBox(
-      height: 68,
-      child: ListView.separated(
-        controller: _controller,
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: 7,
-        separatorBuilder: (_, _) => const SizedBox(width: _gap),
-        itemBuilder: (context, i) => SizedBox(
-          width: _tileWidth,
-          child: Builder(
-            builder: (context) {
-              final date = staffWeekStart.add(Duration(days: i));
-              final active = DateUtils.isSameDay(date, widget.selected);
-              final count = lessonsFor(date).length;
-              return SfPressable(
-                key: Key('today-date-${date.day}'),
-                semanticLabel: staffTr(
-                  context,
-                  '${staffDayTitle(context, date)}, $count ta dars',
-                  '${staffDayTitle(context, date)}, $count lessons',
-                ),
-                selected: active,
-                haptic: true,
-                onPressed: () => widget.onSelected(date),
-                borderRadius: BorderRadius.circular(16),
-                child: AnimatedContainer(
-                  duration: SfMotion.resolve(context, SfMotion.standard),
-                  curve: SfMotion.enter,
-                  padding: const EdgeInsets.symmetric(vertical: 9),
-                  decoration: BoxDecoration(
-                    color: active ? c.ink : c.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: active ? c.ink : c.border),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        staffWeekdayShort(context, date.weekday).toUpperCase(),
-                        style: SfType.eyebrow(
-                          color: active ? c.bg : c.muted,
-                          size: 8,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${date.day}',
-                        style: SfType.mono(
-                          size: 17,
-                          weight: FontWeight.w800,
-                          color: active ? c.bg : c.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: count == 0 ? 4 : 13,
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: active
-                              ? c.accent
-                              : count == 0
-                              ? c.borderStrong
-                              : c.primary,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+    return SfPressable(
+      semanticLabel: semanticLabel,
+      onPressed: onPressed,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: c.surface2,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: c.border),
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 20, color: c.ink),
+      ),
+    );
+  }
+}
+
+class _HomeDateTile extends StatelessWidget {
+  const _HomeDateTile({
+    required this.date,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final DateTime date;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final count = lessonsFor(date).length;
+    final today = DateUtils.isSameDay(date, staffToday);
+    return SfPressable(
+      key: Key('today-date-${date.day}'),
+      semanticLabel: staffTr(
+        context,
+        '${staffDayTitle(context, date)}, $count ta dars',
+        '${staffDayTitle(context, date)}, $count lessons',
+      ),
+      selected: selected,
+      haptic: true,
+      onPressed: onPressed,
+      borderRadius: BorderRadius.circular(15),
+      child: AnimatedContainer(
+        duration: SfMotion.resolve(context, SfMotion.standard),
+        curve: SfMotion.enter,
+        height: 72,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? c.primary : c.surface2.withValues(alpha: .72),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: selected
+                ? c.primary
+                : today
+                ? c.primary.withValues(alpha: .55)
+                : c.border,
+            width: today && !selected ? 1.4 : 1,
           ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: c.primary.withValues(alpha: .2),
+                    blurRadius: 14,
+                    offset: const Offset(0, 5),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              staffWeekdayShort(context, date.weekday).toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.fade,
+              style: SfType.eyebrow(
+                color: selected ? c.primaryInk : c.muted,
+                size: 7.5,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${date.day}',
+              style: SfType.mono(
+                size: 16,
+                weight: FontWeight.w800,
+                color: selected ? c.primaryInk : c.ink,
+              ),
+            ),
+            const SizedBox(height: 4),
+            AnimatedContainer(
+              duration: SfMotion.resolve(context, SfMotion.quick),
+              width: count == 0 ? 4 : 14,
+              height: 3,
+              decoration: BoxDecoration(
+                color: selected
+                    ? c.primaryInk.withValues(alpha: .85)
+                    : count == 0
+                    ? c.borderStrong
+                    : c.primary,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ],
         ),
       ),
     );

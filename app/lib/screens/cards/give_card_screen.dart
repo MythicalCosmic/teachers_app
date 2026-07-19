@@ -5,6 +5,7 @@ import '../../app/app_scope.dart';
 import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_app_bar.dart';
+import '../../widgets/sf_adaptive_dialog.dart';
 import '../../widgets/sf_button.dart';
 import '../../widgets/sf_card.dart';
 import '../../widgets/sf_form_controls.dart';
@@ -43,27 +44,15 @@ class _GiveCardScreenState extends State<GiveCardScreen> {
       );
       return;
     }
-    final confirmed =
-        await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Kartani berasizmi?'),
-            content: Text(
-              '${student.studentName} uchun ${_kind == CardKind.praise ? 'ijobiy karta' : 'ogohlantirish'} yoziladi.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => dialogContext.pop(false),
-                child: const Text('Bekor'),
-              ),
-              FilledButton(
-                onPressed: () => dialogContext.pop(true),
-                child: const Text('Tasdiqlash'),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final confirmed = await showSfConfirmDialog(
+      context,
+      title: 'Kartani berasizmi?',
+      message:
+          '${student.studentName} uchun ${_kind == CardKind.praise ? 'ijobiy karta' : 'ogohlantirish'} yoziladi.',
+      cancelLabel: 'Bekor',
+      confirmLabel: 'Tasdiqlash',
+      destructive: _kind != CardKind.praise,
+    );
     if (!confirmed || !mounted) return;
     setState(() => _saving = true);
     try {

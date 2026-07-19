@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/app_scope.dart';
+import '../../data/api/backend_services_api.dart';
 import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_app_bar.dart';
@@ -13,6 +14,7 @@ import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_scaffold.dart';
 import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_toast.dart';
+import '../services/backend_print_screens.dart';
 
 enum _PrinterChoice { library, staffRoom }
 
@@ -108,6 +110,10 @@ class _NewPrintJobScreenState extends State<NewPrintJobScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final backend = app.backendApi;
+    if (backend != null) {
+      return BackendNewPrintJobScreen(api: BackendServicesApi.fromApi(backend));
+    }
     final session = app.session;
     final c = SfTheme.colorsOf(context);
     if (session == null || !session.can(StaffCapability.submitPrintJobs)) {

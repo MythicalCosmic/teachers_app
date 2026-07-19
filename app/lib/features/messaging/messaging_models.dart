@@ -36,6 +36,7 @@ class MessagingMessage {
     this.kind = MessagingKind.text,
     this.mediaLabel,
     this.mediaDuration,
+    this.attachmentKeys = const <String>[],
     this.isDemoMedia = false,
     this.delivery = MessagingDelivery.read,
     this.reactions = const <String, int>{},
@@ -49,6 +50,7 @@ class MessagingMessage {
   final MessagingKind kind;
   final String? mediaLabel;
   final Duration? mediaDuration;
+  final List<String> attachmentKeys;
 
   /// True when the attachment is a locally generated interaction preview.
   ///
@@ -77,6 +79,7 @@ class MessagingMessage {
     kind: kind,
     mediaLabel: mediaLabel,
     mediaDuration: mediaDuration,
+    attachmentKeys: attachmentKeys,
     isDemoMedia: isDemoMedia,
     delivery: delivery ?? this.delivery,
     reactions: reactions ?? this.reactions,

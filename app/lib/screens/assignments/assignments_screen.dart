@@ -40,6 +40,7 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
     final app = AppScope.maybeOf(context);
     _controller.initialize(
       ownerId: app?.session?.userId ?? _controller.ownerId ?? 'demo-teacher',
+      api: app?.backendApi,
     );
   }
 
@@ -100,8 +101,12 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
                     'Restoring assignments…',
                   ),
                   message: l.text(
-                    'Saqlangan baho va fikrlar yuklanmoqda.',
-                    'Loading saved grades and feedback.',
+                    _controller.isRemote
+                        ? 'Serverdagi topshiriq va javoblar yuklanmoqda.'
+                        : 'Saqlangan baho va fikrlar yuklanmoqda.',
+                    _controller.isRemote
+                        ? 'Loading assignments and submissions from the server.'
+                        : 'Loading saved grades and feedback.',
                   ),
                 )
               : _controller.restoreError != null
@@ -114,60 +119,64 @@ class _AssignmentsScreenState extends State<AssignmentsScreen> {
                   retryLabel: l.text('Qayta urinish', 'Try again'),
                   onRetry: _controller.retryRestore,
                 )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
-                  children: [
-                    SegmentedButton<_SubmissionFilter>(
-                      segments: [
-                        ButtonSegment(
-                          value: _SubmissionFilter.all,
-                          label: Text(l.text('Barchasi', 'All')),
-                        ),
-                        ButtonSegment(
-                          value: _SubmissionFilter.needsFeedback,
-                          label: Text(l.text('Fikr kerak', 'Needs feedback')),
-                        ),
-                        ButtonSegment(
-                          value: _SubmissionFilter.collecting,
-                          label: Text(l.text('Jarayonda', 'Collecting')),
-                        ),
-                        ButtonSegment(
-                          value: _SubmissionFilter.complete,
-                          label: Text(l.text('Yakun', 'Complete')),
-                        ),
-                      ],
-                      selected: {_filter},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (selection) =>
-                          setState(() => _filter = selection.first),
-                    ),
-                    const SizedBox(height: 14),
-                    if (visible.isEmpty)
-                      SfEmptyState(
-                        title: l.text(
-                          'Bu holatda topshiriq yo‘q',
-                          'No assignments in this state',
-                        ),
-                        message: l.text(
-                          'Boshqa filtrni tanlang.',
-                          'Choose another filter.',
-                        ),
-                        compact: true,
-                      )
-                    else
-                      for (final item in visible) ...[
-                        _AssignmentCard(
-                          assignment: item,
-                          progress: _controller.progressFor(item.id),
-                          submitted: _controller.submittedCount(item.id),
-                          total: _controller.submissionsFor(item.id).length,
-                          averageGrade: _controller.averageGrade(item.id),
-                          canOpen: canTeach,
-                          onOpen: () => _openGradebook(context, item.id),
-                        ),
-                        const SizedBox(height: 9),
-                      ],
-                  ],
+              : RefreshIndicator.adaptive(
+                  onRefresh: _controller.refresh,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(18, 12, 18, 26),
+                    children: [
+                      SegmentedButton<_SubmissionFilter>(
+                        segments: [
+                          ButtonSegment(
+                            value: _SubmissionFilter.all,
+                            label: Text(l.text('Barchasi', 'All')),
+                          ),
+                          ButtonSegment(
+                            value: _SubmissionFilter.needsFeedback,
+                            label: Text(l.text('Fikr kerak', 'Needs feedback')),
+                          ),
+                          ButtonSegment(
+                            value: _SubmissionFilter.collecting,
+                            label: Text(l.text('Jarayonda', 'Collecting')),
+                          ),
+                          ButtonSegment(
+                            value: _SubmissionFilter.complete,
+                            label: Text(l.text('Yakun', 'Complete')),
+                          ),
+                        ],
+                        selected: {_filter},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (selection) =>
+                            setState(() => _filter = selection.first),
+                      ),
+                      const SizedBox(height: 14),
+                      if (visible.isEmpty)
+                        SfEmptyState(
+                          title: l.text(
+                            'Bu holatda topshiriq yo‘q',
+                            'No assignments in this state',
+                          ),
+                          message: l.text(
+                            'Boshqa filtrni tanlang.',
+                            'Choose another filter.',
+                          ),
+                          compact: true,
+                        )
+                      else
+                        for (final item in visible) ...[
+                          _AssignmentCard(
+                            assignment: item,
+                            progress: _controller.progressFor(item.id),
+                            submitted: _controller.submittedCount(item.id),
+                            total: _controller.submissionsFor(item.id).length,
+                            averageGrade: _controller.averageGrade(item.id),
+                            canOpen: canTeach,
+                            onOpen: () => _openGradebook(context, item.id),
+                          ),
+                          const SizedBox(height: 9),
+                        ],
+                    ],
+                  ),
                 ),
           bottom:
               canTeach &&

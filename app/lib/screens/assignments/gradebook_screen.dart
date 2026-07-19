@@ -38,6 +38,7 @@ class _GradebookScreenState extends State<GradebookScreen> {
     final app = AppScope.maybeOf(context);
     _controller.initialize(
       ownerId: app?.session?.userId ?? _controller.ownerId ?? 'demo-teacher',
+      api: app?.backendApi,
     );
   }
 
@@ -266,7 +267,8 @@ class _GradebookScreenState extends State<GradebookScreen> {
                           ),
                         ),
                         if (submission.status ==
-                            AssignmentSubmissionStatus.notSubmitted)
+                                AssignmentSubmissionStatus.notSubmitted &&
+                            _controller.supportsReminders)
                           submission.reminderSentAt != null
                               ? IconButton(
                                   tooltip: l.text(

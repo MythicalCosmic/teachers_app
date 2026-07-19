@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_app_bar.dart';
+import '../../widgets/sf_adaptive_dialog.dart';
 import '../../widgets/sf_avatar.dart';
 import '../../widgets/sf_button.dart';
 import '../../widgets/sf_icons.dart';
@@ -214,30 +215,16 @@ class _GroupAttendanceCaptureScreenState
     final group = _store.group(widget.groupId);
     final draft = _store.beginAttendance(widget.groupId);
     if (!draft.isComplete || _submitting) return;
-    final approved =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(context.gt('confirm_save')),
-            content: Text(
-              context.gt(
-                'confirm_save_body',
-                values: {'group': group.name, 'count': draft.statuses.length},
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(context.gt('review')),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(context.gt('save')),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    final approved = await showSfConfirmDialog(
+      context,
+      title: context.gt('confirm_save'),
+      message: context.gt(
+        'confirm_save_body',
+        values: {'group': group.name, 'count': draft.statuses.length},
+      ),
+      cancelLabel: context.gt('review'),
+      confirmLabel: context.gt('save'),
+    );
     if (!approved || !mounted) return;
     setState(() => _submitting = true);
     await Future<void>.delayed(const Duration(milliseconds: 280));

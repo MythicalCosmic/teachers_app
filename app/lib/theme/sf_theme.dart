@@ -54,10 +54,14 @@ class SfTheme extends InheritedWidget {
       ? Duration.zero
       : Duration(microseconds: (base.inMicroseconds * motionIntensity).round());
 
+  /// Whether the selected visual language should build real blur surfaces.
+  ///
+  /// [liquidGlass] is the global performance/accessibility switch; choosing a
+  /// glass style no longer silently bypasses it.
   bool get usesGlass =>
-      liquidGlass ||
-      visualStyle == AppVisualStyle.glassmorphism ||
-      visualStyle == AppVisualStyle.liquidGlass;
+      liquidGlass &&
+      (visualStyle == AppVisualStyle.glassmorphism ||
+          visualStyle == AppVisualStyle.liquidGlass);
 
   @override
   bool updateShouldNotify(SfTheme oldWidget) =>

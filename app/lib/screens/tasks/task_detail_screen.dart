@@ -79,6 +79,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
 
     final c = SfTheme.colorsOf(context);
     final canUpdate = app.can(StaffCapability.updateOwnTasks);
+    final canEditServerDetails = canUpdate && !app.isProduction;
     final progress = task.checklist.isEmpty
         ? 0.0
         : task.completedSteps / task.checklist.length;
@@ -136,6 +137,25 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
         children: [
           _PageCover(task: task),
+          if (app.isProduction) ...[
+            const SizedBox(height: 12),
+            SfHintCard(
+              compact: true,
+              tone: SfHintTone.info,
+              title: _copy(
+                context,
+                uz: 'Server vazifasi',
+                ru: 'Серверная задача',
+                en: 'Server task',
+              ),
+              message: _copy(
+                context,
+                uz: 'Holat server bilan sinxronlanadi. Teglar, qadamlar, sevimlilar va izohlar shu qurilmadagi shaxsiy tartibdir.',
+                ru: 'Статус синхронизируется с сервером. Теги, шаги, избранное и заметки — личная организация на этом устройстве.',
+                en: 'Status syncs with the server. Tags, checklist items, favorites, and notes are personal organization on this device.',
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           AnimatedCrossFade(
             duration: SfTheme.of(
@@ -146,7 +166,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                 : CrossFadeState.showFirst,
             firstChild: _ReadPageHeader(
               task: task,
-              canEdit: canUpdate,
+              canEdit: canEditServerDetails,
               onEdit: () => setState(() => _editing = true),
             ),
             secondChild: _EditPageHeader(
@@ -197,7 +217,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                   ),
                   value: _priorityLabel(context, task.priority),
                   color: _priorityColor(c, task.priority),
-                  onTap: canUpdate ? () => _pickPriority(task) : null,
+                  onTap: canEditServerDetails
+                      ? () => _pickPriority(task)
+                      : null,
                 ),
                 const Divider(height: 1),
                 _PropertyRow(
@@ -214,7 +236,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                           task.dueAt.isBefore(DateTime.now())
                       ? c.danger
                       : c.ink2,
-                  onTap: canUpdate ? () => _pickDueDate(task) : null,
+                  onTap: canEditServerDetails ? () => _pickDueDate(task) : null,
                 ),
                 const Divider(height: 1),
                 _PropertyRow(
@@ -948,6 +970,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
   }
 
   Future<void> _moreActions(StaffTask task) async {
+    final app = AppScope.of(context);
     final action = await showSfActionSheet<_DetailAction>(
       context,
       title: task.title,
@@ -962,26 +985,27 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
           value: _DetailAction.duplicate,
           icon: Icons.copy_all_outlined,
         ),
-        SfSheetAction(
-          label: _copy(
-            context,
-            uz: 'Sahifani tahrirlash',
-            ru: 'Изменить страницу',
-            en: 'Edit page',
+        if (!app.isProduction) ...[
+          SfSheetAction(
+            label: _copy(
+              context,
+              uz: 'Sahifani tahrirlash',
+              ru: 'Изменить страницу',
+              en: 'Edit page',
+            ),
+            value: _DetailAction.edit,
+            icon: Icons.edit_outlined,
           ),
-          value: _DetailAction.edit,
-          icon: Icons.edit_outlined,
-        ),
-        SfSheetAction(
-          label: _copy(context, uz: 'O‘chirish', ru: 'Удалить', en: 'Delete'),
-          value: _DetailAction.delete,
-          icon: Icons.delete_outline_rounded,
-          destructive: true,
-        ),
+          SfSheetAction(
+            label: _copy(context, uz: 'O‘chirish', ru: 'Удалить', en: 'Delete'),
+            value: _DetailAction.delete,
+            icon: Icons.delete_outline_rounded,
+            destructive: true,
+          ),
+        ],
       ],
     );
     if (!mounted || action == null) return;
-    final app = AppScope.of(context);
     switch (action) {
       case _DetailAction.duplicate:
         final created = await app.createTask(

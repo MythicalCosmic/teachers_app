@@ -76,35 +76,56 @@ void main() {
     expect(find.text('Quadratic reflection guide'), findsOneWidget);
   });
 
-  testWidgets('password recovery prepares a local request without fake send', (
+  testWidgets('password recovery uses request and confirmation contracts', (
     tester,
   ) async {
-    SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(_theme(const ForgotPasswordScreen()));
+    String? requestedIdentifier;
+    String? requestedType;
+    String? confirmedCode;
+    await tester.pumpWidget(
+      _theme(
+        ForgotPasswordScreen(
+          requestReset: (identifier, accountType) async {
+            requestedIdentifier = identifier;
+            requestedType = accountType;
+          },
+          confirmReset: (identifier, accountType, code, newPassword) async {
+            confirmedCode = code;
+            expect(identifier, requestedIdentifier);
+            expect(accountType, requestedType);
+            expect(newPassword, 'StrongPass2026!');
+          },
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('verified administrator channel'),
-      findsOneWidget,
+    await tester.enterText(
+      find.byKey(const ValueKey('reset-identifier')),
+      'teacher@starforge.uz',
     );
-    await tester.enterText(find.byType(TextFormField), 'nigora.karimova');
-    await tester.tap(find.text('Prepare request'));
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
+    await tester.tap(find.text('Send code'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Request prepared'), findsOneWidget);
-    expect(
-      find.textContaining('not connected to the identity server'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('was sent'), findsNothing);
-    expect(find.text('Copy request again'), findsOneWidget);
+    expect(requestedIdentifier, 'teacher@starforge.uz');
+    expect(requestedType, 'staff');
+    expect(find.byKey(const ValueKey('reset-verify')), findsOneWidget);
 
-    final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString('starforge.pending_recovery_request.v1');
-    expect(raw, isNotNull);
-    expect(raw, contains('nigora.karimova'));
+    await tester.enterText(find.byKey(const ValueKey('reset-code')), '123456');
+    await tester.enterText(
+      find.byKey(const ValueKey('reset-new-password')),
+      'StrongPass2026!',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('reset-confirm-password')),
+      'StrongPass2026!',
+    );
+    await tester.ensureVisible(find.text('Update password'));
+    await tester.tap(find.text('Update password'));
+    await tester.pumpAndSettle();
+
+    expect(confirmedCode, '123456');
+    expect(find.byKey(const ValueKey('reset-success')), findsOneWidget);
+    expect(find.text('Password updated'), findsOneWidget);
   });
 }

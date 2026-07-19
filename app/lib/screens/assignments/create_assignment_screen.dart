@@ -43,8 +43,9 @@ class _CreateAssignmentScreenState extends State<CreateAssignmentScreen> {
     final app = AppScope.maybeOf(context);
     _controller.initialize(
       ownerId: app?.session?.userId ?? _controller.ownerId ?? 'demo-teacher',
+      api: app?.backendApi,
     );
-    _cohortId ??= _controller.availableCohorts.first.id;
+    _cohortId ??= _controller.availableCohorts.firstOrNull?.id;
   }
 
   @override
@@ -75,9 +76,17 @@ class _CreateAssignmentScreenState extends State<CreateAssignmentScreen> {
     final l = AssignmentL10n.of(context);
     if (_controller.isRestoring || _controller.restoreError != null) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final cohort = _controller.availableCohorts.firstWhere(
-      (item) => item.id == _cohortId,
-    );
+    final cohort = _controller.availableCohorts
+        .where((item) => item.id == _cohortId)
+        .firstOrNull;
+    if (cohort == null) {
+      SfToast.show(
+        context,
+        message: l.text('Avval guruhni tanlang.', 'Choose a group first.'),
+        tone: SfToastTone.warning,
+      );
+      return;
+    }
     final confirmed = await showSfConfirmDialog(
       context,
       title: l.text('Topshiriq e’lon qilinsinmi?', 'Publish assignment?'),
@@ -166,6 +175,20 @@ class _CreateAssignmentScreenState extends State<CreateAssignmentScreen> {
                 message: '${_controller.restoreError}',
                 retryLabel: l.text('Qayta urinish', 'Try again'),
                 onRetry: _controller.retryRestore,
+              )
+            : _controller.availableCohorts.isEmpty
+            ? SfEmptyState(
+                title: l.text(
+                  'Topshiriq uchun guruh yo‘q',
+                  'No group is available',
+                ),
+                message: l.text(
+                  'Bu hisobga biriktirilgan faol guruh topilmadi.',
+                  'No active group is assigned to this account.',
+                ),
+                icon: Icons.groups_2_outlined,
+                actionLabel: l.text('Yangilash', 'Refresh'),
+                onAction: _controller.refresh,
               )
             : Form(
                 key: _formKey,
@@ -289,7 +312,10 @@ class _CreateAssignmentScreenState extends State<CreateAssignmentScreen> {
                   ],
                 ),
               ),
-        bottom: _controller.isRestoring || _controller.restoreError != null
+        bottom:
+            _controller.isRestoring ||
+                _controller.restoreError != null ||
+                _controller.availableCohorts.isEmpty
             ? null
             : Container(
                 padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
