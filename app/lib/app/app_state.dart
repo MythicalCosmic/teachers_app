@@ -1546,10 +1546,24 @@ final class AppState extends ChangeNotifier {
         code: 'staff_app_only',
       );
     }
-    const blockedFragments = {'ceo', 'owner', 'director', 'manager'};
-    if (slugs.any(
-      (slug) => blockedFragments.any((blocked) => slug.contains(blocked)),
-    )) {
+    const blockedFragments = {
+      'ceo',
+      'owner',
+      'director',
+      'manager',
+      'head_of_dept',
+      'head-of-dept',
+    };
+    if (slugs.any((slug) {
+      final normalized = slug.replaceAll('-', '_');
+      final hasHodToken =
+          normalized == 'hod' ||
+          normalized.startsWith('hod_') ||
+          normalized.endsWith('_hod') ||
+          normalized.contains('_hod_');
+      return hasHodToken ||
+          blockedFragments.any((blocked) => slug.contains(blocked));
+    })) {
       throw const ApiException(
         message: 'Rahbar hisobi bu xodimlar ilovasida ishlamaydi.',
         statusCode: 403,
@@ -1604,7 +1618,9 @@ final class AppState extends ChangeNotifier {
         slug.contains('registr') ||
         slug.contains('admission') ||
         slug.contains('cashier') ||
-        slug.contains('account')) {
+        slug.contains('account') ||
+        slug.contains('finance') ||
+        slug.contains('payment')) {
       return StaffRole.reception;
     }
     return StaffRole.assistant;

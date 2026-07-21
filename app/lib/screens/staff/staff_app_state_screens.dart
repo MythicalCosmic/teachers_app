@@ -102,6 +102,8 @@ class ReceptionWorkspaceRouteScreen extends StatelessWidget {
     if (session == null) return const _SignedOutStaffSurface();
     return ReceptionWorkspaceScreen(
       role: session.role,
+      canViewLeads: state.can(StaffCapability.viewLeads),
+      canManageAdmissions: state.can(StaffCapability.manageAdmissions),
       store: store,
       onCall: onCall,
       onOpenLead: onOpenLead,

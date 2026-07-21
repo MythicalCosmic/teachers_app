@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app/app_scope.dart';
 import '../data/models.dart';
 import '../router.dart';
 import '../theme/sf_theme.dart';
@@ -32,6 +33,7 @@ class StudentProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.maybeOf(context);
     final workspace = store ?? groupWorkspaceStore;
     final group = workspace.groupForStudent(
       studentId,
@@ -76,6 +78,9 @@ class StudentProfileScreen extends StatelessWidget {
         .where((row) => row.statuses[student.id] == AttendanceStatus.late)
         .length;
     final colors = SfTheme.colorsOf(context);
+    final canMessage = app?.can(StaffCapability.useStaffMessaging) ?? true;
+    final canTakeAttendance = app?.can(StaffCapability.takeAttendance) ?? true;
+    final canIssueCards = app?.can(StaffCapability.issueCards) ?? true;
 
     return SfScaffold(
       tab: SfTab.cohort,
@@ -97,12 +102,13 @@ class StudentProfileScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          IconButton(
-            key: const ValueKey('student-message-action'),
-            tooltip: _copy(context, 'Xabar yozish', 'Написать', 'Message'),
-            onPressed: () => context.push(_messageLocation(group, student)),
-            icon: const Icon(SfIcons.chat),
-          ),
+          if (canMessage)
+            IconButton(
+              key: const ValueKey('student-message-action'),
+              tooltip: _copy(context, 'Xabar yozish', 'Написать', 'Message'),
+              onPressed: () => context.push(_messageLocation(group, student)),
+              icon: const Icon(SfIcons.chat),
+            ),
           PopupMenuButton<_StudentAction>(
             key: const ValueKey('student-more-actions'),
             tooltip: _copy(context, 'Amallar', 'Действия', 'Actions'),
@@ -121,17 +127,18 @@ class StudentProfileScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              PopupMenuItem(
-                value: _StudentAction.attendance,
-                child: Text(
-                  _copy(
-                    context,
-                    'Davomat olish',
-                    'Отметить',
-                    'Take attendance',
+              if (canTakeAttendance)
+                PopupMenuItem(
+                  value: _StudentAction.attendance,
+                  child: Text(
+                    _copy(
+                      context,
+                      'Davomat olish',
+                      'Отметить',
+                      'Take attendance',
+                    ),
                   ),
                 ),
-              ),
               PopupMenuItem(
                 value: _StudentAction.contact,
                 child: Text(
@@ -154,40 +161,44 @@ class StudentProfileScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: _QuickAction(
-                  icon: SfIcons.chat,
-                  label: _copy(context, 'Xabar', 'Сообщение', 'Message'),
-                  onPressed: () =>
-                      context.push(_messageLocation(group, student)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.how_to_reg_rounded,
-                  label: context.gt('attendance'),
-                  onPressed: () => context.push(
-                    '/attendance?cohort=${Uri.encodeQueryComponent(group.id)}',
+              if (canMessage)
+                Expanded(
+                  child: _QuickAction(
+                    icon: SfIcons.chat,
+                    label: _copy(context, 'Xabar', 'Сообщение', 'Message'),
+                    onPressed: () =>
+                        context.push(_messageLocation(group, student)),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _QuickAction(
-                  icon: Icons.star_outline_rounded,
-                  label: _copy(context, 'Karta', 'Карта', 'Card'),
-                  onPressed: () => context.push(
-                    Uri(
-                      path: '/cards/give',
-                      queryParameters: {
-                        'student': student.id,
-                        'group': group.id,
-                      },
-                    ).toString(),
+              if (canMessage && canTakeAttendance) const SizedBox(width: 8),
+              if (canTakeAttendance)
+                Expanded(
+                  child: _QuickAction(
+                    icon: Icons.how_to_reg_rounded,
+                    label: context.gt('attendance'),
+                    onPressed: () => context.push(
+                      '/attendance?cohort=${Uri.encodeQueryComponent(group.id)}',
+                    ),
                   ),
                 ),
-              ),
+              if ((canMessage || canTakeAttendance) && canIssueCards)
+                const SizedBox(width: 8),
+              if (canIssueCards)
+                Expanded(
+                  child: _QuickAction(
+                    icon: Icons.star_outline_rounded,
+                    label: _copy(context, 'Karta', 'Карта', 'Card'),
+                    onPressed: () => context.push(
+                      Uri(
+                        path: '/cards/give',
+                        queryParameters: {
+                          'student': student.id,
+                          'group': group.id,
+                        },
+                      ).toString(),
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 18),

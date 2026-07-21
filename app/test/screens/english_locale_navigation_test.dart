@@ -38,7 +38,8 @@ void main() {
 
     await tester.tap(find.text('More').last);
     await tester.pumpAndSettle();
-    expect(find.text('Workspaces'), findsOneWidget);
+    expect(find.text('Staff services'), findsOneWidget);
+    expect(find.text('Other workspaces'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
 
     final settings = find.text('Settings');

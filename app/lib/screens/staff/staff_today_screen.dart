@@ -42,6 +42,10 @@ class StaffTodayScreen extends StatelessWidget {
       role == StaffRole.methodist ||
       role == StaffRole.reception;
 
+  bool get _canViewLeads =>
+      session?.can(StaffCapability.viewLeads) ??
+      role.can(StaffCapability.viewLeads);
+
   @override
   Widget build(BuildContext context) {
     final store = refreshStore;
@@ -75,9 +79,12 @@ class StaffTodayScreen extends StatelessWidget {
           _ => 'Xodim',
         };
     final branch = session?.branchName ?? 'Yunusobod';
+    final roleLabel = role == StaffRole.reception && !_canViewLeads
+        ? 'Xodim'
+        : role.uzLabel;
 
     return StaffPageScaffold(
-      eyebrow: '${role.uzLabel} · $branch',
+      eyebrow: '$roleLabel · $branch',
       title: 'Bugun, ${displayName.split(' ').first}',
       subtitle: _subtitle,
       actions: [
@@ -98,7 +105,27 @@ class StaffTodayScreen extends StatelessWidget {
               _TodayRefreshStatus(store: refreshStore!),
               const SizedBox(height: 10),
             ],
-            _RoleHero(role: role, onOpen: onOpenPrimaryWorkspace),
+            _RoleHero(
+              role: role,
+              canViewLeads: _canViewLeads,
+              activeTasks: tasks
+                  .where((task) => task.status != TaskStatus.done)
+                  .length,
+              urgentTasks: tasks
+                  .where(
+                    (task) =>
+                        task.status != TaskStatus.done &&
+                        (task.priority == TaskPriority.high ||
+                            task.priority == TaskPriority.urgent),
+                  )
+                  .length,
+              attendanceCount: attendanceSheets.length,
+              pendingAttendance: attendanceSheets
+                  .where((sheet) => !sheet.isSubmitted)
+                  .length,
+              unreadMessages: unreadMessages,
+              onOpen: onOpenPrimaryWorkspace,
+            ),
             const SizedBox(height: 12),
             _metrics(context),
             const SizedBox(height: 14),
@@ -156,14 +183,17 @@ class StaffTodayScreen extends StatelessWidget {
       'Darsga tayyorgarlik va davomat — keraksiz shovqinsiz',
     StaffRole.methodist => 'Sifat signallari va ustozlarga amaliy yordam',
     StaffRole.reception =>
-      'Murojaatlarni o\u2018tkazib yubormang, qabul oqimini ravon tuting',
+      _canViewLeads
+          ? 'Murojaatlarni o\u2018tkazib yubormang, qabul oqimini ravon tuting'
+          : 'Ruxsat etilgan xizmatlar va kundalik ishlar bir joyda',
     _ => '',
   };
 
   String get _hintTitle => switch (role) {
     StaffRole.assistant => 'Darsdan 10 daqiqa oldin',
     StaffRole.methodist => 'Avval kontekst, keyin xulosa',
-    StaffRole.reception => 'Tez javob — qulay boshlanish',
+    StaffRole.reception =>
+      _canViewLeads ? 'Tez javob — qulay boshlanish' : 'Muhim ishlar bir joyda',
     _ => '',
   };
 
@@ -173,14 +203,17 @@ class StaffTodayScreen extends StatelessWidget {
     StaffRole.methodist =>
       'Signalni dars va guruh holati bilan tekshiring. Bu rolda moliyaviy ma\u2018lumotlar yashirilgan.',
     StaffRole.reception =>
-      'Yangi lidga 15 daqiqa ichida qo\u2018ng\u2018iroq qilib, keyingi qadamni belgilang.',
+      _canViewLeads
+          ? 'Yangi lidga 15 daqiqa ichida qo\u2018ng\u2018iroq qilib, keyingi qadamni belgilang.'
+          : 'Hisobingizga ochiq xizmatlarni tanlang va navbatdagi vazifani davom ettiring.',
     _ => '',
   };
 
   IconData get _hintIcon => switch (role) {
     StaffRole.assistant => SfIcons.cal,
     StaffRole.methodist => Icons.school_outlined,
-    StaffRole.reception => Icons.phone_in_talk_outlined,
+    StaffRole.reception =>
+      _canViewLeads ? Icons.phone_in_talk_outlined : Icons.grid_view_rounded,
     _ => SfIcons.check,
   };
 
@@ -195,7 +228,8 @@ class StaffTodayScreen extends StatelessWidget {
         .where(
           (task) =>
               task.status != TaskStatus.done &&
-              task.priority == TaskPriority.urgent,
+              (task.priority == TaskPriority.high ||
+                  task.priority == TaskPriority.urgent),
         )
         .length;
     final metrics = switch (role) {
@@ -226,11 +260,15 @@ class StaffTodayScreen extends StatelessWidget {
       ],
       StaffRole.methodist => [
         StaffMetricCard(
-          label: 'Sifat signali',
-          value: '${(urgentTasks + 2).clamp(0, 99)}',
-          detail: 'Ko\u2018rib chiqish kerak',
+          label: 'Ustuvor vazifa',
+          value: '$urgentTasks',
+          detail: urgentTasks == 0
+              ? 'Hammasi joyida'
+              : 'Ko\u2018rib chiqish kerak',
           icon: SfIcons.flag,
-          tone: StaffMetricTone.warning,
+          tone: urgentTasks == 0
+              ? StaffMetricTone.success
+              : StaffMetricTone.warning,
         ),
         StaffMetricCard(
           label: 'Kuzatuv vazifasi',
@@ -239,35 +277,49 @@ class StaffTodayScreen extends StatelessWidget {
           icon: SfIcons.doc,
           tone: StaffMetricTone.primary,
         ),
-        const StaffMetricCard(
-          label: 'Barqaror guruh',
-          value: '24',
-          detail: 'Ijobiy yo\u2018nalishda',
-          icon: Icons.trending_up,
-          tone: StaffMetricTone.success,
+        StaffMetricCard(
+          label: 'Yangi xabar',
+          value: '$unreadMessages',
+          detail: unreadMessages == 0
+              ? 'Xabarlar o\u2018qilgan'
+              : 'Javob kutmoqda',
+          icon: SfIcons.chat,
+          tone: unreadMessages == 0
+              ? StaffMetricTone.success
+              : StaffMetricTone.accent,
         ),
       ],
       StaffRole.reception => [
-        const StaffMetricCard(
-          label: 'Yangi lid',
-          value: '6',
-          detail: 'Bugun javob kutmoqda',
-          icon: SfIcons.plus,
-          tone: StaffMetricTone.danger,
+        StaffMetricCard(
+          label: 'Faol vazifa',
+          value: '$activeTasks',
+          detail: activeTasks == 0 ? 'Navbat toza' : 'Ish navbatida',
+          icon: SfIcons.doc,
+          tone: activeTasks == 0
+              ? StaffMetricTone.success
+              : StaffMetricTone.primary,
         ),
-        const StaffMetricCard(
-          label: 'Sinov darsi',
-          value: '4',
-          detail: 'Vaqti belgilangan',
-          icon: SfIcons.cal,
-          tone: StaffMetricTone.primary,
+        StaffMetricCard(
+          label: 'Ustuvor vazifa',
+          value: '$urgentTasks',
+          detail: urgentTasks == 0
+              ? 'Shoshilinch ish yo\u2018q'
+              : 'Tez javob kerak',
+          icon: SfIcons.flag,
+          tone: urgentTasks == 0
+              ? StaffMetricTone.success
+              : StaffMetricTone.danger,
         ),
-        const StaffMetricCard(
-          label: 'Qabulga tayyor',
-          value: '3',
-          detail: 'Guruh tanlash kerak',
-          icon: SfIcons.check,
-          tone: StaffMetricTone.accent,
+        StaffMetricCard(
+          label: 'Yangi xabar',
+          value: '$unreadMessages',
+          detail: unreadMessages == 0
+              ? 'Xabarlar o\u2018qilgan'
+              : 'Javob kutmoqda',
+          icon: SfIcons.chat,
+          tone: unreadMessages == 0
+              ? StaffMetricTone.success
+              : StaffMetricTone.accent,
         ),
       ],
       _ => <Widget>[],
@@ -337,9 +389,24 @@ String _todayText(
 }) => Localizations.maybeLocaleOf(context)?.languageCode == 'uz' ? uz : en;
 
 class _RoleHero extends StatelessWidget {
-  const _RoleHero({required this.role, this.onOpen});
+  const _RoleHero({
+    required this.role,
+    required this.canViewLeads,
+    required this.activeTasks,
+    required this.urgentTasks,
+    required this.attendanceCount,
+    required this.pendingAttendance,
+    required this.unreadMessages,
+    this.onOpen,
+  });
 
   final StaffRole role;
+  final bool canViewLeads;
+  final int activeTasks;
+  final int urgentTasks;
+  final int attendanceCount;
+  final int pendingAttendance;
+  final int unreadMessages;
   final VoidCallback? onOpen;
 
   @override
@@ -347,25 +414,42 @@ class _RoleHero extends StatelessWidget {
     final c = SfTheme.colorsOf(context);
     final (eyebrow, title, subtitle, action, icon) = switch (role) {
       StaffRole.assistant => (
-        'KEYINGI · 14 DAQIQA',
-        'Algebra · 9-B',
-        '09:00–09:45 · 304-xona · 24 o\u2018quvchi',
-        'Davomatni ochish',
-        SfIcons.check,
+        pendingAttendance == 0 ? 'BUGUN TAYYOR' : 'DAVOMAT KUTMOQDA',
+        pendingAttendance == 0
+            ? 'Bugungi ishlar nazoratda'
+            : '$pendingAttendance ta davomat varaqasi',
+        attendanceCount == 0
+            ? 'Hozircha biriktirilgan dars yo\u2018q'
+            : '$attendanceCount ta biriktirilgan dars · $activeTasks ta faol vazifa',
+        pendingAttendance == 0 ? 'Guruhlarni ochish' : 'Davomatni ochish',
+        pendingAttendance == 0 ? SfIcons.cohort : SfIcons.check,
       ),
       StaffRole.methodist => (
-        'BUGUNGI E\u2018TIBOR',
-        '2 ta sifat signali',
-        'Ustoz bilan suhbat uchun kontekst tayyor',
+        urgentTasks == 0 ? 'BUGUN NAZORATDA' : 'BUGUNGI E\u2018TIBOR',
+        urgentTasks == 0
+            ? 'Ustuvor signal yo\u2018q'
+            : '$urgentTasks ta ustuvor vazifa',
+        activeTasks == 0
+            ? 'Yangi vazifa kelganda shu yerda ko\u2018rinadi'
+            : '$activeTasks ta faol vazifa · $unreadMessages ta yangi xabar',
         'Sifat maydoni',
         Icons.school_outlined,
       ),
-      StaffRole.reception => (
-        'BIRINCHI NAVBATDA',
-        '6 lidga javob kerak',
-        'Eng eski murojaat · 18 daqiqa oldin',
+      StaffRole.reception when canViewLeads => (
+        urgentTasks == 0 ? 'QABUL ISH MAYDONI' : 'BIRINCHI NAVBATDA',
+        urgentTasks == 0 ? 'Navbat tartibda' : '$urgentTasks ta ustuvor vazifa',
+        '$activeTasks ta faol vazifa · $unreadMessages ta yangi xabar',
         'Lidlarni ochish',
         Icons.phone_in_talk_outlined,
+      ),
+      StaffRole.reception => (
+        urgentTasks == 0 ? 'XODIM XIZMATLARI' : 'BIRINCHI NAVBATDA',
+        urgentTasks == 0
+            ? 'Ruxsat etilgan vositalar tayyor'
+            : '$urgentTasks ta ustuvor vazifa',
+        '$activeTasks ta faol vazifa · $unreadMessages ta yangi xabar',
+        'Xizmatlarni ochish',
+        Icons.grid_view_rounded,
       ),
       _ => ('BUGUN', 'Ish maydoni', '', 'Ochish', SfIcons.arrowR),
     };

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import '../../app/app_scope.dart';
 import '../../data/api/backend_learning_api.dart';
 import '../../data/api/backend_models.dart';
+import '../../data/api/backend_services_api.dart';
+import '../../data/api/starforge_api.dart';
 import '../../data/models.dart';
 import '../../features/learning/learning_workspace_controller.dart';
 import '../../theme/sf_theme.dart';
@@ -140,6 +143,8 @@ class ProductionTodayScreen extends StatefulWidget {
 class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
   late DateTime _selectedDate;
   late final int _motivationIndex;
+  StarforgeApi? _aiBackendIdentity;
+  _HomeAiAvailability _aiAvailability = _HomeAiAvailability.hidden;
 
   @override
   void initState() {
@@ -159,8 +164,62 @@ class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
     }
   }
 
-  Future<void> _refresh() =>
-      widget.controller.refreshToday(_selectedDate, force: true);
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = AppScope.of(context);
+    final backend = app.backendApi;
+    final mayUseAi = app.can(StaffCapability.useAi);
+    if (!mayUseAi || backend == null) {
+      _aiBackendIdentity = backend;
+      _aiAvailability = _HomeAiAvailability.hidden;
+      return;
+    }
+    if (identical(_aiBackendIdentity, backend)) return;
+    _aiBackendIdentity = backend;
+    _aiAvailability = _HomeAiAvailability.loading;
+    unawaited(_probeAi(backend));
+  }
+
+  Future<void> _refresh() async {
+    final app = AppScope.of(context);
+    final backend = app.backendApi;
+    await Future.wait<void>([
+      widget.controller.refreshToday(_selectedDate, force: true),
+      if (app.can(StaffCapability.createTasks) ||
+          app.can(StaffCapability.updateOwnTasks))
+        app.refreshTasks(),
+      if (app.can(StaffCapability.answerSurveys)) app.refreshForms(),
+      if (backend != null && app.can(StaffCapability.useAi)) _probeAi(backend),
+    ]);
+  }
+
+  Future<void> _probeAi(
+    StarforgeApi backend, {
+    bool showLoading = false,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() => _aiAvailability = _HomeAiAvailability.loading);
+    }
+    try {
+      final result = await BackendServicesApi.fromApi(backend).aiBudget();
+      if (!mounted || !identical(_aiBackendIdentity, backend)) return;
+      setState(() {
+        if (result.isUnavailable) {
+          _aiAvailability = result.error?.statusCode == 403
+              ? _HomeAiAvailability.hidden
+              : _HomeAiAvailability.unavailable;
+          return;
+        }
+        _aiAvailability = result.value?.isEnabled == true
+            ? _HomeAiAvailability.available
+            : _HomeAiAvailability.unavailable;
+      });
+    } on Object {
+      if (!mounted || !identical(_aiBackendIdentity, backend)) return;
+      setState(() => _aiAvailability = _HomeAiAvailability.unavailable);
+    }
+  }
 
   void _selectDate(DateTime date) {
     final normalized = DateUtils.dateOnly(date);
@@ -186,6 +245,14 @@ class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
         final dashboardResource = widget.controller.dashboard;
         final dashboard = dashboardResource.value;
         final dashboardLoading = dashboardResource.isLoading;
+        final showTaskService =
+            app.can(StaffCapability.createTasks) ||
+            app.can(StaffCapability.updateOwnTasks);
+        final showFormsService = app.can(StaffCapability.answerSurveys);
+        final showHomeServices =
+            _aiAvailability != _HomeAiAvailability.hidden ||
+            showTaskService ||
+            showFormsService;
         final lessons = [...?lessonResource.value]
           ..sort((a, b) => _lessonTime(a).compareTo(_lessonTime(b)));
         final blocking = _blockingState(
@@ -260,6 +327,50 @@ class _ProductionTodayScreenState extends State<ProductionTodayScreen> {
                     _TodayMotivationCard(
                       motivation: _todayMotivations[_motivationIndex],
                     ),
+                    if (showHomeServices) ...[
+                      const SizedBox(height: 18),
+                      _SectionLabel(
+                        title: _text(
+                          context,
+                          uz: 'Aqlli ish maydoni',
+                          ru: 'Умное рабочее пространство',
+                          en: 'Smart workspace',
+                        ),
+                        subtitle: _text(
+                          context,
+                          uz: 'Sizga ruxsat berilgan xizmatlar',
+                          ru: 'Сервисы, доступные вашей роли',
+                          en: 'Services available to your role',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _HomeServicesPanel(
+                        aiAvailability: _aiAvailability,
+                        taskLoading: app.tasksLoading,
+                        taskAvailable: app.tasksAvailable,
+                        taskCount: app.tasks
+                            .where((task) => task.status != TaskStatus.done)
+                            .length,
+                        formsLoading: app.formsLoading,
+                        formsAvailable: app.formsAvailable,
+                        formCount: app.surveys
+                            .where((survey) => !survey.isSubmitted)
+                            .length,
+                        showTasks: showTaskService,
+                        showForms: showFormsService,
+                        onOpenAi: () => context.push('/ai'),
+                        onRetryAi: () {
+                          final backend = app.backendApi;
+                          if (backend != null) {
+                            unawaited(_probeAi(backend, showLoading: true));
+                          }
+                        },
+                        onOpenTasks: () => context.push('/tasks'),
+                        onRetryTasks: () => unawaited(app.refreshTasks()),
+                        onOpenForms: () => context.push('/surveys'),
+                        onRetryForms: () => unawaited(app.refreshForms()),
+                      ),
+                    ],
                     if (dashboardResource.isUnavailable ||
                         dashboardResource.isFailure) ...[
                       const SizedBox(height: 14),
@@ -820,11 +931,13 @@ class ProductionCohortDetailScreen extends StatefulWidget {
     super.key,
     required this.controller,
     required this.groupId,
+    required this.canTakeAttendance,
     this.initialTab,
   });
 
   final LearningWorkspaceController controller;
   final String? groupId;
+  final bool canTakeAttendance;
   final int? initialTab;
 
   @override
@@ -1021,8 +1134,9 @@ class _ProductionCohortDetailScreenState
                   cohort: cohort,
                   members: members.length,
                   attendance: state.attendance.value?.rate,
-                  onAttendance: () =>
-                      context.push('/attendance?cohort=$cohortId'),
+                  onAttendance: widget.canTakeAttendance
+                      ? () => context.push('/attendance?cohort=$cohortId')
+                      : null,
                 ),
                 const SizedBox(height: 15),
                 _CohortTabs(
@@ -1055,8 +1169,9 @@ class _ProductionCohortDetailScreenState
                       lessonId: _lessonFilter,
                       onLessonChanged: (value) =>
                           setState(() => _lessonFilter = value),
-                      onTakeAttendance: () =>
-                          context.push('/attendance?cohort=$cohortId'),
+                      onTakeAttendance: widget.canTakeAttendance
+                          ? () => context.push('/attendance?cohort=$cohortId')
+                          : null,
                     ),
                     _ => _CohortSchedule(
                       key: const ValueKey('production-cohort-schedule'),
@@ -1771,6 +1886,601 @@ class _TodayMotivationCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _HomeAiAvailability { hidden, loading, available, unavailable }
+
+class _HomeServicesPanel extends StatelessWidget {
+  const _HomeServicesPanel({
+    required this.aiAvailability,
+    required this.taskLoading,
+    required this.taskAvailable,
+    required this.taskCount,
+    required this.formsLoading,
+    required this.formsAvailable,
+    required this.formCount,
+    required this.showTasks,
+    required this.showForms,
+    required this.onOpenAi,
+    required this.onRetryAi,
+    required this.onOpenTasks,
+    required this.onRetryTasks,
+    required this.onOpenForms,
+    required this.onRetryForms,
+  });
+
+  final _HomeAiAvailability aiAvailability;
+  final bool taskLoading;
+  final bool taskAvailable;
+  final int taskCount;
+  final bool formsLoading;
+  final bool formsAvailable;
+  final int formCount;
+  final bool showTasks;
+  final bool showForms;
+  final VoidCallback onOpenAi;
+  final VoidCallback onRetryAi;
+  final VoidCallback onOpenTasks;
+  final VoidCallback onRetryTasks;
+  final VoidCallback onOpenForms;
+  final VoidCallback onRetryForms;
+
+  @override
+  Widget build(BuildContext context) {
+    final workflows = <Widget>[
+      if (showTasks)
+        _WorkflowServiceCard(
+          key: const ValueKey('production-home-tasks-service'),
+          icon: Icons.task_alt_rounded,
+          title: _text(context, uz: 'Vazifalar', ru: 'Задачи', en: 'Tasks'),
+          value: '$taskCount',
+          detail: taskCount == 0
+              ? _text(
+                  context,
+                  uz: 'Navbat toza',
+                  ru: 'Очередь пуста',
+                  en: 'Queue is clear',
+                )
+              : _text(
+                  context,
+                  uz: 'faol ish',
+                  ru: 'активных',
+                  en: 'active items',
+                ),
+          loading: taskLoading,
+          unavailable: !taskAvailable,
+          onOpen: onOpenTasks,
+          onRetry: onRetryTasks,
+        ),
+      if (showForms)
+        _WorkflowServiceCard(
+          key: const ValueKey('production-home-forms-service'),
+          icon: Icons.fact_check_outlined,
+          title: _text(
+            context,
+            uz: 'So‘rovnomalar',
+            ru: 'Опросы',
+            en: 'Surveys',
+          ),
+          value: '$formCount',
+          detail: formCount == 0
+              ? _text(
+                  context,
+                  uz: 'Hammasi bajarilgan',
+                  ru: 'Всё выполнено',
+                  en: 'All caught up',
+                )
+              : _text(
+                  context,
+                  uz: 'javob kutmoqda',
+                  ru: 'ждут ответа',
+                  en: 'need a response',
+                ),
+          loading: formsLoading,
+          unavailable: !formsAvailable,
+          onOpen: onOpenForms,
+          onRetry: onRetryForms,
+        ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (aiAvailability != _HomeAiAvailability.hidden) ...[
+          _AiHomeServiceCard(
+            availability: aiAvailability,
+            onOpen: onOpenAi,
+            onRetry: onRetryAi,
+          ),
+          if (workflows.isNotEmpty) const SizedBox(height: 10),
+        ],
+        if (workflows.length == 1) workflows.single,
+        if (workflows.length > 1)
+          SizedBox(
+            height: 150,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var index = 0; index < workflows.length; index++) ...[
+                  if (index > 0) const SizedBox(width: 9),
+                  Expanded(child: workflows[index]),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _AiHomeServiceCard extends StatelessWidget {
+  const _AiHomeServiceCard({
+    required this.availability,
+    required this.onOpen,
+    required this.onRetry,
+  });
+
+  final _HomeAiAvailability availability;
+  final VoidCallback onOpen;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (availability == _HomeAiAvailability.loading) {
+      return const _ServiceSkeletonCard(
+        key: ValueKey('production-home-ai-loading'),
+        tall: true,
+      );
+    }
+    final unavailable = availability == _HomeAiAvailability.unavailable;
+    final preview = _AiHomeServicePreview(enabled: !unavailable);
+    return Semantics(
+      container: true,
+      button: true,
+      label: unavailable
+          ? _text(
+              context,
+              uz: 'StarForge AI vaqtincha ishlamayapti. Qayta urinish.',
+              ru: 'StarForge AI временно недоступен. Повторить.',
+              en: 'StarForge AI is temporarily unavailable. Try again.',
+            )
+          : _text(
+              context,
+              uz: 'StarForge AI ish maydonini ochish',
+              ru: 'Открыть рабочее пространство StarForge AI',
+              en: 'Open the StarForge AI workspace',
+            ),
+      child: SfPressable(
+        key: const ValueKey('production-home-ai-service'),
+        onPressed: unavailable ? onRetry : onOpen,
+        haptic: true,
+        borderRadius: BorderRadius.circular(23),
+        child: SizedBox(
+          height: 148,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(23),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (unavailable)
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 4.5, sigmaY: 4.5),
+                    child: Opacity(opacity: .44, child: preview),
+                  )
+                else
+                  preview,
+                if (unavailable)
+                  _ServiceUnavailableOverlay(
+                    key: const ValueKey('production-home-ai-unavailable'),
+                    title: _text(
+                      context,
+                      uz: 'AI vaqtincha o‘chiq',
+                      ru: 'AI временно отключён',
+                      en: 'AI is temporarily off',
+                    ),
+                    message: _text(
+                      context,
+                      uz: 'Keyinroq yoki hozir qayta urinib ko‘ring',
+                      ru: 'Попробуйте снова сейчас или чуть позже',
+                      en: 'Try again now or a little later',
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiHomeServicePreview extends StatelessWidget {
+  const _AiHomeServicePreview({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final onAi = ThemeData.estimateBrightnessForColor(c.ai) == Brightness.dark
+        ? Colors.white
+        : const Color(0xFF17151F);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 16, 15),
+      decoration: BoxDecoration(
+        gradient: c.aiGradient,
+        border: Border.all(color: c.aiBorder),
+        borderRadius: BorderRadius.circular(23),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -16,
+            top: -30,
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              size: 126,
+              color: onAi.withValues(alpha: .10),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: onAi.withValues(alpha: .16),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(Icons.auto_awesome_rounded, color: onAi),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'StarForge AI',
+                      style: SfType.ui(
+                        size: 16,
+                        weight: FontWeight.w900,
+                        color: onAi,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: onAi.withValues(alpha: .14),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      _text(context, uz: 'TAYYOR', ru: 'ГОТОВО', en: 'READY'),
+                      style: SfType.eyebrow(size: 8, color: onAi),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                _text(
+                  context,
+                  uz: 'Imtihon loyihasi va so‘rovlar tarixi',
+                  ru: 'Черновики экзаменов и история запросов',
+                  en: 'Exam drafts and request history',
+                ),
+                style: SfType.ui(
+                  size: 13,
+                  weight: FontWeight.w800,
+                  color: onAi,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                _text(
+                  context,
+                  uz: 'Natija serverda saqlanadi va tekshirish uchun ochiladi',
+                  ru: 'Результат сохраняется на сервере для проверки',
+                  en: 'Results stay server-backed and ready for review',
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: SfType.ui(size: 10, color: onAi.withValues(alpha: .78)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkflowServiceCard extends StatelessWidget {
+  const _WorkflowServiceCard({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.detail,
+    required this.loading,
+    required this.unavailable,
+    required this.onOpen,
+    required this.onRetry,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String detail;
+  final bool loading;
+  final bool unavailable;
+  final VoidCallback onOpen;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const _ServiceSkeletonCard();
+    final preview = _WorkflowServicePreview(
+      icon: icon,
+      title: title,
+      value: value,
+      detail: detail,
+    );
+    return Semantics(
+      button: true,
+      label: unavailable
+          ? '$title. ${_text(context, uz: 'Vaqtincha mavjud emas. Qayta urinish.', ru: 'Временно недоступно. Повторить.', en: 'Temporarily unavailable. Try again.')}'
+          : '$title. $value. $detail',
+      child: SfPressable(
+        onPressed: unavailable ? onRetry : onOpen,
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox(
+          height: 150,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (unavailable)
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 3.5, sigmaY: 3.5),
+                    child: Opacity(opacity: .38, child: preview),
+                  )
+                else
+                  preview,
+                if (unavailable)
+                  _ServiceUnavailableOverlay(
+                    title: _text(
+                      context,
+                      uz: 'Vaqtincha o‘chiq',
+                      ru: 'Временно отключено',
+                      en: 'Temporarily off',
+                    ),
+                    compact: true,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowServicePreview extends StatelessWidget {
+  const _WorkflowServicePreview({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final String title;
+  final String value;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: c.primarySoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, color: c.primary, size: 19),
+              ),
+              const Spacer(),
+              Icon(Icons.arrow_outward_rounded, color: c.muted, size: 18),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: SfType.mono(size: 23, weight: FontWeight.w900, color: c.ink),
+          ),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: SfType.ui(size: 12, weight: FontWeight.w800, color: c.ink),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            detail,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: SfType.ui(size: 9.5, color: c.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceUnavailableOverlay extends StatelessWidget {
+  const _ServiceUnavailableOverlay({
+    super.key,
+    required this.title,
+    this.message,
+    this.compact = false,
+  });
+
+  final String title;
+  final String? message;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Container(
+      color: c.surface.withValues(alpha: .78),
+      padding: EdgeInsets.all(compact ? 9 : 14),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: compact ? 34 : 39,
+            height: compact ? 34 : 39,
+            decoration: BoxDecoration(
+              color: c.warnSoft,
+              borderRadius: BorderRadius.circular(compact ? 11 : 13),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.power_settings_new_rounded,
+              size: compact ? 17 : 19,
+              color: c.warn,
+            ),
+          ),
+          SizedBox(height: compact ? 7 : 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: SfType.ui(
+              size: compact ? 10.5 : 13,
+              weight: FontWeight.w900,
+              color: c.ink,
+            ),
+          ),
+          if (message != null && !compact) ...[
+            const SizedBox(height: 3),
+            Text(
+              message!,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: SfType.ui(size: 9.5, color: c.muted),
+            ),
+          ],
+          SizedBox(height: compact ? 5 : 7),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.refresh_rounded, size: 14, color: c.primary),
+              const SizedBox(width: 4),
+              Text(
+                _text(
+                  context,
+                  uz: 'Qayta urinish',
+                  ru: 'Повторить',
+                  en: 'Try again',
+                ),
+                style: SfType.ui(
+                  size: compact ? 9 : 10,
+                  weight: FontWeight.w800,
+                  color: c.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceSkeletonCard extends StatelessWidget {
+  const _ServiceSkeletonCard({super.key, this.tall = false});
+
+  final bool tall;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final enabled = SfMotion.isEnabled(context);
+    return TweenAnimationBuilder<double>(
+      duration: enabled ? SfMotion.emphasized : Duration.zero,
+      tween: Tween(begin: .35, end: .72),
+      curve: Curves.easeInOut,
+      builder: (context, opacity, child) =>
+          Opacity(opacity: enabled ? opacity : .62, child: child),
+      child: Container(
+        height: tall ? 148 : 150,
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(tall ? 23 : 20),
+          border: Border.all(color: c.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: c.surface3,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            const Spacer(),
+            Container(
+              width: tall ? 176 : 82,
+              height: 12,
+              decoration: BoxDecoration(
+                color: c.borderStrong,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            const SizedBox(height: 7),
+            FractionallySizedBox(
+              widthFactor: tall ? .68 : .9,
+              child: Container(
+                height: 9,
+                decoration: BoxDecoration(
+                  color: c.border,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3276,49 +3986,113 @@ class _StatusFilters extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      const gap = 7.0;
-      final itemWidth = (constraints.maxWidth - gap) / 2;
-      return Wrap(
-        spacing: gap,
-        runSpacing: gap,
-        children: [
-          for (final value in const [
-            'all',
-            'scheduled',
-            'completed',
-            'cancelled',
-          ])
-            SizedBox(
-              width: itemWidth,
-              child: ChoiceChip(
-                key: ValueKey('production-schedule-filter-$value'),
-                selected: selected == value,
-                onSelected: (_) => onSelected(value),
-                visualDensity: const VisualDensity(vertical: -1),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-                label: SizedBox(
-                  width: double.infinity,
-                  child: Text(
-                    '${value == 'all' ? _text(context, uz: 'Hammasi', ru: 'Все', en: 'All') : _lessonStatusLabel(context, value)}  ${counts[value] ?? 0}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: SfType.ui(
-                      size: 11,
-                      weight: selected == value
-                          ? FontWeight.w700
-                          : FontWeight.w500,
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final entries = <(String, IconData)>[
+      ('all', Icons.view_agenda_outlined),
+      ('scheduled', Icons.event_note_outlined),
+      ('completed', Icons.task_alt_rounded),
+      ('cancelled', Icons.event_busy_outlined),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 8.0;
+        final scale = MediaQuery.textScalerOf(context).scale(1);
+        final oneColumn = constraints.maxWidth < 330 || scale > 1.25;
+        final itemWidth = oneColumn
+            ? constraints.maxWidth
+            : (constraints.maxWidth - gap) / 2;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final entry in entries)
+              SizedBox(
+                width: itemWidth,
+                child: SfPressable(
+                  key: ValueKey('production-schedule-filter-${entry.$1}'),
+                  selected: selected == entry.$1,
+                  onPressed: () => onSelected(entry.$1),
+                  borderRadius: BorderRadius.circular(16),
+                  child: AnimatedContainer(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(minHeight: 52),
+                    duration: SfMotion.resolve(context, SfMotion.quick),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected == entry.$1 ? c.primarySoft : c.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: selected == entry.$1 ? c.primary : c.border,
+                        width: selected == entry.$1 ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          entry.$2,
+                          size: 18,
+                          color: selected == entry.$1 ? c.primary : c.muted,
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            entry.$1 == 'all'
+                                ? _text(
+                                    context,
+                                    uz: 'Hammasi',
+                                    ru: 'Все',
+                                    en: 'All',
+                                  )
+                                : _lessonStatusLabel(context, entry.$1),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: SfType.ui(
+                              size: 11.5,
+                              weight: selected == entry.$1
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: c.ink,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          constraints: const BoxConstraints(minWidth: 26),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected == entry.$1
+                                ? c.primary
+                                : c.surface2,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '${counts[entry.$1] ?? 0}',
+                            style: SfType.mono(
+                              size: 9.5,
+                              weight: FontWeight.w800,
+                              color: selected == entry.$1
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : c.ink2,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
-      );
-    },
-  );
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _ProductionCohortCard extends StatelessWidget {
@@ -3511,7 +4285,7 @@ class _ProductionCohortHero extends StatelessWidget {
   final BackendCohort cohort;
   final int members;
   final double? attendance;
-  final VoidCallback onAttendance;
+  final VoidCallback? onAttendance;
 
   @override
   Widget build(BuildContext context) {
@@ -3602,9 +4376,10 @@ class _ProductionCohortHero extends StatelessWidget {
               ),
             ],
           ),
-          if (!cohort.isArchived) ...[
+          if (!cohort.isArchived && onAttendance != null) ...[
             const SizedBox(height: 16),
             SfButton(
+              key: const ValueKey('production-cohort-attendance-action'),
               block: true,
               kind: SfButtonKind.soft,
               label: _text(
@@ -4046,7 +4821,7 @@ class _CohortAttendance extends StatelessWidget {
   final ValueChanged<String> onStatusChanged;
   final int? lessonId;
   final ValueChanged<int?> onLessonChanged;
-  final VoidCallback onTakeAttendance;
+  final VoidCallback? onTakeAttendance;
 
   @override
   Widget build(BuildContext context) {
@@ -4201,16 +4976,22 @@ class _CohortAttendance extends StatelessWidget {
                 en: '${filtered.length} records',
               ),
             );
-            final action = SfButton(
-              label: _text(
-                context,
-                uz: 'Belgilash',
-                ru: 'Отметить',
-                en: 'Take attendance',
-              ),
-              leading: Icons.fact_check_outlined,
-              onPressed: onTakeAttendance,
-            );
+            final action = onTakeAttendance == null
+                ? null
+                : SfButton(
+                    key: const ValueKey(
+                      'production-cohort-history-attendance-action',
+                    ),
+                    label: _text(
+                      context,
+                      uz: 'Belgilash',
+                      ru: 'Отметить',
+                      en: 'Take attendance',
+                    ),
+                    leading: Icons.fact_check_outlined,
+                    onPressed: onTakeAttendance,
+                  );
+            if (action == null) return heading;
             if (constraints.maxWidth < 380) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

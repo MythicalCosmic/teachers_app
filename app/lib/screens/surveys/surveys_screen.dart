@@ -5,6 +5,7 @@ import '../../app/app_scope.dart';
 import '../../data/models.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_app_bar.dart';
+import '../../widgets/sf_card.dart';
 import '../../widgets/sf_hint_card.dart';
 import '../../widgets/sf_scaffold.dart';
 import '../../widgets/sf_state_view.dart';
@@ -26,12 +27,18 @@ class SurveysScreen extends StatelessWidget {
         .toList();
     final canAnswer = state.can(StaffCapability.answerSurveys);
     return SfScaffold(
-      top: SfLargeAppBar(
+      top: SfNavBar(
         title: staffTr(context, 'So‘rovnomalar', 'Surveys'),
         subtitle: staffTr(
           context,
           '${pending.length} ta kutilmoqda · ${submitted.length} ta yuborilgan',
           '${pending.length} pending · ${submitted.length} submitted',
+        ),
+        leading: IconButton(
+          tooltip: staffTr(context, 'Orqaga', 'Back'),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/more'),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
         ),
       ),
       body: state.isProduction && state.formsLoading && state.surveys.isEmpty
@@ -67,6 +74,11 @@ class SurveysScreen extends StatelessWidget {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 28),
                 children: [
+                  _SurveyOverview(
+                    pending: pending.length,
+                    submitted: submitted.length,
+                  ),
+                  const SizedBox(height: 14),
                   if (!canAnswer) ...[
                     SfHintCard(
                       title: staffTr(
@@ -84,14 +96,7 @@ class SurveysScreen extends StatelessWidget {
                     const SizedBox(height: 14),
                   ],
                   if (state.surveys.isEmpty)
-                    SfEmptyState(
-                      title: staffTr(context, 'So‘rovnoma yo‘q', 'No surveys'),
-                      message: staffTr(
-                        context,
-                        'Yangi so‘rovnoma tayinlanganda shu yerda ko‘rinadi.',
-                        'New assigned surveys will appear here.',
-                      ),
-                    )
+                    _SurveyEmptyExperience(canAnswer: canAnswer)
                   else ...[
                     Text(
                       staffTr(context, 'KUTILMOQDA', 'PENDING'),
@@ -134,6 +139,229 @@ class SurveysScreen extends StatelessWidget {
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _SurveyOverview extends StatelessWidget {
+  const _SurveyOverview({required this.pending, required this.submitted});
+
+  final int pending;
+  final int submitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Row(
+      children: [
+        Expanded(
+          child: _SurveyOverviewTile(
+            key: const Key('survey-overview-pending'),
+            icon: Icons.pending_actions_rounded,
+            value: pending,
+            label: staffTr(context, 'Kutilmoqda', 'Pending'),
+            color: c.primary,
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: _SurveyOverviewTile(
+            key: const Key('survey-overview-submitted'),
+            icon: Icons.task_alt_rounded,
+            value: submitted,
+            label: staffTr(context, 'Yuborilgan', 'Submitted'),
+            color: c.success,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SurveyOverviewTile extends StatelessWidget {
+  const _SurveyOverviewTile({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final int value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return SfSurfaceCard(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: color, size: 19),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$value',
+                  style: SfType.mono(
+                    size: 19,
+                    weight: FontWeight.w800,
+                    color: c.ink,
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SfType.ui(size: 10.5, color: c.muted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SurveyEmptyExperience extends StatelessWidget {
+  const _SurveyEmptyExperience({required this.canAnswer});
+
+  final bool canAnswer;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SfSurfaceCard(
+          key: const Key('surveys-rich-empty-state'),
+          color: c.primarySoft,
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: c.primary.withValues(alpha: .13),
+                  borderRadius: BorderRadius.circular(17),
+                ),
+                alignment: Alignment.center,
+                child: Icon(Icons.fact_check_outlined, color: c.primary),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      staffTr(
+                        context,
+                        'Hozircha hammasi bajarilgan',
+                        'You are all caught up',
+                      ),
+                      style: SfType.ui(
+                        size: 15,
+                        weight: FontWeight.w800,
+                        color: c.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      staffTr(
+                        context,
+                        canAnswer
+                            ? 'Yangi so‘rovnoma tayinlanganda savollar va muddat shu yerda paydo bo‘ladi.'
+                            : 'Sizga ko‘rish uchun so‘rovnoma tayinlansa, u shu yerda paydo bo‘ladi.',
+                        canAnswer
+                            ? 'Questions and the due date will appear here as soon as a survey is assigned.'
+                            : 'A survey will appear here when one is assigned for you to view.',
+                      ),
+                      style: SfType.ui(size: 11.5, color: c.ink2, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SfSurfaceCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                staffTr(context, 'Qanday ishlaydi', 'How it works'),
+                style: SfType.ui(
+                  size: 13.5,
+                  weight: FontWeight.w800,
+                  color: c.ink,
+                ),
+              ),
+              const SizedBox(height: 11),
+              _SurveyGuideRow(
+                icon: Icons.notifications_active_outlined,
+                text: staffTr(
+                  context,
+                  'Yangi topshiriq kelganda ilova sizni ogohlantiradi.',
+                  'The app alerts you when a new survey arrives.',
+                ),
+              ),
+              const SizedBox(height: 10),
+              _SurveyGuideRow(
+                icon: Icons.lock_outline_rounded,
+                text: staffTr(
+                  context,
+                  'Yuborilgan javoblar serverda xavfsiz saqlanadi.',
+                  'Submitted answers are stored securely on the server.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SurveyGuideRow extends StatelessWidget {
+  const _SurveyGuideRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 19, color: c.primary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: SfType.ui(size: 11, color: c.ink2, height: 1.4),
+          ),
+        ),
+      ],
     );
   }
 }

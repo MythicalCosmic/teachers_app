@@ -100,6 +100,38 @@ void main() {
     expect(visualState?.pressed, isFalse);
   });
 
+  testWidgets('SfPressable visual fills a tight expanded slot', (tester) async {
+    const visualKey = Key('expanded-pressable-visual');
+    await tester.pumpWidget(
+      _host(
+        SizedBox(
+          width: 300,
+          height: 52,
+          child: Row(
+            children: [
+              Expanded(
+                child: SfPressable(
+                  onPressed: () {},
+                  child: Container(key: visualKey, height: 44),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SfPressable(
+                  onPressed: () {},
+                  child: const SizedBox(height: 44),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.getSize(find.byKey(visualKey)).width, 144);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('SfPressable activates from the keyboard', (tester) async {
     var activations = 0;
     await tester.pumpWidget(

@@ -49,8 +49,15 @@ void main() {
       ),
     );
 
+    expect(
+      find.byKey(const ValueKey('staff-services-featured')),
+      findsOneWidget,
+    );
+    expect(find.text('Xodim xizmatlari'), findsOneWidget);
     expect(find.text('Ta’lim sifati'), findsOneWidget);
     expect(find.text('To‘lov holati'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pumpAndSettle();
     expect(find.textContaining('rol almashtirish'), findsOneWidget);
     expect(find.byTooltip('Rolni almashtirish'), findsNothing);
   });
@@ -71,5 +78,32 @@ void main() {
     expect(find.text('To‘lov holati'), findsOneWidget);
     expect(find.text('Audit markazi'), findsNothing);
     expect(find.text('Ta’lim sifati'), findsNothing);
+  });
+
+  testWidgets('more hub honors account-specific grants instead of role alone', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _themed(
+        StaffMoreHubScreen(
+          role: StaffRole.teacher,
+          displayName: 'Dilshod Karimov',
+          canAccess: (capability) => switch (capability) {
+            StaffCapability.viewStaffServices ||
+            StaffCapability.acknowledgeStaffRules => true,
+            _ => false,
+          },
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('staff-services-featured')),
+      findsOneWidget,
+    );
+    expect(find.text('1 TA OCHIQ'), findsOneWidget);
+    expect(find.text('Materiallar'), findsNothing);
+    expect(find.text('StarForge AI'), findsNothing);
+    expect(find.text('To‘lov holati'), findsNothing);
   });
 }

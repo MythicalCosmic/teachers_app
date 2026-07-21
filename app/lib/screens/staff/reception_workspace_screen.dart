@@ -16,6 +16,8 @@ class ReceptionWorkspaceScreen extends StatefulWidget {
   const ReceptionWorkspaceScreen({
     super.key,
     this.role = StaffRole.reception,
+    this.canViewLeads,
+    this.canManageAdmissions,
     this.store,
     this.onCall,
     this.onOpenLead,
@@ -23,6 +25,8 @@ class ReceptionWorkspaceScreen extends StatefulWidget {
   });
 
   final StaffRole role;
+  final bool? canViewLeads;
+  final bool? canManageAdmissions;
   final ReceptionWorkspaceStore? store;
   final ValueChanged<String>? onCall;
   final ValueChanged<String>? onOpenLead;
@@ -62,8 +66,9 @@ class _ReceptionWorkspaceScreenState extends State<ReceptionWorkspaceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.role.can(StaffCapability.viewLeads) ||
-        !widget.role.can(StaffCapability.manageAdmissions)) {
+    if (!(widget.canViewLeads ?? widget.role.can(StaffCapability.viewLeads)) ||
+        !(widget.canManageAdmissions ??
+            widget.role.can(StaffCapability.manageAdmissions))) {
       return const _ReceptionAccessDenied();
     }
 

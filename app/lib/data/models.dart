@@ -30,6 +30,12 @@ enum StaffCapability {
   teachLessons,
   takeAttendance,
   issueCards,
+  viewContent,
+  manageContent,
+  approveContent,
+  publishContent,
+  generateContent,
+  useAi,
   createTasks,
   updateOwnTasks,
   assignTasks,
@@ -49,6 +55,24 @@ enum StaffCapability {
   manageAuditCases,
   viewImmutableAuditLog,
   exportAuditData,
+  viewStaffServices,
+  acknowledgeStaffRules,
+  viewLessonCover,
+  viewStaffMeetings,
+  viewOwnRequests,
+  viewAchievements,
+  viewRewards,
+  viewStaffLoans,
+  viewProcurement,
+  viewAcademicRecords,
+  viewStudentDirectory,
+  viewTeacherDirectory,
+  viewReports,
+  viewStudentRiskSignals,
+  viewPlacementProposals,
+  viewCampaigns,
+  viewSales,
+  viewCardScans,
 }
 
 extension StaffRoleAccess on StaffRole {
@@ -75,25 +99,53 @@ extension StaffRoleAccess on StaffRole {
       StaffCapability.teachLessons,
       StaffCapability.takeAttendance,
       StaffCapability.issueCards,
+      StaffCapability.viewContent,
+      StaffCapability.manageContent,
+      StaffCapability.approveContent,
+      StaffCapability.generateContent,
+      StaffCapability.useAi,
       StaffCapability.createTasks,
       StaffCapability.updateOwnTasks,
       StaffCapability.useStaffMessaging,
       StaffCapability.answerSurveys,
       StaffCapability.submitPrintJobs,
+      StaffCapability.viewStaffServices,
+      StaffCapability.acknowledgeStaffRules,
+      StaffCapability.viewLessonCover,
+      StaffCapability.viewStaffMeetings,
+      StaffCapability.viewOwnRequests,
+      StaffCapability.viewAchievements,
+      StaffCapability.viewRewards,
+      StaffCapability.viewStaffLoans,
+      StaffCapability.viewAcademicRecords,
+      StaffCapability.viewStudentDirectory,
+      StaffCapability.viewReports,
+      StaffCapability.viewStudentRiskSignals,
+      StaffCapability.viewPlacementProposals,
     },
     StaffRole.assistant => const {
       StaffCapability.viewToday,
       StaffCapability.viewCohorts,
       StaffCapability.takeAttendance,
+      StaffCapability.viewContent,
       StaffCapability.createTasks,
       StaffCapability.updateOwnTasks,
       StaffCapability.useStaffMessaging,
       StaffCapability.answerSurveys,
       StaffCapability.submitPrintJobs,
+      StaffCapability.viewStaffServices,
+      StaffCapability.acknowledgeStaffRules,
+      StaffCapability.viewStaffMeetings,
+      StaffCapability.viewAchievements,
+      StaffCapability.viewRewards,
     },
     StaffRole.methodist => const {
       StaffCapability.viewToday,
       StaffCapability.viewCohorts,
+      StaffCapability.viewContent,
+      StaffCapability.approveContent,
+      StaffCapability.publishContent,
+      StaffCapability.useAi,
       StaffCapability.createTasks,
       StaffCapability.updateOwnTasks,
       StaffCapability.assignTasks,
@@ -103,6 +155,21 @@ extension StaffRoleAccess on StaffRole {
       StaffCapability.submitPrintJobs,
       StaffCapability.viewQualityWorkspace,
       StaffCapability.reviewTeacherQuality,
+      StaffCapability.viewStaffServices,
+      StaffCapability.acknowledgeStaffRules,
+      StaffCapability.viewLessonCover,
+      StaffCapability.viewStaffMeetings,
+      StaffCapability.viewOwnRequests,
+      StaffCapability.viewAchievements,
+      StaffCapability.viewRewards,
+      StaffCapability.viewStaffLoans,
+      StaffCapability.viewProcurement,
+      StaffCapability.viewAcademicRecords,
+      StaffCapability.viewStudentDirectory,
+      StaffCapability.viewTeacherDirectory,
+      StaffCapability.viewReports,
+      StaffCapability.viewStudentRiskSignals,
+      StaffCapability.viewPlacementProposals,
     },
     StaffRole.reception => const {
       StaffCapability.viewToday,
@@ -118,6 +185,22 @@ extension StaffRoleAccess on StaffRole {
       StaffCapability.manageAdmissions,
       StaffCapability.viewPaymentStatus,
       StaffCapability.sendPaymentReminder,
+      StaffCapability.viewStaffServices,
+      StaffCapability.acknowledgeStaffRules,
+      StaffCapability.viewLessonCover,
+      StaffCapability.viewStaffMeetings,
+      StaffCapability.viewOwnRequests,
+      StaffCapability.viewAchievements,
+      StaffCapability.viewRewards,
+      StaffCapability.viewStaffLoans,
+      StaffCapability.viewProcurement,
+      StaffCapability.viewStudentDirectory,
+      StaffCapability.viewTeacherDirectory,
+      StaffCapability.viewStudentRiskSignals,
+      StaffCapability.viewPlacementProposals,
+      StaffCapability.viewCampaigns,
+      StaffCapability.viewSales,
+      StaffCapability.viewCardScans,
     },
     StaffRole.auditor => const {
       StaffCapability.viewToday,
@@ -131,6 +214,11 @@ extension StaffRoleAccess on StaffRole {
       StaffCapability.manageAuditCases,
       StaffCapability.viewImmutableAuditLog,
       StaffCapability.exportAuditData,
+      StaffCapability.viewStaffServices,
+      StaffCapability.acknowledgeStaffRules,
+      StaffCapability.viewStaffMeetings,
+      StaffCapability.viewReports,
+      StaffCapability.viewStudentRiskSignals,
     },
   };
 
@@ -290,6 +378,15 @@ final class AppSettings {
   );
 }
 
+String _normalizedAccountTypeSlug(String raw) =>
+    raw.trim().toLowerCase().replaceAll('-', '_').replaceAll(' ', '_');
+
+bool _accountTypeHasToken(String normalized, String token) =>
+    normalized == token ||
+    normalized.startsWith('${token}_') ||
+    normalized.endsWith('_$token') ||
+    normalized.contains('_${token}_');
+
 final class StaffSession {
   const StaffSession({
     required this.userId,
@@ -321,7 +418,189 @@ final class StaffSession {
   final bool mustChangePassword;
   final bool isRemote;
 
-  bool can(StaffCapability capability) => role.can(capability);
+  bool can(StaffCapability capability) {
+    if (!isRemote) return role.can(capability);
+
+    final slug = _normalizedAccountTypeSlug(accountTypeSlug);
+    final isAccountant = _accountTypeHasToken(slug, 'accountant');
+    final isCashier = _accountTypeHasToken(slug, 'cashier');
+    final isLibrarian = _accountTypeHasToken(slug, 'librarian');
+    final isSecurity = _accountTypeHasToken(slug, 'security');
+    final isItOrSupport =
+        _accountTypeHasToken(slug, 'it') ||
+        _accountTypeHasToken(slug, 'support');
+    final isFinanceFamily =
+        isAccountant ||
+        _accountTypeHasToken(slug, 'account') ||
+        _accountTypeHasToken(slug, 'accounting') ||
+        _accountTypeHasToken(slug, 'finance') ||
+        _accountTypeHasToken(slug, 'payment');
+    final isRegistrar =
+        _accountTypeHasToken(slug, 'reception') ||
+        _accountTypeHasToken(slug, 'registrar') ||
+        _accountTypeHasToken(slug, 'admission') ||
+        _accountTypeHasToken(slug, 'admissions');
+    final isAuditOrCompliance =
+        _accountTypeHasToken(slug, 'audit') ||
+        _accountTypeHasToken(slug, 'auditor') ||
+        _accountTypeHasToken(slug, 'compliance');
+    final isConservativeReadOnlyTaskAccount =
+        isFinanceFamily ||
+        isCashier ||
+        isLibrarian ||
+        isSecurity ||
+        isItOrSupport ||
+        isAuditOrCompliance;
+
+    // These system account types can work with tasks assigned to them, but they
+    // cannot create work or assign it to other people.
+    if (isConservativeReadOnlyTaskAccount &&
+        (capability == StaffCapability.createTasks ||
+            capability == StaffCapability.assignTasks)) {
+      return false;
+    }
+    // The same roles have no forms grant. Keeping forms out of the tree avoids
+    // both a dead end and accidental disclosure through a coarse app role.
+    if (isConservativeReadOnlyTaskAccount &&
+        (capability == StaffCapability.answerSurveys ||
+            capability == StaffCapability.manageSurveys)) {
+      return false;
+    }
+
+    const attendanceMessagingAndPrint = {
+      StaffCapability.takeAttendance,
+      StaffCapability.useStaffMessaging,
+      StaffCapability.submitPrintJobs,
+      StaffCapability.managePrintQueue,
+    };
+    if ((isFinanceFamily || isCashier) &&
+        attendanceMessagingAndPrint.contains(capability)) {
+      return false;
+    }
+    if (isLibrarian && attendanceMessagingAndPrint.contains(capability)) {
+      return false;
+    }
+    if (isRegistrar && capability == StaffCapability.takeAttendance) {
+      return false;
+    }
+
+    const contentCapabilities = {
+      StaffCapability.viewContent,
+      StaffCapability.manageContent,
+      StaffCapability.approveContent,
+      StaffCapability.publishContent,
+      StaffCapability.generateContent,
+    };
+
+    if (isLibrarian) {
+      if (capability == StaffCapability.viewStudentDirectory ||
+          capability == StaffCapability.manageContent ||
+          capability == StaffCapability.generateContent) {
+        return true;
+      }
+      if (capability == StaffCapability.viewAchievements) return false;
+    }
+    if (isSecurity) {
+      if (capability == StaffCapability.viewCardScans) return true;
+      if (capability == StaffCapability.viewCohorts ||
+          capability == StaffCapability.viewAchievements ||
+          capability == StaffCapability.useStaffMessaging ||
+          capability == StaffCapability.submitPrintJobs ||
+          capability == StaffCapability.managePrintQueue ||
+          contentCapabilities.contains(capability)) {
+        return false;
+      }
+    }
+    if (isItOrSupport) {
+      if (capability == StaffCapability.viewCohorts ||
+          capability == StaffCapability.takeAttendance ||
+          capability == StaffCapability.viewAchievements ||
+          capability == StaffCapability.useStaffMessaging ||
+          capability == StaffCapability.submitPrintJobs ||
+          capability == StaffCapability.managePrintQueue ||
+          contentCapabilities.contains(capability)) {
+        return false;
+      }
+    }
+
+    // Accountant reports are an explicit backend grant, not a consequence of
+    // sharing the reception-style workspace.
+    if (isAccountant && capability == StaffCapability.viewReports) return true;
+
+    // Audit/compliance account types do not expose their effective permission
+    // grants in `/me`. Fail closed for sensitive reports and student-risk data
+    // rather than inheriting both from the coarse local auditor role.
+    if (isAuditOrCompliance &&
+        (capability == StaffCapability.viewReports ||
+            capability == StaffCapability.viewStudentRiskSignals ||
+            capability == StaffCapability.useStaffMessaging ||
+            capability == StaffCapability.submitPrintJobs ||
+            capability == StaffCapability.managePrintQueue)) {
+      return false;
+    }
+
+    final isKnownAccountType =
+        _accountTypeHasToken(slug, 'teacher') ||
+        _accountTypeHasToken(slug, 'assistant') ||
+        _accountTypeHasToken(slug, 'methodist') ||
+        _accountTypeHasToken(slug, 'method') ||
+        _accountTypeHasToken(slug, 'academic') ||
+        _accountTypeHasToken(slug, 'quality') ||
+        isRegistrar ||
+        isFinanceFamily ||
+        isCashier ||
+        isLibrarian ||
+        isSecurity ||
+        isItOrSupport ||
+        isAuditOrCompliance;
+    if (!isKnownAccountType) {
+      // `/me` does not expose effective grants for custom account types. Keep
+      // only universal/self-scoped surfaces until the backend supplies them.
+      return const {
+        StaffCapability.viewToday,
+        StaffCapability.updateOwnTasks,
+        StaffCapability.viewStaffServices,
+        StaffCapability.acknowledgeStaffRules,
+        StaffCapability.viewStaffMeetings,
+      }.contains(capability);
+    }
+
+    if (!role.can(capability)) return false;
+
+    // `reception` is an app workspace, not a promise that every account in it
+    // can read money. Registrars, admissions staff, cashiers and accountants
+    // intentionally share that workspace, while the backend grants payment
+    // list reads more narrowly (the cashier system role is write-only there).
+    // Keep those pages out of the widget tree unless the signed-in account type
+    // is explicitly accounting/finance-facing; the server remains the final
+    // authority for every request.
+    if (capability == StaffCapability.viewPaymentStatus ||
+        capability == StaffCapability.sendPaymentReminder) {
+      return isFinanceFamily;
+    }
+    if (role == StaffRole.reception) {
+      return switch (capability) {
+        StaffCapability.viewLeads ||
+        StaffCapability.manageAdmissions ||
+        StaffCapability.viewLessonCover ||
+        StaffCapability.viewAchievements ||
+        StaffCapability.viewStudentDirectory ||
+        StaffCapability.viewTeacherDirectory ||
+        StaffCapability.viewStudentRiskSignals ||
+        StaffCapability.viewPlacementProposals ||
+        StaffCapability.viewCampaigns ||
+        StaffCapability.viewCardScans => isRegistrar,
+        StaffCapability.viewOwnRequests ||
+        StaffCapability.viewRewards ||
+        StaffCapability.viewStaffLoans ||
+        StaffCapability.viewProcurement ||
+        StaffCapability.viewSales =>
+          isRegistrar || isFinanceFamily || isCashier,
+        _ => true,
+      };
+    }
+    return true;
+  }
 
   JsonMap toJson() => {
     'userId': userId,

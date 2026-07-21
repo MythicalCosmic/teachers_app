@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/app_scope.dart';
 import '../../data/models.dart';
-import '../../router.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_app_bar.dart';
 import '../../widgets/sf_button.dart';
@@ -12,8 +11,6 @@ import '../../widgets/sf_hint_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_scaffold.dart';
 import '../../widgets/sf_star.dart';
-import '../../widgets/sf_state_view.dart';
-import '../../widgets/sf_tab_bar.dart';
 
 class CardsScreen extends StatefulWidget {
   const CardsScreen({super.key});
@@ -39,8 +36,6 @@ class _CardsScreenState extends State<CardsScreen> {
     final canIssue = state.can(StaffCapability.issueCards);
 
     return SfScaffold(
-      tab: SfTab.cohort,
-      onTabChanged: (tab) => handleTab(context, SfTab.values.indexOf(tab)),
       top: SfLargeAppBar(
         title: 'Kartalar',
         subtitle: '${state.cards.length} ta faol yozuv · $praise ijobiy',
@@ -119,10 +114,12 @@ class _CardsScreenState extends State<CardsScreen> {
           ),
           const SizedBox(height: 14),
           if (cards.isEmpty)
-            const SfEmptyState(
-              title: 'Bu filtrda karta yo‘q',
-              message: 'Boshqa filtrni tanlang yoki yangi karta bering.',
-              compact: true,
+            _CardsEmptyExperience(
+              filtered: state.cards.isNotEmpty,
+              canIssue: canIssue,
+              onClearFilter: _filter == null
+                  ? null
+                  : () => setState(() => _filter = null),
             )
           else
             for (final card in cards) ...[
@@ -148,6 +145,167 @@ class _CardsScreenState extends State<CardsScreen> {
               ),
             )
           : null,
+    );
+  }
+}
+
+class _CardsEmptyExperience extends StatelessWidget {
+  const _CardsEmptyExperience({
+    required this.filtered,
+    required this.canIssue,
+    required this.onClearFilter,
+  });
+
+  final bool filtered;
+  final bool canIssue;
+  final VoidCallback? onClearFilter;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SfSurfaceCard(
+          key: const Key('cards-rich-empty-state'),
+          color: c.primarySoft,
+          padding: const EdgeInsets.all(17),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: c.primary.withValues(alpha: .13),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  filtered ? Icons.filter_alt_off_rounded : Icons.stars_rounded,
+                  color: c.primary,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      filtered
+                          ? 'Bu filtr hozircha bo‘sh'
+                          : 'Bugun yangi sahifadan boshlanadi',
+                      style: SfType.ui(
+                        size: 15,
+                        weight: FontWeight.w800,
+                        color: c.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      filtered
+                          ? 'Barcha kartalarni qayta ko‘ring yoki boshqa turini tanlang.'
+                          : canIssue
+                          ? 'Aniq va samimiy e’tirof o‘quvchining keyingi yaxshi qadamini kuchaytiradi.'
+                          : 'Markaz kartalari berilganda, ularning sababi va tarixi shu yerda xavfsiz ko‘rinadi.',
+                      style: SfType.ui(size: 11.5, color: c.ink2, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (onClearFilter != null) ...[
+          const SizedBox(height: 10),
+          SfButton(
+            kind: SfButtonKind.ghost,
+            block: true,
+            label: 'Filtrni tozalash',
+            leading: Icons.filter_alt_off_rounded,
+            onPressed: onClearFilter,
+          ),
+        ],
+        const SizedBox(height: 12),
+        SfSurfaceCard(
+          padding: const EdgeInsets.all(15),
+          child: Column(
+            children: [
+              _EmptyCardGuideRow(
+                icon: Icons.auto_awesome_rounded,
+                title: 'Yaxshi ishni e’tirof eting',
+                subtitle:
+                    'Aqlli, faol va ijobiy qadamlarni aniq sabab bilan belgilang.',
+                color: c.success,
+              ),
+              Divider(height: 22, color: c.border),
+              _EmptyCardGuideRow(
+                icon: Icons.trending_up_rounded,
+                title: 'O‘sishni kuzating',
+                subtitle:
+                    'Kartalar paydo bo‘lgach, ijobiy va rivojlanish signallari ajratiladi.',
+                color: c.primary,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EmptyCardGuideRow extends StatelessWidget {
+  const _EmptyCardGuideRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, color: color, size: 19),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: SfType.ui(
+                  size: 12.5,
+                  weight: FontWeight.w800,
+                  color: c.ink,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: SfType.ui(size: 10.5, color: c.muted, height: 1.35),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

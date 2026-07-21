@@ -135,7 +135,13 @@ class _ContentScreenState extends State<ContentScreen> {
     final app = AppScope.of(context);
     final backend = app.backendApi;
     if (backend != null) {
-      return BackendContentScreen(api: BackendServicesApi.fromApi(backend));
+      return BackendContentScreen(
+        api: BackendServicesApi.fromApi(backend),
+        canManageContent: app.can(StaffCapability.manageContent),
+        canApproveContent: app.can(StaffCapability.approveContent),
+        canPublishContent: app.can(StaffCapability.publishContent),
+        canGenerateContent: app.can(StaffCapability.generateContent),
+      );
     }
     final c = SfTheme.colorsOf(context);
     final session = app.session;
@@ -191,15 +197,16 @@ class _ContentScreenState extends State<ContentScreen> {
                   if (!_showSearch) _searchController.clear();
                 }),
               ),
-              _HeaderAction(
-                icon: SfIcons.upload,
-                label: _contentText(
-                  context,
-                  uz: 'Material kartasi qo‘shish',
-                  en: 'Add material card',
+              if (session.can(StaffCapability.manageContent))
+                _HeaderAction(
+                  icon: SfIcons.upload,
+                  label: _contentText(
+                    context,
+                    uz: 'Material kartasi qo‘shish',
+                    en: 'Add material card',
+                  ),
+                  onPressed: _addResource,
                 ),
-                onPressed: _addResource,
-              ),
             ],
           ),
           if (_showSearch)

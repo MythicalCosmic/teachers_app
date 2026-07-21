@@ -14,6 +14,9 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   flutter_secure_storage: ^9.2.4
+  # 11.x assumes AGP 9 built-in Kotlin, while this app still includes plugins
+  # on Flutter's temporary legacy-KGP bridge. Keep the latest compatible 10.x.
+  file_picker: 10.3.10
   go_router: ^14.6.2
   http: ^1.2.2
   image_picker: ^1.2.3

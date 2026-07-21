@@ -141,6 +141,11 @@ class _SfPressableState extends State<SfPressable> {
     final radius = widget.borderRadius.resolve(Directionality.of(context));
 
     Widget result = Stack(
+      // Preserve the constraints supplied by rows, grids, and navigation
+      // destinations. StackFit.loose made the invisible tap target fill an
+      // Expanded slot while allowing its visible surface to collapse around
+      // short text (for example calendar dates and language codes).
+      fit: StackFit.passthrough,
       clipBehavior: Clip.none,
       children: [
         visual,

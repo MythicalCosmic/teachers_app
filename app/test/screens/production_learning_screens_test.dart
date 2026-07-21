@@ -150,6 +150,111 @@ void main() {
   });
 
   testWidgets(
+    'server-disabled AI stays visible as a blurred retryable home service',
+    (tester) async {
+      final fixture = (await tester.runAsync(
+        () => _fixture(aiEnabled: false),
+      ))!;
+      addTearDown(fixture.dispose);
+      await tester.runAsync(
+        () => fixture.controller.refreshToday(DateTime.now(), force: true),
+      );
+
+      await tester.pumpWidget(
+        fixture.host(ProductionTodayScreen(controller: fixture.controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('production-home-ai-service')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('production-home-ai-unavailable')),
+        findsOneWidget,
+      );
+      expect(find.text('AI is temporarily off'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('production-home-ai-unavailable')),
+          matching: find.text('Try again'),
+        ),
+        findsOneWidget,
+      );
+
+      final aiCard = find.byKey(const ValueKey('production-home-ai-service'));
+      await tester.ensureVisible(aiCard);
+      await tester.pump();
+      await tester.tap(aiCard);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('production-home-ai-unavailable')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'permission-denied AI is omitted instead of showing a dead page',
+    (tester) async {
+      final fixture = (await tester.runAsync(_fixture))!;
+      addTearDown(fixture.dispose);
+      await tester.runAsync(
+        () => fixture.controller.refreshToday(DateTime.now(), force: true),
+      );
+
+      await tester.pumpWidget(
+        fixture.host(ProductionTodayScreen(controller: fixture.controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('production-home-ai-service')),
+        findsNothing,
+      );
+      expect(find.text('StarForge AI'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('production-home-tasks-service')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'enabled AI and authorized workflow services fill the home page',
+    (tester) async {
+      final fixture = (await tester.runAsync(() => _fixture(aiEnabled: true)))!;
+      addTearDown(fixture.dispose);
+      await tester.runAsync(
+        () => fixture.controller.refreshToday(DateTime.now(), force: true),
+      );
+
+      await tester.pumpWidget(
+        fixture.host(ProductionTodayScreen(controller: fixture.controller)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Smart workspace'), findsOneWidget);
+      expect(find.text('StarForge AI'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('production-home-ai-unavailable')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('production-home-tasks-service')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('production-home-forms-service')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'empty schedule stays useful and every status filter fits a narrow phone',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
@@ -247,6 +352,7 @@ void main() {
         ProductionCohortDetailScreen(
           controller: fixture.controller,
           groupId: 'cohort-10v-geometry',
+          canTakeAttendance: true,
         ),
       ),
     );
@@ -257,6 +363,40 @@ void main() {
     expect(fixture.transport.calls, isEmpty);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'production cohort hides attendance mutations without permission',
+    (tester) async {
+      final fixture = (await tester.runAsync(_fixture))!;
+      addTearDown(fixture.dispose);
+
+      await tester.pumpWidget(
+        fixture.host(
+          ProductionCohortDetailScreen(
+            controller: fixture.controller,
+            groupId: '42',
+            initialTab: 2,
+            canTakeAttendance: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Server Algebra'), findsWidgets);
+      expect(
+        find.byKey(const ValueKey('production-cohort-attendance-action')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey('production-cohort-history-attendance-action'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Attendance history'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('attendance controls and lesson card action fit a narrow phone', (
     tester,
@@ -460,8 +600,9 @@ void main() {
 
 Future<_Fixture> _fixture({
   ApiResponse Function(_LearningCall call)? responder,
+  bool? aiEnabled,
 }) async {
-  final app = await _productionState();
+  final app = await _productionState(aiEnabled: aiEnabled);
   await app.updateSettings(
     app.settings.copyWith(
       locale: AppLocale.en,
@@ -527,7 +668,7 @@ final class _Fixture {
   }
 }
 
-Future<AppState> _productionState() async {
+Future<AppState> _productionState({bool? aiEnabled}) async {
   const connection = TenantConnection(
     slug: 'server-academy',
     name: 'Server Academy',
@@ -547,6 +688,22 @@ Future<AppState> _productionState() async {
             'full_name': 'Server Teacher',
             'email': 'teacher@example.com',
             'role_memberships': <Object?>[],
+          },
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (request.url.path == '/api/v1/ai/budget/' && aiEnabled != null) {
+      return http.Response(
+        jsonEncode({
+          'success': true,
+          'data': {
+            'daily_token_limit': 1000,
+            'monthly_token_limit': 20000,
+            'tokens_used_today': 0,
+            'tokens_used_month': 0,
+            'is_enabled': aiEnabled,
           },
         }),
         200,

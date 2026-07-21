@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_scope.dart';
 import '../../data/models.dart';
+import '../../features/operations/staff_operations_controller.dart';
 import '../../theme/sf_theme.dart';
 import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
@@ -34,6 +36,7 @@ class StaffMoreHubScreen extends StatelessWidget {
     this.branchName = 'Yunusobod',
     this.unreadMessages = 0,
     this.unreadNotifications = 0,
+    this.canAccess,
     this.onOpenRoute,
     this.onSignOut,
   });
@@ -43,6 +46,7 @@ class StaffMoreHubScreen extends StatelessWidget {
   final String branchName;
   final int unreadMessages;
   final int unreadNotifications;
+  final bool Function(StaffCapability capability)? canAccess;
   final ValueChanged<String>? onOpenRoute;
   final VoidCallback? onSignOut;
 
@@ -62,6 +66,7 @@ class StaffMoreHubScreen extends StatelessWidget {
         en: 'Your permitted workflows and center tools',
       ),
       icon: Icons.dashboard_customize_outlined,
+      capability: StaffCapability.viewStaffServices,
       tone: StaffMetricTone.primary,
     ),
     StaffMoreDestination(
@@ -79,6 +84,20 @@ class StaffMoreHubScreen extends StatelessWidget {
         en: 'Lesson files and the shared library',
       ),
       icon: SfIcons.folder,
+      capability: StaffCapability.viewContent,
+    ),
+    StaffMoreDestination(
+      route: '/ai',
+      label: 'StarForge AI',
+      description: _copy(
+        context,
+        uz: 'Imtihon loyihalari va AI so‘rovlari',
+        ru: 'Черновики экзаменов и AI-запросы',
+        en: 'Exam drafts and AI request history',
+      ),
+      icon: SfIcons.ai,
+      capability: StaffCapability.useAi,
+      tone: StaffMetricTone.accent,
     ),
     StaffMoreDestination(
       route: '/messages',
@@ -234,9 +253,23 @@ class StaffMoreHubScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visible = _destinations(context)
-        .where((item) => item.capability == null || role.can(item.capability!))
+    final app = AppScope.maybeOf(context);
+    bool can(StaffCapability capability) =>
+        canAccess?.call(capability) ??
+        app?.can(capability) ??
+        role.can(capability);
+    final allVisible = _destinations(context)
+        .where((item) => item.capability == null || can(item.capability!))
         .toList();
+    final staffServices = allVisible
+        .where((item) => item.route == '/staff/operations')
+        .firstOrNull;
+    final visible = allVisible
+        .where((item) => item.route != '/staff/operations')
+        .toList(growable: false);
+    final serviceCount = staffOperationModules
+        .where((module) => can(module.requiredCapability))
+        .length;
     return StaffPageScaffold(
       eyebrow: '${_roleLabel(context, role)} · $branchName',
       title: _copy(context, uz: 'Ko‘proq', ru: 'Ещё', en: 'More'),
@@ -258,23 +291,22 @@ class StaffMoreHubScreen extends StatelessWidget {
                 : () => onOpenRoute!('/settings/edit'),
           ),
           const SizedBox(height: 14),
-          StaffHintCard(
-            title: _copy(
-              context,
-              uz: 'Rol bo‘yicha xavfsiz',
-              ru: 'Безопасно для роли',
-              en: 'Role-safe by design',
+          if (staffServices != null) ...[
+            _StaffServicesHero(
+              destination: staffServices,
+              serviceCount: serviceCount,
+              onTap: onOpenRoute == null
+                  ? null
+                  : () => onOpenRoute!(staffServices.route),
             ),
-            message: _capabilityMessage(context),
-            icon: SfIcons.shield,
-          ),
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
+          ],
           StaffSectionHeader(
             title: _copy(
               context,
-              uz: 'Ish maydonlari',
-              ru: 'Рабочие пространства',
-              en: 'Workspaces',
+              uz: 'Boshqa ish maydonlari',
+              ru: 'Другие рабочие пространства',
+              en: 'Other workspaces',
             ),
             subtitle: _copy(
               context,
@@ -303,6 +335,17 @@ class StaffMoreHubScreen extends StatelessWidget {
                 ],
               ],
             ),
+          ),
+          const SizedBox(height: 18),
+          StaffHintCard(
+            title: _copy(
+              context,
+              uz: 'Rol bo‘yicha xavfsiz',
+              ru: 'Безопасно для роли',
+              en: 'Role-safe by design',
+            ),
+            message: _capabilityMessage(context),
+            icon: SfIcons.shield,
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
@@ -343,6 +386,199 @@ class StaffMoreHubScreen extends StatelessWidget {
         en: 'Source records are read-only; cases and review notes can be added.',
       ),
     };
+  }
+}
+
+class _StaffServicesHero extends StatelessWidget {
+  const _StaffServicesHero({
+    required this.destination,
+    required this.serviceCount,
+    this.onTap,
+  });
+
+  final StaffMoreDestination destination;
+  final int serviceCount;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final onPrimary = Theme.of(context).colorScheme.onPrimary;
+    return SfPressable(
+      key: const ValueKey('staff-services-featured'),
+      semanticLabel: _copy(
+        context,
+        uz: '${destination.label}. $serviceCount ta ruxsat etilgan xizmat. Ochish.',
+        ru: '${destination.label}. Доступно сервисов: $serviceCount. Открыть.',
+        en: '${destination.label}. $serviceCount permitted services. Open.',
+      ),
+      onPressed: onTap,
+      haptic: true,
+      borderRadius: BorderRadius.circular(25),
+      builder: (context, state, _) => AnimatedContainer(
+        duration: SfMotion.resolve(context, SfMotion.quick),
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(18, 17, 16, 16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              state.pressed ? c.primaryHover : c.primary,
+              Color.alphaBlend(c.ai.withValues(alpha: .36), c.primary),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(25),
+          boxShadow: [
+            BoxShadow(
+              color: c.primary.withValues(alpha: state.pressed ? .10 : .22),
+              blurRadius: state.pressed ? 10 : 22,
+              offset: Offset(0, state.pressed ? 4 : 10),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -28,
+              top: -45,
+              child: Icon(
+                Icons.dashboard_customize_rounded,
+                size: 154,
+                color: onPrimary.withValues(alpha: .08),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: onPrimary.withValues(alpha: .15),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: onPrimary.withValues(alpha: .18),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(destination.icon, color: onPrimary, size: 23),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: onPrimary.withValues(alpha: .14),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.lock_open_rounded,
+                            size: 13,
+                            color: onPrimary,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            _copy(
+                              context,
+                              uz: '$serviceCount TA OCHIQ',
+                              ru: 'ДОСТУПНО: $serviceCount',
+                              en: '$serviceCount OPEN',
+                            ),
+                            style: SfType.eyebrow(size: 8.5, color: onPrimary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 17),
+                Text(
+                  _copy(
+                    context,
+                    uz: 'ASOSIY ISH MARKAZI',
+                    ru: 'ГЛАВНЫЙ РАБОЧИЙ ЦЕНТР',
+                    en: 'PRIMARY WORK CENTER',
+                  ),
+                  style: SfType.eyebrow(
+                    size: 9,
+                    color: onPrimary.withValues(alpha: .76),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  destination.label,
+                  style: SfType.ui(
+                    size: 21,
+                    weight: FontWeight.w900,
+                    color: onPrimary,
+                    letterSpacing: -.45,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 310),
+                  child: Text(
+                    destination.description,
+                    style: SfType.ui(
+                      size: 11.5,
+                      height: 1.38,
+                      color: onPrimary.withValues(alpha: .83),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(12, 9, 9, 9),
+                  decoration: BoxDecoration(
+                    color: onPrimary.withValues(alpha: .13),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: onPrimary.withValues(alpha: .13)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.verified_user_outlined,
+                        size: 17,
+                        color: onPrimary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _copy(
+                            context,
+                            uz: 'Faqat sizga ruxsat berilgan vositalar',
+                            ru: 'Только разрешённые вам инструменты',
+                            en: 'Only tools permitted for your account',
+                          ),
+                          style: SfType.ui(
+                            size: 10.5,
+                            weight: FontWeight.w700,
+                            color: onPrimary,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_rounded,
+                        size: 18,
+                        color: onPrimary,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

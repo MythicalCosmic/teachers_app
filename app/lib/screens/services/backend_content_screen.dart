@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api/backend_core.dart';
 import '../../data/api/backend_models.dart';
 import '../../data/api/backend_services_api.dart';
 import '../../features/services/backend_services_controllers.dart';
+import '../../features/services/content_binary_uploader.dart';
 import '../../theme/sf_theme.dart';
 import '../../theme/tokens.dart';
 import '../../utils/formatters.dart';
@@ -27,9 +29,20 @@ enum _ContentBackendTab { hierarchy, files, materials }
 enum _BackendFileFilter { all, video, audio, documents, images }
 
 class BackendContentScreen extends StatefulWidget {
-  const BackendContentScreen({super.key, required this.api});
+  const BackendContentScreen({
+    super.key,
+    required this.api,
+    this.canManageContent = false,
+    this.canApproveContent = false,
+    this.canPublishContent = false,
+    this.canGenerateContent = false,
+  });
 
   final BackendServicesApi api;
+  final bool canManageContent;
+  final bool canApproveContent;
+  final bool canPublishContent;
+  final bool canGenerateContent;
 
   @override
   State<BackendContentScreen> createState() => _BackendContentScreenState();
@@ -108,7 +121,7 @@ class _BackendContentScreenState extends State<BackendContentScreen> {
                         )
                       : const Icon(Icons.refresh_rounded),
                 ),
-                if (_tab == _ContentBackendTab.files)
+                if (_tab == _ContentBackendTab.files && widget.canManageContent)
                   IconButton(
                     key: const Key('backend-content-request-upload'),
                     tooltip: _copy(
@@ -119,7 +132,9 @@ class _BackendContentScreenState extends State<BackendContentScreen> {
                     onPressed: () => _openUploadSheet(context),
                     icon: const Icon(Icons.upload_file_rounded),
                   ),
-                if (_tab == _ContentBackendTab.materials && library != null)
+                if (_tab == _ContentBackendTab.materials &&
+                    library != null &&
+                    widget.canManageContent)
                   IconButton(
                     key: const Key('backend-content-create-material'),
                     tooltip: _copy(
@@ -238,15 +253,25 @@ class _BackendContentScreenState extends State<BackendContentScreen> {
       _ContentBackendTab.files => _FilesView(
         controller: _controller,
         onOpen: (file) => _openContentFile(context, file),
-        onApproveTeacher: (file) => _approveTeacher(context, file),
-        onApproveManager: (file) => _approveManager(context, file),
+        onApproveTeacher: widget.canApproveContent
+            ? (file) => _approveTeacher(context, file)
+            : null,
+        onApproveManager: widget.canApproveContent
+            ? (file) => _approveManager(context, file)
+            : null,
         onGetLink: (file) => _showDownloadLink(context, file),
-        onNewVersion: (file) => _openUploadSheet(context, previous: file),
+        onNewVersion: widget.canManageContent
+            ? (file) => _openUploadSheet(context, previous: file)
+            : null,
       ),
       _ContentBackendTab.materials => _MaterialsView(
         controller: _controller,
-        onGenerate: (material) => _generateMaterial(context, material),
-        onPublish: (material) => _publishMaterial(context, material),
+        onGenerate: widget.canGenerateContent
+            ? (material) => _generateMaterial(context, material)
+            : null,
+        onPublish: widget.canPublishContent
+            ? (material) => _publishMaterial(context, material)
+            : null,
       ),
     };
     return AnimatedSwitcher(
@@ -573,15 +598,15 @@ class _BackendContentScreenState extends State<BackendContentScreen> {
       context,
       title: _copy(
         context,
-        uz: 'Upload havolasi yaratildi',
-        en: 'Upload link created',
+        uz: 'Fayl xavfsiz yuklandi',
+        en: 'File uploaded securely',
       ),
       message: _copy(
         context,
-        uz: 'Fayl hali yuborilmadi. PUT transfer tugamaguncha tasdiqlamang.',
-        en: 'The file is not uploaded yet. Do not confirm until the PUT transfer completes.',
+        uz: 'Server faylni qabul qildi va tekshiruvga yubordi.',
+        en: 'The server received the file and queued its validation.',
       ),
-      tone: SfToastTone.warning,
+      tone: SfToastTone.success,
     );
   }
 
@@ -795,10 +820,10 @@ class _FilesView extends StatefulWidget {
 
   final BackendContentController controller;
   final ValueChanged<BackendContentFile> onOpen;
-  final ValueChanged<BackendContentFile> onApproveTeacher;
-  final ValueChanged<BackendContentFile> onApproveManager;
+  final ValueChanged<BackendContentFile>? onApproveTeacher;
+  final ValueChanged<BackendContentFile>? onApproveManager;
   final ValueChanged<BackendContentFile> onGetLink;
-  final ValueChanged<BackendContentFile> onNewVersion;
+  final ValueChanged<BackendContentFile>? onNewVersion;
 
   @override
   State<_FilesView> createState() => _FilesViewState();
@@ -993,10 +1018,16 @@ class _FilesViewState extends State<_FilesView> {
                     _FileCard(
                       file: file,
                       onOpen: () => widget.onOpen(file),
-                      onApproveTeacher: () => widget.onApproveTeacher(file),
-                      onApproveManager: () => widget.onApproveManager(file),
+                      onApproveTeacher: widget.onApproveTeacher == null
+                          ? null
+                          : () => widget.onApproveTeacher!(file),
+                      onApproveManager: widget.onApproveManager == null
+                          ? null
+                          : () => widget.onApproveManager!(file),
                       onGetLink: () => widget.onGetLink(file),
-                      onNewVersion: () => widget.onNewVersion(file),
+                      onNewVersion: widget.onNewVersion == null
+                          ? null
+                          : () => widget.onNewVersion!(file),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -1108,8 +1139,8 @@ class _MaterialsView extends StatelessWidget {
   });
 
   final BackendContentController controller;
-  final ValueChanged<BackendMaterial> onGenerate;
-  final ValueChanged<BackendMaterial> onPublish;
+  final ValueChanged<BackendMaterial>? onGenerate;
+  final ValueChanged<BackendMaterial>? onPublish;
 
   @override
   Widget build(BuildContext context) => RefreshIndicator.adaptive(
@@ -1153,10 +1184,12 @@ class _MaterialsView extends StatelessWidget {
           for (final material in controller.materials) ...[
             _MaterialCard(
               material: material,
-              onGenerate: () => onGenerate(material),
-              onPublish: material.status == 'published'
+              onGenerate: onGenerate == null
                   ? null
-                  : () => onPublish(material),
+                  : () => onGenerate!(material),
+              onPublish: material.status == 'published' || onPublish == null
+                  ? null
+                  : () => onPublish!(material),
             ),
             const SizedBox(height: 12),
           ],
@@ -1379,10 +1412,10 @@ class _FileCard extends StatelessWidget {
 
   final BackendContentFile file;
   final VoidCallback onOpen;
-  final VoidCallback onApproveTeacher;
-  final VoidCallback onApproveManager;
+  final VoidCallback? onApproveTeacher;
+  final VoidCallback? onApproveManager;
   final VoidCallback onGetLink;
-  final VoidCallback onNewVersion;
+  final VoidCallback? onNewVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -1522,13 +1555,14 @@ class _FileCard extends StatelessWidget {
                 leading: Icons.link_rounded,
                 onPressed: onGetLink,
               ),
-              SfButton(
-                kind: SfButtonKind.ghost,
-                label: _copy(context, uz: 'Yangi versiya', en: 'New version'),
-                leading: Icons.upload_file_outlined,
-                onPressed: onNewVersion,
-              ),
-              if (!file.approvedByTeacher)
+              if (onNewVersion != null)
+                SfButton(
+                  kind: SfButtonKind.ghost,
+                  label: _copy(context, uz: 'Yangi versiya', en: 'New version'),
+                  leading: Icons.upload_file_outlined,
+                  onPressed: onNewVersion,
+                ),
+              if (!file.approvedByTeacher && onApproveTeacher != null)
                 SfButton(
                   kind: SfButtonKind.soft,
                   label: _copy(
@@ -1539,7 +1573,9 @@ class _FileCard extends StatelessWidget {
                   leading: Icons.school_outlined,
                   onPressed: onApproveTeacher,
                 ),
-              if (file.approvedByTeacher && !file.approvedByManager)
+              if (file.approvedByTeacher &&
+                  !file.approvedByManager &&
+                  onApproveManager != null)
                 SfButton(
                   label: _copy(
                     context,
@@ -1565,7 +1601,7 @@ class _MaterialCard extends StatelessWidget {
   });
 
   final BackendMaterial material;
-  final VoidCallback onGenerate;
+  final VoidCallback? onGenerate;
   final VoidCallback? onPublish;
 
   @override
@@ -1624,16 +1660,17 @@ class _MaterialCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              SfButton(
-                kind: SfButtonKind.soft,
-                leading: Icons.auto_awesome_rounded,
-                label: _copy(
-                  context,
-                  uz: 'AI yaratish',
-                  en: 'Generate with AI',
+              if (onGenerate != null)
+                SfButton(
+                  kind: SfButtonKind.soft,
+                  leading: Icons.auto_awesome_rounded,
+                  label: _copy(
+                    context,
+                    uz: 'AI yaratish',
+                    en: 'Generate with AI',
+                  ),
+                  onPressed: onGenerate,
                 ),
-                onPressed: onGenerate,
-              ),
               if (onPublish != null)
                 SfButton(
                   leading: Icons.publish_rounded,
@@ -1671,9 +1708,13 @@ class _UploadGrantSheetState extends State<_UploadGrantSheet> {
   final _title = TextEditingController();
   final _contentType = TextEditingController(text: 'application/pdf');
   final _size = TextEditingController();
+  final _uploader = ContentBinaryUploader();
+  PlatformFile? _pickedFile;
   int? _lessonId;
   int? _folderId;
   bool _loading = false;
+  bool _destinationMissing = false;
+  double _progress = 0;
   BackendUploadGrant? _grant;
 
   @override
@@ -1685,29 +1726,129 @@ class _UploadGrantSheetState extends State<_UploadGrantSheet> {
     super.dispose();
   }
 
+  Future<void> _pickFile() async {
+    if (_loading) return;
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const [
+        'pdf',
+        'doc',
+        'docx',
+        'ppt',
+        'pptx',
+        'xls',
+        'xlsx',
+        'txt',
+        'csv',
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'mp3',
+        'm4a',
+        'wav',
+        'mp4',
+        'mov',
+      ],
+      allowMultiple: false,
+      withData: false,
+    );
+    final file = result?.files.singleOrNull;
+    if (!mounted || file == null) return;
+    if (file.size <= 0) {
+      _showError(
+        context,
+        _copy(
+          context,
+          uz: 'Bo\'sh faylni yuklab bo\'lmaydi.',
+          en: 'An empty file cannot be uploaded.',
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _pickedFile = file;
+      _grant = null;
+      _progress = 0;
+      _filename.text = file.name;
+      _contentType.text = _contentTypeFor(file);
+      _size.text = '${file.size}';
+      if (_title.text.trim().isEmpty) {
+        _title.text = _displayNameWithoutExtension(file.name);
+      }
+    });
+  }
+
   Future<void> _request() async {
-    if (_loading || !(_formKey.currentState?.validate() ?? false)) return;
-    setState(() => _loading = true);
+    if (_loading) return;
+    if (_pickedFile == null) {
+      await _pickFile();
+      return;
+    }
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (widget.previous == null && _lessonId == null && _folderId == null) {
+      setState(() => _destinationMissing = true);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _destinationMissing = false;
+      _progress = .02;
+    });
     try {
+      final file = _pickedFile!;
       final previous = widget.previous;
-      final grant = previous == null
-          ? await widget.controller.requestUpload(
-              filename: _filename.text.trim(),
-              contentType: _contentType.text.trim(),
-              sizeBytes: int.parse(_size.text.trim()),
-              title: _title.text.trim(),
-              lessonId: _lessonId,
-              folderId: _folderId,
-            )
-          : await widget.controller.requestNewVersion(
-              fileId: previous.id,
-              filename: _filename.text.trim(),
-              contentType: _contentType.text.trim(),
-              sizeBytes: int.parse(_size.text.trim()),
-            );
+      final grant =
+          _grant ??
+          (previous == null
+              ? await widget.controller.requestUpload(
+                  filename: _filename.text.trim(),
+                  contentType: _contentType.text.trim(),
+                  sizeBytes: int.parse(_size.text.trim()),
+                  title: _title.text.trim(),
+                  lessonId: _lessonId,
+                  folderId: _folderId,
+                )
+              : await widget.controller.requestNewVersion(
+                  fileId: previous.id,
+                  filename: _filename.text.trim(),
+                  contentType: _contentType.text.trim(),
+                  sizeBytes: int.parse(_size.text.trim()),
+                ));
+      if (grant.method.toUpperCase() != 'PUT' || grant.fileId == null) {
+        throw const ContentUploadException(
+          'The server returned an incomplete upload grant.',
+        );
+      }
       if (mounted) setState(() => _grant = grant);
+      await _uploader.put(
+        url: grant.url,
+        contentType: _contentType.text.trim(),
+        expectedBytes: file.size,
+        openRead: file.xFile.openRead,
+        onProgress: (value) {
+          final next = .05 + (value * .85);
+          // Native file streams can emit hundreds of chunks per second. A
+          // one-percent visual cadence stays fluid without rebuilding the
+          // entire sheet for every storage packet.
+          if (mounted && (next - _progress >= .01 || value >= 1)) {
+            setState(() => _progress = next);
+          }
+        },
+      );
+      if (mounted) setState(() => _progress = .94);
+      await widget.controller.confirmUpload(grant.fileId!);
+      if (!mounted) return;
+      setState(() => _progress = 1);
+      Navigator.pop(context, grant);
     } catch (error) {
-      if (mounted) _showError(context, error);
+      if (mounted) {
+        // Presigned upload links are deliberately short-lived and a failed
+        // transfer may have partially consumed one. Always request a fresh
+        // grant on retry instead of looping on an expired or dirty URL.
+        setState(() => _grant = null);
+        _showError(context, error);
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1715,7 +1856,6 @@ class _UploadGrantSheetState extends State<_UploadGrantSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final grant = _grant;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         20,
@@ -1723,9 +1863,7 @@ class _UploadGrantSheetState extends State<_UploadGrantSheet> {
         20,
         20 + MediaQuery.viewInsetsOf(context).bottom,
       ),
-      child: SingleChildScrollView(
-        child: grant == null ? _form(context) : _result(context, grant),
-      ),
+      child: SingleChildScrollView(child: _form(context)),
     );
   }
 
@@ -1738,65 +1876,69 @@ class _UploadGrantSheetState extends State<_UploadGrantSheet> {
           _copy(
             context,
             uz: widget.previous == null
-                ? 'Upload havolasini yaratish'
-                : 'Yangi versiya havolasi',
+                ? 'Fayl yuklash'
+                : 'Yangi versiya yuklash',
             en: widget.previous == null
-                ? 'Create upload link'
-                : 'Create new-version link',
+                ? 'Upload a file'
+                : 'Upload a new version',
           ),
           style: SfType.ui(size: 20, weight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
-        const SfHintCard(
+        SfHintCard(
           compact: true,
-          tone: SfHintTone.warning,
-          title: 'No binary transfer yet',
-          message:
-              'This requests a presigned PUT URL only. It will not pick or transfer a file from this phone, and it will not confirm the server file.',
+          tone: SfHintTone.info,
+          title: _copy(
+            context,
+            uz: 'Xavfsiz to\'g\'ridan-to\'g\'ri yuklash',
+            en: 'Secure direct upload',
+          ),
+          message: _copy(
+            context,
+            uz: 'Fayl qurilmadan himoyalangan vaqtinchalik havola orqali yuboriladi va serverda avtomatik tasdiqlanadi.',
+            en: 'The file is sent from this device through a protected temporary link, then confirmed automatically.',
+          ),
         ),
         const SizedBox(height: 16),
-        SfTextField(
-          controller: _filename,
-          label: _copy(context, uz: 'Aniq fayl nomi', en: 'Exact filename'),
-          hint: 'worksheet.pdf',
-          validator: _requiredText,
+        _PickedFileCard(
+          file: _pickedFile,
+          loading: _loading,
+          onPick: _pickFile,
         ),
         const SizedBox(height: 12),
-        if (widget.previous == null) ...[
+        Offstage(
+          offstage: true,
+          child: SfTextField(controller: _filename, validator: _requiredText),
+        ),
+        if (widget.previous == null && _pickedFile != null) ...[
           SfTextField(
             controller: _title,
             label: _copy(context, uz: 'Ko‘rinadigan nom', en: 'Display title'),
           ),
           const SizedBox(height: 12),
         ],
-        SfTextField(
-          controller: _contentType,
-          label: 'MIME content type',
-          validator: _requiredText,
-        ),
-        const SizedBox(height: 12),
-        SfTextField(
-          controller: _size,
-          label: _copy(
-            context,
-            uz: 'Baytlardagi aniq hajm',
-            en: 'Exact size in bytes',
+        Offstage(
+          offstage: true,
+          child: SfTextField(
+            controller: _contentType,
+            validator: _requiredText,
           ),
-          keyboardType: TextInputType.number,
-          validator: (value) {
-            final size = int.tryParse(value?.trim() ?? '');
-            return size == null || size <= 0
-                ? _copy(
-                    context,
-                    uz: 'Musbat butun son kiriting',
-                    en: 'Enter a positive integer',
-                  )
-                : null;
-          },
         ),
-        if (widget.previous == null && widget.lessons.isNotEmpty) ...[
+        Offstage(
+          offstage: true,
+          child: SfTextField(
+            controller: _size,
+            keyboardType: TextInputType.number,
+          ),
+        ),
+        if (_pickedFile != null &&
+            widget.previous == null &&
+            widget.lessons.isNotEmpty) ...[
           const SizedBox(height: 12),
           DropdownButtonFormField<int?>(
+            key: ValueKey(
+              'upload-lesson-${_lessonId ?? 'none'}-${_folderId ?? 'none'}',
+            ),
             initialValue: _lessonId,
             decoration: InputDecoration(
               labelText: _copy(
@@ -1815,12 +1957,24 @@ class _UploadGrantSheetState extends State<_UploadGrantSheet> {
               for (final lesson in widget.lessons)
                 DropdownMenuItem(value: lesson.id, child: Text(lesson.title)),
             ],
-            onChanged: (value) => setState(() => _lessonId = value),
+            onChanged: _loading
+                ? null
+                : (value) => setState(() {
+                    _lessonId = value;
+                    if (value != null) _folderId = null;
+                    _grant = null;
+                    _destinationMissing = false;
+                  }),
           ),
         ],
-        if (widget.previous == null && widget.folders.isNotEmpty) ...[
+        if (_pickedFile != null &&
+            widget.previous == null &&
+            widget.folders.isNotEmpty) ...[
           const SizedBox(height: 12),
           DropdownButtonFormField<int?>(
+            key: ValueKey(
+              'upload-folder-${_folderId ?? 'none'}-${_lessonId ?? 'none'}',
+            ),
             initialValue: _folderId,
             decoration: InputDecoration(
               labelText: _copy(
@@ -1839,74 +1993,223 @@ class _UploadGrantSheetState extends State<_UploadGrantSheet> {
               for (final folder in widget.folders)
                 DropdownMenuItem(value: folder.id, child: Text(folder.title)),
             ],
-            onChanged: (value) => setState(() => _folderId = value),
+            onChanged: _loading
+                ? null
+                : (value) => setState(() {
+                    _folderId = value;
+                    if (value != null) _lessonId = null;
+                    _grant = null;
+                    _destinationMissing = false;
+                  }),
+          ),
+        ],
+        if (_pickedFile != null &&
+            widget.previous == null &&
+            widget.lessons.isEmpty &&
+            widget.folders.isEmpty) ...[
+          const SizedBox(height: 12),
+          SfHintCard(
+            compact: true,
+            tone: SfHintTone.warning,
+            title: _copy(
+              context,
+              uz: 'Yuklash joyi mavjud emas',
+              en: 'No upload destination',
+            ),
+            message: _copy(
+              context,
+              uz: 'Avval sizga ochilgan dars yoki papka bo\'lishi kerak.',
+              en: 'An available lesson or folder is required first.',
+            ),
+          ),
+        ],
+        if (_destinationMissing &&
+            (widget.lessons.isNotEmpty || widget.folders.isNotEmpty)) ...[
+          const SizedBox(height: 12),
+          SfHintCard(
+            compact: true,
+            tone: SfHintTone.warning,
+            title: _copy(
+              context,
+              uz: 'Joyni tanlang',
+              en: 'Choose a destination',
+            ),
+            message: _copy(
+              context,
+              uz: 'Fayl dars yoki papkaga biriktirilishi kerak.',
+              en: 'The file must be attached to a lesson or folder.',
+            ),
+          ),
+        ],
+        if (_loading) ...[
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              key: const Key('backend-content-upload-progress'),
+              value: _progress.clamp(0, 1),
+              minHeight: 8,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            _progress >= .93
+                ? _copy(
+                    context,
+                    uz: 'Serverda tasdiqlanmoqda…',
+                    en: 'Confirming securely…',
+                  )
+                : _copy(
+                    context,
+                    uz: 'Yuklanmoqda · ${(_progress * 100).round()}%',
+                    en: 'Uploading · ${(_progress * 100).round()}%',
+                  ),
+            style: SfType.ui(size: 11, color: SfTheme.colorsOf(context).muted),
           ),
         ],
         const SizedBox(height: 18),
         SfButton(
           key: const Key('backend-content-generate-upload-link'),
           block: true,
-          leading: Icons.link_rounded,
+          leading: _pickedFile == null
+              ? Icons.attach_file_rounded
+              : Icons.cloud_upload_outlined,
           label: _loading
-              ? _copy(context, uz: 'Yaratilmoqda…', en: 'Creating…')
-              : _copy(
-                  context,
-                  uz: 'Vaqtinchalik havola yaratish',
-                  en: 'Create temporary link',
-                ),
+              ? _copy(context, uz: 'Yuklanmoqda…', en: 'Uploading…')
+              : _pickedFile == null
+              ? _copy(context, uz: 'Fayl tanlash', en: 'Choose file')
+              : _copy(context, uz: 'Xavfsiz yuklash', en: 'Upload securely'),
           onPressed: _loading ? null : _request,
         ),
       ],
     ),
   );
-
-  Widget _result(BuildContext context, BackendUploadGrant grant) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        _copy(
-          context,
-          uz: 'Havola tayyor — fayl hali yo‘q',
-          en: 'Link ready — file not uploaded',
-        ),
-        style: SfType.ui(size: 20, weight: FontWeight.w800),
-      ),
-      const SizedBox(height: 10),
-      SfHintCard(
-        tone: SfHintTone.warning,
-        title: '${grant.method} transfer required',
-        message:
-            'Send the exact binary to this URL with the declared content type and byte size. This mobile build deliberately does not call confirm because no binary transfer happened here.',
-      ),
-      const SizedBox(height: 14),
-      _GrantField(label: 'Method', value: grant.method),
-      _GrantField(label: 'Object key', value: grant.key),
-      if (grant.fileId != null)
-        _GrantField(label: 'Server file ID', value: '${grant.fileId}'),
-      if (grant.expiresAt != null)
-        _GrantField(
-          label: 'Expires',
-          value: grant.expiresAt!.toIso8601String(),
-        ),
-      _GrantField(label: 'Presigned URL', value: grant.url, selectable: true),
-      const SizedBox(height: 16),
-      SfButton(
-        block: true,
-        leading: Icons.copy_rounded,
-        label: _copy(
-          context,
-          uz: 'PUT havolasini nusxalash',
-          en: 'Copy PUT URL',
-        ),
-        onPressed: () async {
-          await Clipboard.setData(ClipboardData(text: grant.url));
-          if (!context.mounted) return;
-          Navigator.pop(context, grant);
-        },
-      ),
-    ],
-  );
 }
+
+class _PickedFileCard extends StatelessWidget {
+  const _PickedFileCard({
+    required this.file,
+    required this.loading,
+    required this.onPick,
+  });
+
+  final PlatformFile? file;
+  final bool loading;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final selected = file;
+    return SfSurfaceCard(
+      padding: const EdgeInsets.all(14),
+      color: selected == null ? c.surface2 : c.primarySoft,
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: selected == null
+                  ? c.surface3
+                  : c.primary.withValues(alpha: .13),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              selected == null
+                  ? Icons.note_add_outlined
+                  : _pickedFileIcon(selected),
+              color: c.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  selected?.name ??
+                      _copy(
+                        context,
+                        uz: 'Fayl tanlanmagan',
+                        en: 'No file selected',
+                      ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: SfType.ui(
+                    size: 13,
+                    weight: FontWeight.w800,
+                    color: c.ink,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  selected == null
+                      ? _copy(
+                          context,
+                          uz: 'Hujjat, rasm, audio yoki video',
+                          en: 'Document, image, audio, or video',
+                        )
+                      : '${_bytes(selected.size)} · ${_contentTypeFor(selected)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: SfType.ui(size: 10.5, color: c.muted),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: loading ? null : onPick,
+            child: Text(
+              selected == null
+                  ? _copy(context, uz: 'Tanlash', en: 'Choose')
+                  : _copy(context, uz: 'Almashtirish', en: 'Replace'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+IconData _pickedFileIcon(PlatformFile file) {
+  final type = _contentTypeFor(file);
+  if (type.startsWith('image/')) return Icons.image_outlined;
+  if (type.startsWith('video/')) return Icons.movie_outlined;
+  if (type.startsWith('audio/')) return Icons.audio_file_outlined;
+  if (type == 'application/pdf') return Icons.picture_as_pdf_outlined;
+  return Icons.description_outlined;
+}
+
+String _displayNameWithoutExtension(String filename) {
+  final dot = filename.lastIndexOf('.');
+  return dot > 0 ? filename.substring(0, dot) : filename;
+}
+
+String _contentTypeFor(PlatformFile file) => switch (file.extension
+    ?.toLowerCase()) {
+  'pdf' => 'application/pdf',
+  'doc' => 'application/msword',
+  'docx' =>
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'ppt' => 'application/vnd.ms-powerpoint',
+  'pptx' =>
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'xls' => 'application/vnd.ms-excel',
+  'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'txt' => 'text/plain',
+  'csv' => 'text/csv',
+  'png' => 'image/png',
+  'jpg' || 'jpeg' => 'image/jpeg',
+  'webp' => 'image/webp',
+  'mp3' => 'audio/mpeg',
+  'm4a' => 'audio/mp4',
+  'wav' => 'audio/wav',
+  'mp4' => 'video/mp4',
+  'mov' => 'video/quicktime',
+  _ => 'application/octet-stream',
+};
 
 class _CreateMaterialSheet extends StatefulWidget {
   const _CreateMaterialSheet({
@@ -1994,38 +2297,6 @@ class _CreateMaterialSheetState extends State<_CreateMaterialSheet> {
       ),
     ),
   );
-}
-
-class _GrantField extends StatelessWidget {
-  const _GrantField({
-    required this.label,
-    required this.value,
-    this.selectable = false,
-  });
-
-  final String label;
-  final String value;
-  final bool selectable;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SfTheme.colorsOf(context);
-    final style = SfType.mono(size: 11, color: c.ink2, height: 1.4);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 11),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: SfType.ui(size: 11, color: c.muted)),
-          const SizedBox(height: 3),
-          if (selectable)
-            SelectableText(value, style: style)
-          else
-            Text(value, style: style),
-        ],
-      ),
-    );
-  }
 }
 
 class _SectionHeading extends StatelessWidget {

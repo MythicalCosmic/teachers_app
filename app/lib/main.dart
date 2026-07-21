@@ -8,10 +8,12 @@ import 'app/app_scope.dart';
 import 'app/app_state.dart';
 import 'data/models.dart';
 import 'data/api/starforge_api.dart';
+import 'features/connectivity/backend_reachability.dart';
 import 'router.dart';
 import 'screens/groups/group_workspace_store.dart';
 import 'theme/sf_theme.dart';
 import 'theme/tokens.dart';
+import 'widgets/sf_connectivity_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,22 +34,54 @@ class StarForgeStaffApp extends StatefulWidget {
 class _StarForgeStaffAppState extends State<StarForgeStaffApp>
     with WidgetsBindingObserver {
   late final _router = buildRouter(widget.appState);
+  late final BackendReachabilityController _reachability;
+  bool _foreground = true;
+  bool _recoveringFromOffline = false;
 
   @override
   void initState() {
     super.initState();
+    final api = widget.appState.backendApi;
+    _reachability = BackendReachabilityController(
+      enabled: widget.appState.isProduction,
+      reachabilityProbe: HttpBackendReachabilityProbe(
+        baseUrl: () => api?.connection?.baseUrl ?? api?.platformBaseUrl ?? '',
+      ),
+    )..addListener(_handleReachabilityChanged);
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_reachability.start());
+  }
+
+  void _handleReachabilityChanged() {
+    if (!_reachability.enabled) return;
+    if (_reachability.blocksApp) {
+      if (_reachability.status == BackendReachabilityStatus.offline) {
+        _recoveringFromOffline = true;
+      }
+      widget.appState.pauseRealtime();
+      return;
+    }
+    if (!_recoveringFromOffline || !_foreground) return;
+    _recoveringFromOffline = false;
+    widget.appState.resumeRealtime();
+    if (widget.appState.isInitialized) {
+      unawaited(widget.appState.retryConnection());
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        widget.appState.resumeRealtime();
+        _foreground = true;
+        unawaited(_reachability.resume());
+        if (!_reachability.blocksApp) widget.appState.resumeRealtime();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
+        _foreground = false;
+        _reachability.pause();
         widget.appState.pauseRealtime();
     }
   }
@@ -55,6 +89,9 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _reachability
+      ..removeListener(_handleReachabilityChanged)
+      ..dispose();
     _router.dispose();
     super.dispose();
   }
@@ -130,9 +167,13 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
                   intensity: settings.motionIntensity,
                   child: AnnotatedRegion<SystemUiOverlayStyle>(
                     value: overlay,
-                    child: _PersistenceAwareBody(
-                      appState: widget.appState,
-                      child: child ?? const SizedBox.shrink(),
+                    child: SfConnectivityGate(
+                      controller: _reachability,
+                      locale: settings.locale,
+                      child: _PersistenceAwareBody(
+                        appState: widget.appState,
+                        child: child ?? const SizedBox.shrink(),
+                      ),
                     ),
                   ),
                 ),

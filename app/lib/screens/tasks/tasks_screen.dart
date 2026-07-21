@@ -345,17 +345,21 @@ class _CommandCenter extends StatelessWidget {
                   children: [
                     Icon(Icons.auto_awesome_rounded, color: c.ai, size: 16),
                     const SizedBox(width: 5),
-                    Text(
-                      _copy(
-                        context,
-                        uz: 'Ish markazi',
-                        ru: 'Рабочий центр',
-                        en: 'Task command center',
-                      ),
-                      style: SfType.ui(
-                        size: 14,
-                        weight: FontWeight.w800,
-                        color: c.ink,
+                    Expanded(
+                      child: Text(
+                        _copy(
+                          context,
+                          uz: 'Ish markazi',
+                          ru: 'Рабочий центр',
+                          en: 'Task command center',
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: SfType.ui(
+                          size: 14,
+                          weight: FontWeight.w800,
+                          color: c.ink,
+                        ),
                       ),
                     ),
                   ],

@@ -42,7 +42,11 @@ class _StaffShellScreenState extends State<StaffShellScreen>
       listenable: app,
       builder: (context, _) {
         final role = app.session?.role ?? StaffRole.teacher;
-        final destinations = _destinationsFor(context, role);
+        final destinations = _destinationsFor(
+          context,
+          role,
+          canViewLeads: app.can(StaffCapability.viewLeads),
+        );
         final motionEnabled = !app.settings.reducedMotion;
         _pageMotion.duration = SfTheme.of(
           context,
@@ -165,7 +169,18 @@ class _Destination {
   final String semanticLabel;
 }
 
-List<_Destination> _destinationsFor(BuildContext context, StaffRole role) {
+List<_Destination> _destinationsFor(
+  BuildContext context,
+  StaffRole role, {
+  required bool canViewLeads,
+}) {
+  final servicesLabel = _shellCopy(
+    context,
+    uz: 'Xizmatlar',
+    ru: 'Сервисы',
+    en: 'Services',
+  );
+  final servicesOnlyReception = role == StaffRole.reception && !canViewLeads;
   final labels = switch (role) {
     StaffRole.teacher => [
       context.tr('today'),
@@ -190,8 +205,8 @@ List<_Destination> _destinationsFor(BuildContext context, StaffRole role) {
     ],
     StaffRole.reception => [
       context.tr('today'),
-      context.tr('leads'),
-      context.tr('reception'),
+      canViewLeads ? context.tr('leads') : servicesLabel,
+      canViewLeads ? context.tr('reception') : context.tr('tasks'),
       context.tr('messages'),
       context.tr('more'),
     ],
@@ -217,10 +232,14 @@ List<_Destination> _destinationsFor(BuildContext context, StaffRole role) {
     ),
     _Destination(
       labels[1],
-      role == StaffRole.auditor
+      servicesOnlyReception
+          ? Icons.grid_view_outlined
+          : role == StaffRole.auditor
           ? Icons.monitor_heart_outlined
           : Icons.dashboard_customize_outlined,
-      role == StaffRole.auditor
+      servicesOnlyReception
+          ? Icons.grid_view_rounded
+          : role == StaffRole.auditor
           ? Icons.monitor_heart_rounded
           : Icons.dashboard_customize_rounded,
       _shellCopy(

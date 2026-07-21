@@ -83,6 +83,40 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('content mutation controls stay out of unauthorized UI', (
+    tester,
+  ) async {
+    final api = BackendServicesApi(_ServiceTransport());
+    await pumpService(tester, BackendContentScreen(api: api));
+
+    await tester.tap(find.text('Files'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('backend-content-request-upload')),
+      findsNothing,
+    );
+    expect(find.text('New version'), findsNothing);
+
+    await pumpService(
+      tester,
+      BackendContentScreen(
+        api: api,
+        canManageContent: true,
+        canApproveContent: true,
+        canPublishContent: true,
+        canGenerateContent: true,
+      ),
+    );
+    await tester.tap(find.text('Files'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('backend-content-request-upload')),
+      findsOneWidget,
+    );
+    expect(find.text('New version'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('production media exposes video and audio playback actions', (
     tester,
   ) async {

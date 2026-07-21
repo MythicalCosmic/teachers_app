@@ -129,6 +129,42 @@ void main() {
     },
   );
 
+  test(
+    'unwraps nested results instead of rendering pagination as a record',
+    () async {
+      final api = await _api((request) async {
+        if (request.url.path == '/api/v1/users/me/') return _me();
+        return _json(200, {
+          'success': true,
+          'data': {
+            'count': 1,
+            'page_size': 20,
+            'next': null,
+            'previous': null,
+            'results': [
+              {
+                'id': 81,
+                'student_name': 'Aziza Karimova',
+                'risk_level': 'medium',
+              },
+            ],
+          },
+        });
+      });
+      final controller = StaffOperationsController(
+        api: api,
+        module: staffOperationModuleById('risk')!,
+      );
+
+      await controller.refresh();
+
+      expect(controller.records, hasLength(1));
+      expect(controller.records.single['student_name'], 'Aziza Karimova');
+      expect(controller.records.single.containsKey('count'), isFalse);
+      expect(controller.hasNext, isFalse);
+    },
+  );
+
   test('role-denied module is isolated as unavailable', () async {
     final api = await _api((request) async {
       if (request.url.path == '/api/v1/users/me/') return _me();
@@ -146,6 +182,7 @@ void main() {
     await controller.refresh();
 
     expect(controller.available, isFalse);
+    expect(controller.accessDenied, isTrue);
     expect(controller.records, isEmpty);
     expect(controller.error, 'Not allowed for this role.');
   });
@@ -164,6 +201,11 @@ void main() {
       api: api,
       module: staffOperationModuleById('approvals')!,
     );
+    final cashierApprovals = StaffOperationsController(
+      api: api,
+      module: staffOperationModuleById('approvals')!,
+      accountTypeSlug: 'cashier',
+    );
 
     expect(
       cover
@@ -180,5 +222,15 @@ void main() {
     expect(cover.actionsFor({'id': 1, 'status': 'approved'}), isEmpty);
     expect(meeting.actionsFor({'id': 2, 'status': 'cancelled'}), isEmpty);
     expect(approvals.actionsFor({'id': 3, 'status': 'approved'}), isEmpty);
+    expect(
+      approvals
+          .actionsFor({'id': 3, 'status': 'pending'})
+          .map((action) => action.id),
+      ['cancel'],
+    );
+    expect(
+      cashierApprovals.actionsFor({'id': 3, 'status': 'pending'}),
+      isEmpty,
+    );
   });
 }

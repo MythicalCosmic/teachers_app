@@ -360,6 +360,15 @@ final class BackendContentController extends BackendServicesController {
     'New-version upload link',
   );
 
+  Future<String> confirmUpload(int fileId) async {
+    final status = _required(
+      await api.confirmContentFile(fileId),
+      'Upload confirmation',
+    );
+    await refresh();
+    return status;
+  }
+
   Future<String> requestDownloadUrl(int fileId) async =>
       _required(await api.contentDownloadUrl(fileId), 'Download link');
 

@@ -215,6 +215,7 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.maybeOf(context);
+    final canTakeAttendance = app?.can(StaffCapability.takeAttendance) ?? true;
     if (app?.isProduction == true) {
       final controller = learningWorkspaceFor(app!);
       if (controller != null) {
@@ -222,6 +223,7 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
           controller: controller,
           groupId: widget.groupId,
           initialTab: widget.initialTab,
+          canTakeAttendance: canTakeAttendance,
         );
       }
     }
@@ -265,8 +267,9 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
             _HeroCard(
               group: group,
               attendance: _store.attendanceRate(group.id),
-              onAttendance: () =>
-                  context.push('/attendance?cohort=${group.id}'),
+              onAttendance: canTakeAttendance
+                  ? () => context.push('/attendance?cohort=${group.id}')
+                  : null,
               onMessage: () => context.push('/messages/new?group=${group.id}'),
             ),
             const SizedBox(height: 16),
@@ -322,8 +325,9 @@ class _CohortDetailScreenState extends State<CohortDetailScreen> {
                   onCustomRange: () => _pickRange(group.id),
                   onLessonChanged: (value) =>
                       setState(() => _lessonFilter = value),
-                  onTakeAttendance: () =>
-                      context.push('/attendance?cohort=${group.id}'),
+                  onTakeAttendance: canTakeAttendance
+                      ? () => context.push('/attendance?cohort=${group.id}')
+                      : null,
                 ),
                 _ => _SchedulePanel(
                   key: const ValueKey('schedule'),
@@ -350,7 +354,7 @@ class _HeroCard extends StatelessWidget {
 
   final TeacherGroup group;
   final double attendance;
-  final VoidCallback onAttendance;
+  final VoidCallback? onAttendance;
   final VoidCallback onMessage;
 
   @override
@@ -422,20 +426,22 @@ class _HeroCard extends StatelessWidget {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final narrow = constraints.maxWidth < 285;
-                  final attendanceButton = SfButton(
-                    key: const ValueKey('group-attendance-action'),
-                    block: true,
-                    height: 48,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: narrow ? 18 : 12,
-                      vertical: 9,
-                    ),
-                    fontSize: narrow ? 13.5 : 12.5,
-                    label: context.gt('take_attendance'),
-                    leading: SfIcons.check,
-                    haptic: true,
-                    onPressed: onAttendance,
-                  );
+                  final attendanceButton = onAttendance == null
+                      ? null
+                      : SfButton(
+                          key: const ValueKey('group-attendance-action'),
+                          block: true,
+                          height: 48,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: narrow ? 18 : 12,
+                            vertical: 9,
+                          ),
+                          fontSize: narrow ? 13.5 : 12.5,
+                          label: context.gt('take_attendance'),
+                          leading: SfIcons.check,
+                          haptic: true,
+                          onPressed: onAttendance,
+                        );
                   final messageButton = SfButton(
                     key: const ValueKey('group-message-action'),
                     block: true,
@@ -453,12 +459,15 @@ class _HeroCard extends StatelessWidget {
                   if (narrow) {
                     return Column(
                       children: [
-                        attendanceButton,
-                        const SizedBox(height: 8),
+                        if (attendanceButton != null) ...[
+                          attendanceButton,
+                          const SizedBox(height: 8),
+                        ],
                         messageButton,
                       ],
                     );
                   }
+                  if (attendanceButton == null) return messageButton;
                   return Row(
                     children: [
                       Expanded(child: attendanceButton),
@@ -1165,7 +1174,7 @@ class _AttendanceHistoryPanel extends StatelessWidget {
   final ValueChanged<AttendanceWindow> onWindowChanged;
   final VoidCallback onCustomRange;
   final ValueChanged<String> onLessonChanged;
-  final VoidCallback onTakeAttendance;
+  final VoidCallback? onTakeAttendance;
 
   @override
   Widget build(BuildContext context) {
@@ -1266,13 +1275,16 @@ class _AttendanceHistoryPanel extends StatelessWidget {
               ],
               onChanged: (value) => onLessonChanged(value ?? 'Hammasi'),
             );
-            final action = SfButton(
-              block: constraints.maxWidth < 360,
-              label: context.gt('mark'),
-              leading: SfIcons.check,
-              haptic: true,
-              onPressed: onTakeAttendance,
-            );
+            final action = onTakeAttendance == null
+                ? null
+                : SfButton(
+                    block: constraints.maxWidth < 360,
+                    label: context.gt('mark'),
+                    leading: SfIcons.check,
+                    haptic: true,
+                    onPressed: onTakeAttendance,
+                  );
+            if (action == null) return dropdown;
             if (constraints.maxWidth < 360) {
               return Column(
                 children: [dropdown, const SizedBox(height: 8), action],

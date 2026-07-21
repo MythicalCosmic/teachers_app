@@ -9,6 +9,7 @@ import 'app/app_scope.dart';
 import 'app/app_state.dart';
 import 'data/api/backend_services_api.dart';
 import 'data/models.dart';
+import 'features/operations/staff_operations_controller.dart';
 import 'screens/ai/ai_chat_list_screen.dart';
 import 'screens/ai/ai_chat_screen.dart';
 import 'screens/assignments/assignments_screen.dart';
@@ -364,17 +365,32 @@ String? _redirect(AppState app, GoRouterState state) {
     return app.settings.hasCompletedWelcome ? '/home' : '/welcome';
   }
   if (path == '/welcome' && app.settings.hasCompletedWelcome) return '/home';
+  final operationId = _staffOperationModuleId(path);
+  if (operationId != null && staffOperationModuleById(operationId) == null) {
+    return '/staff/operations';
+  }
   final required = _capabilityFor(path);
   if (required != null && !app.can(required)) return '/home';
   return null;
 }
 
 StaffCapability? _capabilityFor(String path) {
+  if (path == '/schedule' || path.startsWith('/today/')) {
+    return StaffCapability.viewToday;
+  }
+  if (path == '/lesson') return StaffCapability.teachLessons;
   if (path.startsWith('/attendance')) return StaffCapability.takeAttendance;
+  if (path == '/cohort' || path == '/student') {
+    return StaffCapability.viewCohorts;
+  }
   if (path.startsWith('/cards')) return StaffCapability.issueCards;
+  if (path.startsWith('/content')) return StaffCapability.viewContent;
+  if (path.startsWith('/ai')) return StaffCapability.useAi;
   if (path.startsWith('/print')) return StaffCapability.submitPrintJobs;
   if (path.startsWith('/surveys')) return StaffCapability.answerSurveys;
   if (path.startsWith('/assignments')) return StaffCapability.teachLessons;
+  if (path == '/tasks/new') return StaffCapability.createTasks;
+  if (path == '/tasks/detail') return StaffCapability.updateOwnTasks;
   if (path.startsWith('/messages')) {
     return StaffCapability.useStaffMessaging;
   }
@@ -383,6 +399,14 @@ StaffCapability? _capabilityFor(String path) {
   }
   if (path.startsWith('/staff/reception')) return StaffCapability.viewLeads;
   if (path.startsWith('/payments')) return StaffCapability.viewPaymentStatus;
+  if (path == '/staff/operations') {
+    return StaffCapability.viewStaffServices;
+  }
+  final operationId = _staffOperationModuleId(path);
+  if (operationId != null) {
+    return staffOperationModuleById(operationId)?.requiredCapability ??
+        StaffCapability.viewStaffServices;
+  }
   if (path.startsWith('/staff/audit/log')) {
     return StaffCapability.viewImmutableAuditLog;
   }
@@ -396,6 +420,20 @@ StaffCapability? _capabilityFor(String path) {
     return StaffCapability.viewAuditWorkspace;
   }
   return null;
+}
+
+String? _staffOperationModuleId(String path) {
+  const prefix = '/staff/operations/';
+  if (!path.startsWith(prefix)) return null;
+  final encoded = path.substring(prefix.length);
+  if (encoded.isEmpty || encoded.contains('/')) return null;
+  try {
+    return Uri.decodeComponent(encoded);
+  } on FormatException {
+    // Treat malformed percent-encoding as an unknown module so the redirect
+    // policy sends it back to the safe services hub instead of throwing.
+    return encoded;
+  }
 }
 
 DateTime? _tryParseDateTime(String? value) {
@@ -522,22 +560,40 @@ Widget _workspaceRoot(BuildContext context) {
   return switch (session.role) {
     StaffRole.teacher || StaffRole.assistant => const CohortListScreen(),
     StaffRole.methodist => _methodistWorkspace(context),
-    StaffRole.reception => _receptionWorkspace(context),
+    StaffRole.reception =>
+      app.can(StaffCapability.viewLeads)
+          ? _receptionWorkspace(context)
+          : _staffServicesWorkspace(context),
     StaffRole.auditor => _auditSignals(context),
   };
 }
 
 Widget _workRoot(BuildContext context) {
-  final session = AppScope.of(context).session;
+  final app = AppScope.of(context);
+  final session = app.session;
   if (session == null) return const SizedBox.shrink();
   final role = session.role;
   return switch (role) {
     StaffRole.teacher ||
     StaffRole.assistant ||
     StaffRole.methodist => const TasksScreen(),
-    StaffRole.reception => _receptionWorkspace(context),
+    StaffRole.reception =>
+      app.can(StaffCapability.viewLeads)
+          ? _receptionWorkspace(context)
+          : const TasksScreen(),
     StaffRole.auditor => _auditCases(context),
   };
+}
+
+Widget _staffServicesWorkspace(BuildContext context) {
+  final app = AppScope.of(context);
+  final session = app.session;
+  if (session == null) return const SizedBox.shrink();
+  return StaffOperationsHubScreen(
+    role: session.role,
+    canAccess: app.can,
+    showBack: false,
+  );
 }
 
 Widget _inboxRoot(BuildContext context) {
@@ -559,6 +615,7 @@ Widget _moreRoot(BuildContext context) {
     branchName: session.branchName,
     unreadMessages: app.unreadMessageCount,
     unreadNotifications: app.unreadNotificationCount,
+    canAccess: app.can,
     onOpenRoute: (route) => context.push(route),
     onSignOut: () => unawaited(_confirmSignOut(context, app)),
   );
@@ -598,6 +655,10 @@ Widget _receptionWorkspace(BuildContext _) {
       if (session == null) return const SizedBox.shrink();
       return ReceptionWorkspaceScreen(
         role: session.role,
+        canViewLeads: AppScope.of(routeContext).can(StaffCapability.viewLeads),
+        canManageAdmissions: AppScope.of(
+          routeContext,
+        ).can(StaffCapability.manageAdmissions),
         store: receptionWorkspaceStore,
         onCreateLead: () => unawaited(
           _createReceptionLeadDialog(routeContext, receptionWorkspaceStore),
