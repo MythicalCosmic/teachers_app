@@ -68,7 +68,7 @@ Future<GoRouter> _pumpRoute(
 }
 
 void main() {
-  testWidgets('production reception route creates, calls and opens a lead', (
+  testWidgets('demo reception route creates, calls and opens a lead', (
     tester,
   ) async {
     final before = receptionWorkspaceStore.leads.length;
@@ -144,7 +144,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('production audit refresh and CSV export are operational', (
+  testWidgets('demo audit refresh and CSV export are operational', (
     tester,
   ) async {
     String? clipboard;

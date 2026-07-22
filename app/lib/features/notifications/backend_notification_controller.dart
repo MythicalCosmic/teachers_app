@@ -19,6 +19,7 @@ final class BackendNotificationController extends ChangeNotifier {
   final List<BackendNotification> _items = <BackendNotification>[];
   final List<BackendNotificationPreference> _preferences =
       <BackendNotificationPreference>[];
+  final Set<int> _realtimeDuringRefresh = <int>{};
 
   StreamSubscription<RealtimeNotification>? _notificationSubscription;
   StreamSubscription<NotificationRealtimeStatus>? _statusSubscription;
@@ -84,6 +85,7 @@ final class BackendNotificationController extends ChangeNotifier {
     if (_refreshing) return;
     final generation = _generation;
     _refreshing = true;
+    _realtimeDuringRefresh.clear();
     _error = null;
     notifyListeners();
     try {
@@ -98,15 +100,33 @@ final class BackendNotificationController extends ChangeNotifier {
         return;
       }
       final page = feed.value!;
+      final concurrentRealtime = <BackendNotification>[
+        for (final item in _items)
+          if (_realtimeDuringRefresh.contains(item.id)) item,
+      ];
       _items
         ..clear()
         ..addAll(page.items);
+      for (final concurrent in concurrentRealtime) {
+        final index = _items.indexWhere((item) => item.id == concurrent.id);
+        if (index < 0) {
+          _items.add(concurrent);
+        } else {
+          _items[index] = concurrent;
+        }
+      }
       _nextCursor = _cursorToken(page.next);
       _feedUnavailable = false;
       if (count.isUnavailable) {
         _unreadCount = _items.where((item) => item.readAt == null).length;
       } else {
-        _unreadCount = count.value!;
+        final serverIds = page.items.map((item) => item.id).toSet();
+        final concurrentUnreadOutsidePage = concurrentRealtime
+            .where(
+              (item) => item.readAt == null && !serverIds.contains(item.id),
+            )
+            .length;
+        _unreadCount = count.value! + concurrentUnreadOutsidePage;
       }
       _sortAndDedupe();
       _error = null;
@@ -121,6 +141,7 @@ final class BackendNotificationController extends ChangeNotifier {
     } finally {
       if (_isCurrent(generation)) {
         _refreshing = false;
+        _realtimeDuringRefresh.clear();
         notifyListeners();
       }
     }
@@ -165,15 +186,17 @@ final class BackendNotificationController extends ChangeNotifier {
   Future<void> markRead(int notificationId) async {
     final index = _items.indexWhere((item) => item.id == notificationId);
     if (index < 0 || _items[index].readAt != null) return;
+    final generation = _generation;
     final original = _items[index];
-    _items[index] = _copyNotification(original, readAt: DateTime.now());
+    final optimisticReadAt = DateTime.now();
+    _items[index] = _copyNotification(original, readAt: optimisticReadAt);
     _unreadCount = (_unreadCount - 1).clamp(0, 1 << 30);
     notifyListeners();
     try {
       final result = await _backend.markNotificationRead(notificationId);
+      if (!_isCurrent(generation)) return;
       if (result.isUnavailable || result.value != true) {
-        _items[index] = original;
-        _unreadCount++;
+        _rollbackRead(notificationId, optimisticReadAt: optimisticReadAt);
         _feedUnavailable = result.isUnavailable;
         _error =
             result.error?.message ??
@@ -181,11 +204,8 @@ final class BackendNotificationController extends ChangeNotifier {
         notifyListeners();
       }
     } on ApiException catch (error) {
-      final currentIndex = _items.indexWhere(
-        (item) => item.id == notificationId,
-      );
-      if (currentIndex >= 0) _items[currentIndex] = original;
-      _unreadCount++;
+      if (!_isCurrent(generation)) return;
+      _rollbackRead(notificationId, optimisticReadAt: optimisticReadAt);
       _error = error.message;
       notifyListeners();
       await _handleApiError(error);
@@ -193,8 +213,11 @@ final class BackendNotificationController extends ChangeNotifier {
   }
 
   Future<void> markAllRead() async {
-    final originals = List<BackendNotification>.from(_items);
-    final originalUnread = _unreadCount;
+    final generation = _generation;
+    final originallyUnreadIds = <int>{
+      for (final item in _items)
+        if (item.readAt == null) item.id,
+    };
     final now = DateTime.now();
     for (var index = 0; index < _items.length; index++) {
       if (_items[index].readAt == null) {
@@ -205,20 +228,16 @@ final class BackendNotificationController extends ChangeNotifier {
     notifyListeners();
     try {
       final result = await _backend.markAllNotificationsRead();
+      if (!_isCurrent(generation)) return;
       if (result.isUnavailable) {
-        _items
-          ..clear()
-          ..addAll(originals);
-        _unreadCount = originalUnread;
+        _rollbackMarkAll(originallyUnreadIds, optimisticReadAt: now);
         _feedUnavailable = true;
         _error = result.error?.message;
         notifyListeners();
       }
     } on ApiException catch (error) {
-      _items
-        ..clear()
-        ..addAll(originals);
-      _unreadCount = originalUnread;
+      if (!_isCurrent(generation)) return;
+      _rollbackMarkAll(originallyUnreadIds, optimisticReadAt: now);
       _error = error.message;
       notifyListeners();
       await _handleApiError(error);
@@ -257,6 +276,7 @@ final class BackendNotificationController extends ChangeNotifier {
     BackendNotificationPreference preference,
     bool enabled,
   ) async {
+    final generation = _generation;
     final originals = List<BackendNotificationPreference>.from(_preferences);
     final index = _preferences.indexWhere(
       (item) =>
@@ -276,6 +296,7 @@ final class BackendNotificationController extends ChangeNotifier {
     notifyListeners();
     try {
       final result = await _backend.updateNotificationPreferences(_preferences);
+      if (!_isCurrent(generation)) return;
       if (result.isUnavailable) {
         _preferences
           ..clear()
@@ -291,6 +312,7 @@ final class BackendNotificationController extends ChangeNotifier {
       }
       notifyListeners();
     } on ApiException catch (error) {
+      if (!_isCurrent(generation)) return;
       _preferences
         ..clear()
         ..addAll(originals);
@@ -316,7 +338,9 @@ final class BackendNotificationController extends ChangeNotifier {
     ++_generation;
     _started = false;
     _feedInitialized = false;
-    await _realtime.pause();
+    _refreshing = false;
+    _loadingMore = false;
+    _preferencesLoading = false;
     _items.clear();
     _preferences.clear();
     _nextCursor = null;
@@ -324,7 +348,14 @@ final class BackendNotificationController extends ChangeNotifier {
     _error = null;
     _feedUnavailable = false;
     _preferencesUnavailable = false;
+    _realtimeDuringRefresh.clear();
     notifyListeners();
+    try {
+      await _realtime.pause();
+    } on Object {
+      // In-memory sensitive state is already cleared. A broken realtime
+      // transport must not keep logout/session expiry from completing.
+    }
   }
 
   void _handleRealtimeNotification(RealtimeNotification realtime) {
@@ -353,6 +384,7 @@ final class BackendNotificationController extends ChangeNotifier {
       _items.insert(0, notification);
       _unreadCount++;
     }
+    if (_refreshing) _realtimeDuringRefresh.add(id);
     _sortAndDedupe();
     notifyListeners();
     if (realtime.eventType == 'message.received') {
@@ -389,6 +421,7 @@ final class BackendNotificationController extends ChangeNotifier {
   BackendNotification _copyNotification(
     BackendNotification value, {
     DateTime? readAt,
+    bool clearReadAt = false,
   }) => BackendNotification(
     id: value.id,
     userId: value.userId,
@@ -397,9 +430,38 @@ final class BackendNotificationController extends ChangeNotifier {
     title: value.title,
     body: value.body,
     data: value.data,
-    readAt: readAt ?? value.readAt,
+    readAt: clearReadAt ? null : readAt ?? value.readAt,
     createdAt: value.createdAt,
   );
+
+  void _rollbackRead(int notificationId, {required DateTime optimisticReadAt}) {
+    final currentIndex = _items.indexWhere((item) => item.id == notificationId);
+    if (currentIndex < 0 || _items[currentIndex].readAt != optimisticReadAt) {
+      return;
+    }
+    _items[currentIndex] = _copyNotification(
+      _items[currentIndex],
+      clearReadAt: true,
+    );
+    _unreadCount++;
+  }
+
+  void _rollbackMarkAll(
+    Set<int> originallyUnreadIds, {
+    required DateTime optimisticReadAt,
+  }) {
+    var restored = 0;
+    for (var index = 0; index < _items.length; index++) {
+      final current = _items[index];
+      if (!originallyUnreadIds.contains(current.id) ||
+          current.readAt != optimisticReadAt) {
+        continue;
+      }
+      _items[index] = _copyNotification(current, clearReadAt: true);
+      restored++;
+    }
+    _unreadCount += restored;
+  }
 
   String? _cursorToken(String? next) {
     if (next == null || next.isEmpty) return null;

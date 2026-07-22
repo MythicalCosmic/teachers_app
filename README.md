@@ -12,9 +12,11 @@ Permitted roles:
 - Reception / admissions
 - Auditor
 
-The app uses a local, persisted demo repository while the production API
-contract is still unavailable. Every demo workflow is interactive and the
-repository boundary is designed to be replaced by a remote implementation.
+The shipped entry point uses the authenticated production API adapter. A
+deterministic demo repository remains for isolated development and tests, but
+production routes must never present demo records as server data. Modules whose
+server contract is not implemented are routed to an honest server-backed hub or
+availability state.
 
 ## Run locally
 
@@ -27,16 +29,6 @@ flutter analyze
 flutter test
 flutter run
 ```
-
-All demo accounts use password `demo2026`:
-
-| Role | Username |
-|---|---|
-| Teacher | `nigora.karimova` |
-| Assistant | `sardor.aliyev` |
-| Methodist | `rano.karimova` |
-| Reception | `malika.qodirova` |
-| Auditor | `aziz.audit` |
 
 See [the product and permission specification](docs/STAFF_APP_PRODUCT_SPEC.md)
 for scope and security rules. A signed iPhone build is produced by the manual

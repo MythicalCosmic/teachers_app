@@ -538,7 +538,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 14),
           Text(
-            'StarForge Staff · 2.0 Experience Preview',
+            'StarForge Staff',
             textAlign: TextAlign.center,
             style: SfType.mono(size: 10, color: c.muted),
           ),

@@ -67,6 +67,8 @@ final class AppState extends ChangeNotifier {
   bool _persistSession = true;
   bool _isInitialized = false;
   bool _isPersisting = false;
+  int _pendingPersistenceWrites = 0;
+  Future<void>? _persistenceQueue;
   String? _persistenceError;
   String? _syncError;
   bool _isSyncing = false;
@@ -78,6 +80,9 @@ final class AppState extends ChangeNotifier {
   bool _formsAvailable = true;
   String? _formsError;
   int _idCounter = 0;
+  int _remoteSessionGeneration = 0;
+  bool _remoteSessionCleanupInProgress = false;
+  bool _remoteExpiryHandled = false;
 
   static Future<AppState> bootstrap({
     AppStorage? storage,
@@ -174,14 +179,27 @@ final class AppState extends ChangeNotifier {
   }
 
   void _startBackendRealtime() {
-    if (_session == null) return;
+    final session = _session;
+    if (session == null) return;
+    _productionMessaging?.initialize(
+      userId: session.userId,
+      userName: session.displayName,
+      sourceThreads: const [],
+      storageScope: messagingStorageScope,
+    );
     unawaited(_productionNotifications?.startRealtime());
   }
 
   Future<void> _expireRemoteSession() async {
-    if (_api == null || _session == null) return;
-    await _productionNotifications?.clearSession();
-    _productionMessaging?.clearRemoteSession();
+    if (_api == null) return;
+    if (_remoteExpiryHandled) return;
+    if (_remoteSessionCleanupInProgress && _session == null) return;
+    _remoteExpiryHandled = true;
+    _remoteSessionCleanupInProgress = true;
+    ++_remoteSessionGeneration;
+    final expiringSession = _session;
+    final expiringStorageScope = messagingStorageScope;
+    final expiringAccessToken = _api.currentAccessToken;
     _session = null;
     _tasks = [];
     _attendanceSheets = [];
@@ -198,11 +216,43 @@ final class AppState extends ChangeNotifier {
     _formsLoading = false;
     _formsAvailable = true;
     _formsError = null;
+    _isSyncing = false;
     _syncError =
         'Sessiya muddati tugadi. Xavfsiz davom etish uchun qayta kiring.';
     _lastSyncedAt = null;
     notifyListeners();
-    await _persist();
+    Object? cleanupError;
+    try {
+      try {
+        await _api.clearSessionIfCurrent(expiringAccessToken);
+      } on Object catch (error) {
+        cleanupError = error;
+      }
+      await _persist();
+      try {
+        await _productionNotifications?.clearSession();
+      } on Object catch (error) {
+        cleanupError ??= error;
+      }
+      try {
+        await _productionMessaging?.clearRemoteSession(
+          userId: expiringSession?.userId,
+          storageScope: expiringStorageScope,
+          purgeScopeWhenUserUnknown: true,
+        );
+      } on Object catch (error) {
+        cleanupError ??= error;
+      }
+    } on Object catch (error) {
+      cleanupError ??= error;
+    } finally {
+      _remoteSessionCleanupInProgress = false;
+      if (cleanupError != null) {
+        _persistenceError =
+            'Expired-session metadata could not be fully removed: $cleanupError';
+        notifyListeners();
+      }
+    }
   }
 
   void pauseRealtime() {
@@ -221,6 +271,8 @@ final class AppState extends ChangeNotifier {
   DateTime? get lastSyncedAt => _lastSyncedAt;
   String get centerName => _api?.connection?.name ?? _session?.branchName ?? '';
   String get serverHost => _api?.connection?.baseUrl ?? '';
+  String get messagingStorageScope =>
+      _messagingScopeForConnection(_api?.connection) ?? 'local-demo';
   bool get isPersisting => _isPersisting;
   String? get persistenceError => _persistenceError;
   StaffSession? get session => _session;
@@ -252,15 +304,18 @@ final class AppState extends ChangeNotifier {
 
   Future<void> retryConnection() async {
     if (_api == null) return;
-    if (_session == null) {
+    final session = _session;
+    if (session == null) {
       await _restoreRemoteSession();
       return;
     }
+    final generation = _remoteSessionGeneration;
     _isSyncing = true;
     _syncError = null;
     notifyListeners();
     try {
       final profile = await _api.me();
+      if (!_isCurrentRemoteSession(generation, session.userId)) return;
       _session = _sessionFromIdentity(
         AuthenticatedIdentity(
           accessToken: '',
@@ -275,10 +330,13 @@ final class AppState extends ChangeNotifier {
       unawaited(refreshTasks());
       unawaited(refreshForms());
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteSession(generation, session.userId)) return;
       await _handleRemoteError(error);
     } finally {
-      _isSyncing = false;
-      notifyListeners();
+      if (_isCurrentRemoteSession(generation, session.userId)) {
+        _isSyncing = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -293,6 +351,8 @@ final class AppState extends ChangeNotifier {
     try {
       final identity = await api.restore();
       if (identity != null) {
+        ++_remoteSessionGeneration;
+        _remoteExpiryHandled = false;
         _session = _sessionFromIdentity(identity);
         _lastSyncedAt = _clock();
         _startBackendRealtime();
@@ -300,7 +360,7 @@ final class AppState extends ChangeNotifier {
         unawaited(refreshForms());
       }
     } on ApiException catch (error) {
-      _syncError = error.message;
+      await _handleRemoteError(error);
     } on Object catch (error) {
       _syncError = 'Server sessiyasini tiklab bo‘lmadi: $error';
     } finally {
@@ -342,6 +402,11 @@ final class AppState extends ChangeNotifier {
   }) async {
     final api = _api;
     if (api != null) {
+      if (_remoteSessionCleanupInProgress || _isSyncing) {
+        throw const AuthenticationException(
+          'Another session operation is still running. Try again.',
+        );
+      }
       _isSyncing = true;
       _syncError = null;
       notifyListeners();
@@ -353,6 +418,8 @@ final class AppState extends ChangeNotifier {
           password: password,
           remember: persistSession,
         );
+        ++_remoteSessionGeneration;
+        _remoteExpiryHandled = false;
         final authenticated = _sessionFromIdentity(identity);
         _session = authenticated;
         _persistSession = false;
@@ -364,7 +431,7 @@ final class AppState extends ChangeNotifier {
         await _persist();
         return authenticated;
       } on ApiException catch (error) {
-        _syncError = error.code == 'invalid_credentials' ? null : error.message;
+        await _handleRemoteError(error);
         throw AuthenticationException(error.message);
       } finally {
         _isSyncing = false;
@@ -390,10 +457,19 @@ final class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    if (_api != null) {
-      await _productionNotifications?.clearSession();
-      _productionMessaging?.clearRemoteSession();
-      await _api.signOut();
+    final api = _api;
+    Object? signOutError;
+    Object? cacheCleanupError;
+    if (api != null) {
+      _remoteSessionCleanupInProgress = true;
+      _remoteExpiryHandled = true;
+      ++_remoteSessionGeneration;
+      final signingOutSession = _session;
+      final signingOutStorageScope = messagingStorageScope;
+      // Remove sensitive in-memory state immediately. Credential clearing is
+      // attempted before peripheral cache cleanup, which must never keep a
+      // secure token alive when local storage or realtime shutdown fails.
+      _session = null;
       _tasks = [];
       _attendanceSheets = [];
       _cards = [];
@@ -409,13 +485,40 @@ final class AppState extends ChangeNotifier {
       _formsLoading = false;
       _formsAvailable = true;
       _formsError = null;
+      _isSyncing = false;
       _syncError = null;
       _lastSyncedAt = null;
+      notifyListeners();
+      try {
+        await api.signOut();
+      } on Object catch (error) {
+        signOutError = error;
+      }
+      try {
+        await _productionNotifications?.clearSession();
+      } on Object catch (error) {
+        cacheCleanupError = error;
+      }
+      try {
+        await _productionMessaging?.clearRemoteSession(
+          userId: signingOutSession?.userId,
+          storageScope: signingOutStorageScope,
+        );
+      } on Object catch (error) {
+        cacheCleanupError ??= error;
+      }
     }
     _session = null;
     _persistSession = true;
     notifyListeners();
     await _persist();
+    if (cacheCleanupError != null) {
+      _persistenceError =
+          'Signed-out local metadata could not be fully removed: $cacheCleanupError';
+      notifyListeners();
+    }
+    _remoteSessionCleanupInProgress = false;
+    if (signOutError != null) throw signOutError;
   }
 
   Future<void> updateProfile({
@@ -439,6 +542,7 @@ final class AppState extends ChangeNotifier {
       );
     }
     if (_api != null) {
+      final generation = _remoteSessionGeneration;
       try {
         final parts = cleanName
             .split(RegExp(r'\s+'))
@@ -450,6 +554,9 @@ final class AppState extends ChangeNotifier {
           'email': cleanEmail,
           if (phone != null) 'phone': phone.trim(),
         });
+        if (!_isCurrentRemoteSession(generation, current.userId)) {
+          throw StateError('The signed-in staff session changed.');
+        }
         _session = _sessionFromIdentity(
           AuthenticatedIdentity(
             accessToken: '',
@@ -463,6 +570,9 @@ final class AppState extends ChangeNotifier {
         await _persist();
         return;
       } on ApiException catch (error) {
+        if (!_isCurrentRemoteSession(generation, current.userId)) {
+          throw StateError('The signed-in staff session changed.');
+        }
         await _handleRemoteError(error);
         rethrow;
       }
@@ -541,12 +651,22 @@ final class AppState extends ChangeNotifier {
     if (api == null) {
       throw StateError('Password change is only available with the server.');
     }
+    final current = _requireSession();
+    final generation = ++_remoteSessionGeneration;
+    final notifications = _productionNotifications;
+    try {
+      await notifications?.pause();
+    } on Object {
+      // REST password rotation remains available if realtime is already down.
+    }
     try {
       await api.changePassword(
         oldPassword: oldPassword,
         newPassword: newPassword,
       );
-      final current = _requireSession();
+      if (!_isCurrentRemoteSession(generation, current.userId)) {
+        throw StateError('The signed-in staff session changed.');
+      }
       _session = StaffSession(
         userId: current.userId,
         displayName: current.displayName,
@@ -564,8 +684,20 @@ final class AppState extends ChangeNotifier {
       );
       notifyListeners();
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteSession(generation, current.userId)) {
+        throw StateError('The signed-in staff session changed.');
+      }
       await _handleRemoteError(error);
       rethrow;
+    } finally {
+      if (_session?.userId == current.userId &&
+          !_remoteSessionCleanupInProgress) {
+        try {
+          await notifications?.resume();
+        } on Object {
+          // A later lifecycle retry will reconnect with the current token.
+        }
+      }
     }
   }
 
@@ -596,12 +728,15 @@ final class AppState extends ChangeNotifier {
   /// device-only organization such as favorites, checklists, tags and notes.
   Future<void> refreshTasks() async {
     final api = _api;
-    if (api == null || _session == null || _tasksLoading) return;
+    final session = _session;
+    if (api == null || session == null || _tasksLoading) return;
+    final generation = _remoteSessionGeneration;
     _tasksLoading = true;
     _tasksError = null;
     notifyListeners();
     try {
       final result = await BackendWorkApi.fromApi(api).myTasks();
+      if (!_isCurrentRemoteSession(generation, session.userId)) return;
       if (result.isUnavailable) {
         _tasksAvailable = false;
         _tasksError = result.error?.message;
@@ -617,13 +752,18 @@ final class AppState extends ChangeNotifier {
       _lastSyncedAt = _clock();
       await _persist();
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteSession(generation, session.userId)) return;
       _tasksError = error.message;
       await _handleRemoteError(error);
     } on Object catch (error) {
-      _tasksError = error.toString();
+      if (_isCurrentRemoteSession(generation, session.userId)) {
+        _tasksError = error.toString();
+      }
     } finally {
-      _tasksLoading = false;
-      notifyListeners();
+      if (_isCurrentRemoteSession(generation, session.userId)) {
+        _tasksLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -663,6 +803,7 @@ final class AppState extends ChangeNotifier {
     }
     final api = _api;
     if (api != null) {
+      final generation = _remoteSessionGeneration;
       final result = await BackendWorkApi.fromApi(api).createTask(
         title: cleanTitle,
         description: description.trim(),
@@ -671,6 +812,9 @@ final class AppState extends ChangeNotifier {
         branchId: int.tryParse(current.branchId),
         dueAt: dueAt,
       );
+      if (!_isCurrentRemoteSession(generation, current.userId)) {
+        throw StateError('The signed-in staff session changed.');
+      }
       if (result.isUnavailable || result.value == null) {
         throw StateError(
           result.error?.message ??
@@ -732,6 +876,8 @@ final class AppState extends ChangeNotifier {
     _requireTaskUpdatePermission(_tasks[index]);
     final api = _api;
     if (api != null) {
+      final currentSession = _requireSession();
+      final generation = _remoteSessionGeneration;
       final numericId = int.tryParse(taskId);
       if (numericId == null) {
         throw StateError('Invalid server task id: $taskId');
@@ -739,6 +885,9 @@ final class AppState extends ChangeNotifier {
       final result = await BackendWorkApi.fromApi(
         api,
       ).transitionTask(numericId, _backendTaskStatus(status));
+      if (!_isCurrentRemoteSession(generation, currentSession.userId)) {
+        throw StateError('The signed-in staff session changed.');
+      }
       if (result.isUnavailable || result.value == null) {
         throw StateError(
           result.error?.message ??
@@ -1146,13 +1295,16 @@ final class AppState extends ChangeNotifier {
 
   Future<void> refreshForms() async {
     final api = _api;
-    if (api == null || _session == null || _formsLoading) return;
+    final session = _session;
+    if (api == null || session == null || _formsLoading) return;
+    final generation = _remoteSessionGeneration;
     _formsLoading = true;
     _formsError = null;
     notifyListeners();
     try {
       final work = BackendWorkApi.fromApi(api);
       final result = await work.forms(status: 'published');
+      if (!_isCurrentRemoteSession(generation, session.userId)) return;
       if (result.isUnavailable) {
         _formsAvailable = false;
         _formsError = result.error?.message;
@@ -1165,6 +1317,7 @@ final class AppState extends ChangeNotifier {
       for (var form in result.value?.items ?? const <BackendForm>[]) {
         if (form.fields.isEmpty) {
           final detail = await work.form(form.id);
+          if (!_isCurrentRemoteSession(generation, session.userId)) return;
           if (detail.isAvailable && detail.value != null) {
             form = detail.value!;
           }
@@ -1177,13 +1330,18 @@ final class AppState extends ChangeNotifier {
       _lastSyncedAt = _clock();
       await _persist();
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteSession(generation, session.userId)) return;
       _formsError = error.message;
       await _handleRemoteError(error);
     } on Object catch (error) {
-      _formsError = error.toString();
+      if (_isCurrentRemoteSession(generation, session.userId)) {
+        _formsError = error.toString();
+      }
     } finally {
-      _formsLoading = false;
-      notifyListeners();
+      if (_isCurrentRemoteSession(generation, session.userId)) {
+        _formsLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1236,6 +1394,8 @@ final class AppState extends ChangeNotifier {
     }
     final api = _api;
     if (api != null) {
+      final submittingSession = _requireSession();
+      final generation = _remoteSessionGeneration;
       final formId = int.tryParse(survey.id);
       if (formId == null) {
         throw StateError('Invalid server form id: ${survey.id}');
@@ -1252,6 +1412,9 @@ final class AppState extends ChangeNotifier {
                 ),
               },
         ]);
+        if (!_isCurrentRemoteSession(generation, submittingSession.userId)) {
+          throw StateError('The signed-in staff session changed.');
+        }
         if (result.isUnavailable || result.value == null) {
           throw StateError(
             result.error?.message ??
@@ -1263,7 +1426,10 @@ final class AppState extends ChangeNotifier {
           );
         }
       } on ApiException catch (error) {
-        if (error.statusCode != 409) {
+        if (!_isCurrentRemoteSession(generation, submittingSession.userId)) {
+          throw StateError('The signed-in staff session changed.');
+        }
+        if (error.statusCode != 409 || error.code != 'already_submitted') {
           await _handleRemoteError(error);
           rethrow;
         }
@@ -1741,6 +1907,15 @@ final class AppState extends ChangeNotifier {
       };
 
   Future<void> _handleRemoteError(ApiException error) async {
+    if (error.code == 'staff_app_only' && _api != null) {
+      // The API has already received a valid bearer token at this point. If
+      // the finer app membership policy rejects the account, revoke and erase
+      // that token before returning control to the login screen.
+      await signOut();
+      _syncError = error.message;
+      notifyListeners();
+      return;
+    }
     if (error.statusCode == 401) {
       await _expireRemoteSession();
     }
@@ -1749,6 +1924,11 @@ final class AppState extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  bool _isCurrentRemoteSession(int generation, String userId) =>
+      generation == _remoteSessionGeneration &&
+      _session?.userId == userId &&
+      !_remoteSessionCleanupInProgress;
 
   bool canUpdateTask(StaffTask task) {
     final current = _session;
@@ -1810,34 +1990,52 @@ final class AppState extends ChangeNotifier {
     AppLocale.en => en,
   };
 
-  AppSnapshot _snapshotForPersistence() => AppSnapshot(
-    session: _api == null && _persistSession ? _session : null,
-    settings: _settings,
-    tasks: _tasks,
-    attendanceSheets: _attendanceSheets,
-    cards: _cards,
-    messageThreads: _messageThreads,
-    notifications: _notifications,
-    surveys: _surveys,
-    printJobs: _printJobs,
-    auditAnomalies: _auditAnomalies,
-    auditCases: _auditCases,
-  );
+  AppSnapshot _snapshotForPersistence() => _api != null
+      // Server task bodies, survey answers, student data and audit records do
+      // not belong in plaintext SharedPreferences. Production keeps settings
+      // here; authoritative domain state is reloaded for the signed-in user.
+      ? _remoteSnapshot(settings: _settings)
+      : AppSnapshot(
+          session: _persistSession ? _session : null,
+          settings: _settings,
+          tasks: _tasks,
+          attendanceSheets: _attendanceSheets,
+          cards: _cards,
+          messageThreads: _messageThreads,
+          notifications: _notifications,
+          surveys: _surveys,
+          printJobs: _printJobs,
+          auditAnomalies: _auditAnomalies,
+          auditCases: _auditCases,
+        );
 
-  Future<void> _persist() async {
+  Future<void> _persist() {
+    final payload = jsonEncode(_snapshotForPersistence().toJson());
+    _pendingPersistenceWrites++;
     _isPersisting = true;
     _persistenceError = null;
     notifyListeners();
+    final preceding = _persistenceQueue;
+    final operation = preceding == null
+        ? _writePersistencePayload(payload)
+        : preceding.then((_) => _writePersistencePayload(payload));
+    _persistenceQueue = operation;
+    return operation.whenComplete(() {
+      if (identical(_persistenceQueue, operation)) {
+        _persistenceQueue = null;
+      }
+      _pendingPersistenceWrites--;
+      _isPersisting = _pendingPersistenceWrites > 0;
+      notifyListeners();
+    });
+  }
+
+  Future<void> _writePersistencePayload(String payload) async {
     try {
-      await _storage.write(
-        _snapshotKey,
-        jsonEncode(_snapshotForPersistence().toJson()),
-      );
+      await _storage.write(_snapshotKey, payload);
+      _persistenceError = null;
     } on Object catch (error) {
       _persistenceError = 'O‘zgarish qurilmaga saqlanmadi: $error';
-    } finally {
-      _isPersisting = false;
-      notifyListeners();
     }
   }
 
@@ -1851,4 +2049,21 @@ final class AppState extends ChangeNotifier {
     notifications?.dispose();
     super.dispose();
   }
+}
+
+String? _messagingScopeForConnection(TenantConnection? connection) {
+  if (connection == null) return null;
+  final slug = connection.slug.trim().toLowerCase();
+  final rawBaseUrl = connection.baseUrl.trim();
+  final uri = Uri.tryParse(rawBaseUrl);
+  final canonicalBaseUrl = uri == null
+      ? rawBaseUrl
+      : uri
+            .replace(
+              scheme: uri.scheme.toLowerCase(),
+              host: uri.host.toLowerCase(),
+            )
+            .toString()
+            .replaceAll(RegExp(r'/+$'), '');
+  return '$slug::$canonicalBaseUrl';
 }

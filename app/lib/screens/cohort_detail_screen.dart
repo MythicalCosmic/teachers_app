@@ -15,6 +15,7 @@ import '../widgets/sf_icons.dart';
 import '../widgets/sf_pill.dart';
 import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_search_field.dart';
 import '../widgets/sf_star.dart';
 import 'groups/group_l10n.dart';
 import 'groups/group_workspace_store.dart';
@@ -980,24 +981,12 @@ class _StudentsPanelState extends State<_StudentsPanel> {
         Row(
           children: [
             Expanded(
-              child: TextField(
+              child: SfSearchField(
                 key: const ValueKey('student-search-field'),
                 controller: widget.controller,
                 onChanged: (value) => setState(() => query = value),
-                decoration: InputDecoration(
-                  hintText: context.gt('search_student'),
-                  prefixIcon: Icon(SfIcons.search, color: c.muted),
-                  filled: true,
-                  fillColor: c.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: c.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: c.border),
-                  ),
-                ),
+                hintText: context.gt('search_student'),
+                clearTooltip: context.gt('clear_search'),
               ),
             ),
             const SizedBox(width: 8),

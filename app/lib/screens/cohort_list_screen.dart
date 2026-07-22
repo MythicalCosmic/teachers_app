@@ -10,6 +10,7 @@ import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_search_field.dart';
 import '../widgets/sf_star.dart';
 import '../widgets/sf_tab_bar.dart';
 import 'groups/group_l10n.dart';
@@ -281,34 +282,13 @@ class _CohortListScreenState extends State<CohortListScreen> {
                 padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
                 child: Column(
                   children: [
-                    TextField(
+                    SfSearchField(
                       key: const ValueKey('group-search-field'),
                       controller: _search,
                       onChanged: _store.setQuery,
-                      textInputAction: TextInputAction.search,
-                      decoration: InputDecoration(
-                        hintText: context.gt('search_group_student'),
-                        prefixIcon: Icon(SfIcons.search, color: c.muted),
-                        suffixIcon: _store.query.isEmpty
-                            ? null
-                            : IconButton(
-                                tooltip: context.gt('clear_search'),
-                                onPressed: () {
-                                  _search.clear();
-                                  _store.setQuery('');
-                                },
-                                icon: Icon(SfIcons.x, color: c.muted),
-                              ),
-                        filled: true,
-                        fillColor: c.surface2,
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide.none,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                        ),
-                      ),
+                      hintText: context.gt('search_group_student'),
+                      semanticLabel: context.gt('search_group_student'),
+                      clearTooltip: context.gt('clear_search'),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(

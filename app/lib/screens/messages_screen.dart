@@ -13,10 +13,10 @@ import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_adaptive_dialog.dart';
 import '../widgets/sf_avatar.dart';
 import '../widgets/sf_card.dart';
-import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_search_field.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
 
@@ -76,6 +76,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
       userId: session.userId,
       userName: session.displayName,
       sourceThreads: app.messageThreads,
+      storageScope: app.messagingStorageScope,
     );
 
     return ListenableBuilder(
@@ -520,22 +521,14 @@ class _SearchAndFolders extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: SfTextField(
+            child: SfSearchField(
+              key: const ValueKey('messages-search'),
               controller: search,
-              hint: m.text('search_chats'),
-              prefixIcon: SfIcons.search,
-              textInputAction: TextInputAction.search,
+              hintText: m.text('search_chats'),
+              semanticLabel: m.text('search_chats'),
+              clearTooltip: m.text('clear_search'),
+              clearButtonKey: const ValueKey('messages-search-clear'),
               onChanged: onSearchChanged,
-              suffix: search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: m.text('clear_search'),
-                      onPressed: () {
-                        search.clear();
-                        onSearchChanged('');
-                      },
-                      icon: const Icon(Icons.close_rounded),
-                    ),
             ),
           ),
           Padding(

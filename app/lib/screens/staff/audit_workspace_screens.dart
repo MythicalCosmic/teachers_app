@@ -8,6 +8,7 @@ import '../../widgets/sf_button.dart';
 import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pill.dart';
+import '../../widgets/sf_search_field.dart';
 import '../../widgets/sf_toast.dart';
 import 'staff_surface_widgets.dart';
 import 'staff_workspace_models.dart';
@@ -766,13 +767,11 @@ class _ImmutableAuditLogScreenState extends State<ImmutableAuditLogScreen> {
                 'Jurnal append-only · mavjud yozuvni o\u2018zgartirish yoki o\u2018chirish mumkin emas',
           ),
           const SizedBox(height: 12),
-          TextField(
+          SfSearchField(
             onChanged: (value) => setState(() => _query = value),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(SfIcons.search),
-              labelText: 'Jurnaldan qidirish',
-              hintText: 'Aktyor, amal yoki obyekt',
-            ),
+            semanticLabel: 'Jurnaldan qidirish',
+            hintText: 'Aktyor, amal yoki obyekt',
+            clearTooltip: 'Qidiruvni tozalash',
           ),
           const SizedBox(height: 12),
           if (matches.isEmpty)

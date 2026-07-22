@@ -13,6 +13,7 @@ import '../../widgets/sf_app_bar.dart';
 import '../../widgets/sf_card.dart';
 import '../../widgets/sf_pressable.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_search_field.dart';
 import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_toast.dart';
 
@@ -90,29 +91,16 @@ class _StaffOperationsHubScreenState extends State<StaffOperationsHubScreen> {
           children: [
             _StaffServicesOverview(serviceCount: permitted.length),
             const SizedBox(height: 14),
-            TextField(
+            SfSearchField(
               key: const ValueKey('staff-services-search'),
               controller: _search,
               onChanged: (_) => setState(() {}),
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: _copy(
-                  context,
-                  'Xizmat yoki vazifani qidiring',
-                  'Search a service or task',
-                ),
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: query.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: _copy(context, 'Tozalash', 'Clear search'),
-                        onPressed: () {
-                          _search.clear();
-                          setState(() {});
-                        },
-                        icon: const Icon(Icons.close_rounded),
-                      ),
+              hintText: _copy(
+                context,
+                'Xizmat yoki vazifani qidiring',
+                'Search a service or task',
               ),
+              clearTooltip: _copy(context, 'Tozalash', 'Clear search'),
             ),
             const SizedBox(height: 11),
             _ServiceCategorySelector(
@@ -801,23 +789,11 @@ class _StaffOperationModuleScreenState
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
-          TextField(
+          SfSearchField(
             controller: _search,
             onChanged: (_) => setState(() {}),
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: _copy(context, 'Yozuvlarni qidiring', 'Search records'),
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      onPressed: () {
-                        _search.clear();
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-            ),
+            hintText: _copy(context, 'Yozuvlarni qidiring', 'Search records'),
+            clearTooltip: _copy(context, 'Tozalash', 'Clear search'),
           ),
           const SizedBox(height: 14),
           if (records.isEmpty)

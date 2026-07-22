@@ -18,6 +18,7 @@ import '../widgets/sf_icons.dart';
 import '../widgets/sf_pill.dart';
 import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_search_field.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
 import 'services/backend_content_screen.dart';
@@ -213,31 +214,20 @@ class _ContentScreenState extends State<ContentScreen> {
             Container(
               color: c.surface,
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-              child: SfTextField(
+              child: SfSearchField(
                 controller: _searchController,
                 autofocus: true,
-                hint: _contentText(
+                hintText: _contentText(
                   context,
                   uz: 'Fayl yoki papka nomi',
                   en: 'Material or folder name',
                 ),
-                prefixIcon: SfIcons.search,
-                textInputAction: TextInputAction.search,
                 onChanged: (_) => setState(() {}),
-                suffix: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: _contentText(
-                          context,
-                          uz: 'Tozalash',
-                          en: 'Clear',
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {});
-                        },
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                      ),
+                clearTooltip: _contentText(
+                  context,
+                  uz: 'Tozalash',
+                  en: 'Clear',
+                ),
               ),
             ),
           Container(

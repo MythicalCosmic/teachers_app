@@ -183,11 +183,24 @@ GoRouter buildRouter(
       parentNavigatorKey: _rootNavigatorKey,
       pageBuilder: (context, state) => _detailPage(
         state,
-        LessonScreen(
-          slotId: state.uri.queryParameters['slot'],
-          groupId: state.uri.queryParameters['group'],
-          groupLessonId: state.uri.queryParameters['lesson'],
-        ),
+        app.isProduction
+            ? const _ProductionModuleGuideScreen(
+                uzTitle: 'Dars server guruhidan ochiladi',
+                ruTitle: 'Урок открывается из серверной группы',
+                enTitle: 'Open lessons from a server group',
+                uzMessage:
+                    'Eski qurilma darsi production ma’lumoti sifatida ko‘rsatilmaydi.',
+                ruMessage:
+                    'Локальный демо-урок не показывается как рабочая запись.',
+                enMessage:
+                    'A legacy device lesson is not shown as a production record.',
+                actionRoute: '/workspace',
+              )
+            : LessonScreen(
+                slotId: state.uri.queryParameters['slot'],
+                groupId: state.uri.queryParameters['group'],
+                groupLessonId: state.uri.queryParameters['lesson'],
+              ),
         app,
       ),
     ),
@@ -223,15 +236,40 @@ GoRouter buildRouter(
       parentNavigatorKey: _rootNavigatorKey,
       pageBuilder: (context, state) => _detailPage(
         state,
-        StudentProfileScreen(
-          studentId: state.uri.queryParameters['id'],
-          groupId: state.uri.queryParameters['group'],
-        ),
+        app.isProduction
+            ? const _ProductionModuleGuideScreen(
+                uzTitle: 'O‘quvchi profili hali ulanmagan',
+                ruTitle: 'Профиль ученика ещё не подключён',
+                enTitle: 'Student profile is not connected yet',
+                uzMessage:
+                    'Noto‘g‘ri demo yozuvini ko‘rsatmaslik uchun server profiliga o‘tish vaqtincha yopildi.',
+                ruMessage:
+                    'Переход закрыт, чтобы не показывать демо-запись вместо серверного профиля.',
+                enMessage:
+                    'This deep link is blocked so a demo record cannot appear in place of a server profile.',
+                actionRoute: '/workspace',
+              )
+            : StudentProfileScreen(
+                studentId: state.uri.queryParameters['id'],
+                groupId: state.uri.queryParameters['group'],
+              ),
         app,
       ),
     ),
-    _route('/cards', const CardsScreen(), app),
-    _route('/cards/give', const GiveCardScreen(), app),
+    _route(
+      '/cards',
+      app.isProduction
+          ? const _ProductionRecognitionGuideScreen()
+          : const CardsScreen(),
+      app,
+    ),
+    _route(
+      '/cards/give',
+      app.isProduction
+          ? const _ProductionRecognitionGuideScreen()
+          : const GiveCardScreen(),
+      app,
+    ),
     _route('/ai', const AiChatListScreen(), app),
     _route('/ai/chat', const AiChatScreen(), app),
     _route('/print', const PrintScreen(), app),
@@ -263,7 +301,24 @@ GoRouter buildRouter(
     _route('/notifications', const NotificationsScreen(), app),
     _route('/settings', const SettingsScreen(), app),
     _route('/settings/edit', const EditProfileScreen(), app),
-    _route('/search', const SearchScreen(), app),
+    _route(
+      '/search',
+      app.isProduction
+          ? const _ProductionModuleGuideScreen(
+              uzTitle: 'Umumiy qidiruv hali ulanmagan',
+              ruTitle: 'Общий поиск ещё не подключён',
+              enTitle: 'Global search is not connected yet',
+              uzMessage:
+                  'Server xabarlari va bildirishnomalari to‘liq qidirilmaguncha eski lokal natijalar ko‘rsatilmaydi.',
+              ruMessage:
+                  'Локальные результаты скрыты, пока поиск не охватывает серверные сообщения и уведомления.',
+              enMessage:
+                  'Legacy local results are hidden until search covers server messages and notifications.',
+              actionRoute: '/home',
+            )
+          : const SearchScreen(),
+      app,
+    ),
     GoRoute(
       path: '/staff/quality',
       parentNavigatorKey: _rootNavigatorKey,
@@ -547,10 +602,18 @@ Widget _homeRoot(BuildContext context) {
       onOpenPrimaryWorkspace: () => context.go('/workspace'),
       onOpenMessages: () => context.go('/inbox'),
       refreshStore: staffTodayRefreshStore,
-      onRefresh: staffTodayRefreshStore.refresh,
+      onRefresh: () => _refreshStaffToday(app),
     ),
     StaffRole.auditor => _auditDashboard(context),
   };
+}
+
+Future<void> _refreshStaffToday(AppState app) async {
+  await Future.wait<void>([
+    app.refreshTasks(),
+    app.messagingController.refreshThreads(silent: true),
+  ]);
+  await staffTodayRefreshStore.refresh();
 }
 
 Widget _workspaceRoot(BuildContext context) {
@@ -558,7 +621,11 @@ Widget _workspaceRoot(BuildContext context) {
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
   return switch (session.role) {
-    StaffRole.teacher || StaffRole.assistant => const CohortListScreen(),
+    StaffRole.teacher => const CohortListScreen(),
+    StaffRole.assistant =>
+      app.can(StaffCapability.viewCohorts)
+          ? const CohortListScreen()
+          : _staffServicesWorkspace(context),
     StaffRole.methodist => _methodistWorkspace(context),
     StaffRole.reception =>
       app.can(StaffCapability.viewLeads)
@@ -625,6 +692,7 @@ Widget _methodistWorkspace(BuildContext context) {
   final app = AppScope.of(context);
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
+  if (app.isProduction) return _staffServicesWorkspace(context);
   return MethodistQualityScreen(
     role: session.role,
     attendanceSheets: app.attendanceSheets,
@@ -651,8 +719,10 @@ Widget _methodistWorkspace(BuildContext context) {
 Widget _receptionWorkspace(BuildContext _) {
   return Builder(
     builder: (routeContext) {
-      final session = AppScope.of(routeContext).session;
+      final app = AppScope.of(routeContext);
+      final session = app.session;
       if (session == null) return const SizedBox.shrink();
+      if (app.isProduction) return _staffServicesWorkspace(routeContext);
       return ReceptionWorkspaceScreen(
         role: session.role,
         canViewLeads: AppScope.of(routeContext).can(StaffCapability.viewLeads),
@@ -1075,6 +1145,7 @@ Widget _auditDashboard(BuildContext context) {
   final app = AppScope.of(context);
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
+  if (app.isProduction) return _auditLog(context);
   return AuditorDashboardScreen(
     role: session.role,
     anomalies: app.auditAnomalies,
@@ -1092,6 +1163,7 @@ Widget _auditSignals(BuildContext context) {
   final app = AppScope.of(context);
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
+  if (app.isProduction) return _auditLog(context);
   return AuditSignalsScreen(
     role: session.role,
     anomalies: app.auditAnomalies,
@@ -1106,6 +1178,7 @@ Widget _auditSignalDetail(BuildContext context, String id) {
   final app = AppScope.of(context);
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
+  if (app.isProduction) return _auditLog(context);
   final item = app.auditAnomalies.where((value) => value.id == id).firstOrNull;
   if (item == null) {
     return const _MissingRecordScreen(message: 'Audit signali topilmadi.');
@@ -1133,6 +1206,7 @@ Widget _auditCases(BuildContext context) {
   final app = AppScope.of(context);
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
+  if (app.isProduction) return _auditLog(context);
   return AuditCasesScreen(
     role: session.role,
     cases: app.auditCases,
@@ -1145,6 +1219,7 @@ Widget _auditCaseDetail(BuildContext context, String id) {
   final app = AppScope.of(context);
   final session = app.session;
   if (session == null) return const SizedBox.shrink();
+  if (app.isProduction) return _auditLog(context);
   final item = app.auditCases.where((value) => value.id == id).firstOrNull;
   if (item == null) {
     return const _MissingRecordScreen(message: 'Audit holati topilmadi.');
@@ -1284,6 +1359,150 @@ Future<void> _createCaseDialog(BuildContext context, AppState app) async {
   }
   title.dispose();
   description.dispose();
+}
+
+class _ProductionRecognitionGuideScreen extends StatelessWidget {
+  const _ProductionRecognitionGuideScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final (title, message, action) = switch (locale) {
+      'uz' => (
+        'E\u2019tirof o\u2018quvchi profilida',
+        'Production kartalari serverdagi guruh va o\u2018quvchi profilidan beriladi. Bu sahifa eski qurilma ma\u2019lumotini ko\u2018rsatmaydi.',
+        'Guruhlarni ochish',
+      ),
+      'ru' => (
+        'Признание в профиле ученика',
+        'В рабочем режиме карточки выдаются из серверного профиля группы и ученика. Здесь локальные демо-данные не показываются.',
+        'Открыть группы',
+      ),
+      _ => (
+        'Recognition lives in student profiles',
+        'Production recognition is issued from a server-backed group and student profile. This page does not show legacy device data.',
+        'Open groups',
+      ),
+    };
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: AppBar(leading: const BackButton(), title: Text(title)),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(SfIcons.brand, size: 48, color: c.ai),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: SfType.ui(
+                    size: 19,
+                    color: c.ink,
+                    weight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: SfType.ui(size: 13, color: c.ink2, height: 1.45),
+                ),
+                const SizedBox(height: 20),
+                SfButton(
+                  label: action,
+                  onPressed: () => context.go('/workspace'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductionModuleGuideScreen extends StatelessWidget {
+  const _ProductionModuleGuideScreen({
+    required this.uzTitle,
+    required this.ruTitle,
+    required this.enTitle,
+    required this.uzMessage,
+    required this.ruMessage,
+    required this.enMessage,
+    required this.actionRoute,
+  });
+
+  final String uzTitle;
+  final String ruTitle;
+  final String enTitle;
+  final String uzMessage;
+  final String ruMessage;
+  final String enMessage;
+  final String actionRoute;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final locale = Localizations.localeOf(context).languageCode;
+    final title = switch (locale) {
+      'uz' => uzTitle,
+      'ru' => ruTitle,
+      _ => enTitle,
+    };
+    final message = switch (locale) {
+      'uz' => uzMessage,
+      'ru' => ruMessage,
+      _ => enMessage,
+    };
+    final action = switch (locale) {
+      'uz' => 'Xavfsiz sahifaga o‘tish',
+      'ru' => 'Перейти на безопасную страницу',
+      _ => 'Open a supported page',
+    };
+    return Scaffold(
+      backgroundColor: c.bg,
+      appBar: AppBar(leading: const BackButton(), title: Text(title)),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.cloud_off_rounded, size: 48, color: c.warn),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: SfType.ui(
+                    size: 19,
+                    color: c.ink,
+                    weight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 9),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: SfType.ui(size: 13, color: c.ink2, height: 1.45),
+                ),
+                const SizedBox(height: 20),
+                SfButton(
+                  label: action,
+                  onPressed: () => context.go(actionRoute),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _MissingRecordScreen extends StatelessWidget {

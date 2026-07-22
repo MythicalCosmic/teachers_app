@@ -4,6 +4,14 @@ enum MessagingKind { text, image, video, voice }
 
 enum MessagingDelivery { sending, sent, delivered, read }
 
+/// The server-approved recipient class used by the new-conversation picker.
+///
+/// This is intentionally narrower than a free-form role string. A contact can
+/// only enter the picker as staff or as a student returned by the scoped
+/// messaging directory; parent/manager-style rows and unknown values fail
+/// closed in the controller.
+enum MessagingContactKind { staff, student, unknown }
+
 @immutable
 class MessagingContact {
   const MessagingContact({
@@ -12,6 +20,7 @@ class MessagingContact {
     required this.username,
     required this.phone,
     required this.role,
+    this.kind = MessagingContactKind.staff,
     this.bio = '',
     this.isOnline = false,
   });
@@ -21,8 +30,11 @@ class MessagingContact {
   final String username;
   final String phone;
   final String role;
+  final MessagingContactKind kind;
   final String bio;
   final bool isOnline;
+
+  bool get isStudent => kind == MessagingContactKind.student;
 }
 
 @immutable

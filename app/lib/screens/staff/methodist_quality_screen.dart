@@ -16,7 +16,7 @@ class MethodistQualityScreen extends StatefulWidget {
     this.attendanceSheets = const [],
     this.cards = const [],
     this.tasks = const [],
-    this.signals = _fallbackSignals,
+    this.signals = const [],
     this.onCreateFollowUp,
     this.onOpenTeacher,
   });
@@ -28,33 +28,6 @@ class MethodistQualityScreen extends StatefulWidget {
   final List<QualitySignalView> signals;
   final ValueChanged<QualitySignalView>? onCreateFollowUp;
   final ValueChanged<String>? onOpenTeacher;
-
-  static const _fallbackSignals = [
-    QualitySignalView(
-      id: 'quality-01',
-      title: 'Karta muvozanatini ko\u2018rib chiqing',
-      subtitle: 'Bir guruhda ogohlantirishlar odatiy darajadan yuqori.',
-      metric: '8 Down',
-      tone: QualitySignalTone.urgent,
-      teacherName: 'Jasur Rahimov',
-    ),
-    QualitySignalView(
-      id: 'quality-02',
-      title: 'Davomat qaydi kech topshirildi',
-      subtitle: 'Oxirgi yetti kunda ikki dars 30 daqiqadan keyin yopilgan.',
-      metric: '2 dars',
-      tone: QualitySignalTone.attention,
-      teacherName: 'Malika Yusupova',
-    ),
-    QualitySignalView(
-      id: 'quality-03',
-      title: 'Barqaror o\u2018sish',
-      subtitle: 'Guruh davomati uch hafta ketma-ket yaxshilandi.',
-      metric: '+6%',
-      tone: QualitySignalTone.positive,
-      teacherName: 'Nigora Karimova',
-    ),
-  ];
 
   @override
   State<MethodistQualityScreen> createState() => _MethodistQualityScreenState();
@@ -101,7 +74,7 @@ class _MethodistQualityScreenState extends State<MethodistQualityScreen> {
         )
         .length;
     final attendance = marked.isEmpty
-        ? 92
+        ? null
         : ((attended / marked.length) * 100).round();
     final warnings = widget.cards
         .where((card) => card.kind == CardKind.warning)
@@ -124,10 +97,12 @@ class _MethodistQualityScreenState extends State<MethodistQualityScreen> {
           children: [
             StaffMetricCard(
               label: 'O\u2018rtacha davomat',
-              value: '$attendance%',
+              value: attendance == null ? '—' : '$attendance%',
               detail: 'O\u2018quv sifati signali',
               icon: SfIcons.check,
-              tone: attendance >= 90
+              tone: attendance == null
+                  ? StaffMetricTone.neutral
+                  : attendance >= 90
                   ? StaffMetricTone.success
                   : StaffMetricTone.warning,
             ),
@@ -174,7 +149,7 @@ class _MethodistQualityScreenState extends State<MethodistQualityScreen> {
           const StaffEmptyState(
             title: 'Signal yo\u2018q',
             message:
-                'Tanlangan davrda metodist e\u2018tiborini talab qiladigan o\u2018zgarish topilmadi.',
+                'Sifat signallari serverdan olinmaguncha bu ro\u2018yxat bo\u2018sh ko\u2018rsatiladi.',
             icon: SfIcons.check,
           )
         else

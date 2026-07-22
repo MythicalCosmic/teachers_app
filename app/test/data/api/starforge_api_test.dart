@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -254,6 +255,204 @@ void main() {
         expect(requestCount, callsAfter401);
       },
     );
+
+    test('a stale 401 cannot clear a newer signed-in session', () async {
+      final slowResponse = Completer<http.Response>();
+      final vault = _RecordingVault();
+      final api = StarforgeApi(
+        platformBaseUrl: 'https://staff-tenant.example',
+        vault: vault,
+        client: ApiClient(
+          httpClient: MockClient((request) async {
+            if (request.url.path == '/api/v1/auth/role-login/') {
+              final body = Map<String, Object?>.from(
+                jsonDecode(request.body) as Map,
+              );
+              final username = body['username'];
+              return _jsonResponse(200, {
+                'success': true,
+                'data': {
+                  'access': username == 'teacher-a' ? 'token-a' : 'token-b',
+                  'role': 'teacher',
+                },
+              });
+            }
+            if (request.url.path == '/api/v1/users/me/') {
+              final token = _header(request, 'authorization');
+              return _jsonResponse(200, {
+                'success': true,
+                'data': {
+                  'id': token == 'Bearer token-a' ? 1 : 2,
+                  'full_name': token == 'Bearer token-a'
+                      ? 'Teacher A'
+                      : 'Teacher B',
+                  'principal_kind': 'teacher',
+                },
+              });
+            }
+            if (request.url.path == '/api/v1/tasks/slow/') {
+              return slowResponse.future;
+            }
+            return _jsonResponse(404, {
+              'success': false,
+              'code': 'not_found',
+              'message': 'Unexpected route',
+            });
+          }),
+        ),
+      );
+      await api.signIn(
+        centerSlug: '',
+        username: 'teacher-a',
+        password: 'password',
+        remember: true,
+      );
+      final staleRequest = api.get('/api/v1/tasks/slow/');
+      await Future<void>.delayed(Duration.zero);
+      await api.signOut(remote: false);
+      await api.signIn(
+        centerSlug: '',
+        username: 'teacher-b',
+        password: 'password',
+        remember: true,
+      );
+
+      slowResponse.complete(
+        _jsonResponse(401, {
+          'success': false,
+          'code': 'authentication_failed',
+          'message': 'Old token expired',
+        }),
+      );
+      final staleError = await _captureError(staleRequest);
+
+      expect(staleError.statusCode, 401);
+      expect(api.hasSession, isTrue);
+      expect(api.currentAccessToken, 'token-b');
+      expect(vault.value?.accessToken, 'token-b');
+    });
+
+    test(
+      'rejects a cleartext remote center before sending credentials',
+      () async {
+        var requestCount = 0;
+        final api = StarforgeApi(
+          platformBaseUrl: 'https://platform.example',
+          vault: _RecordingVault(),
+          client: ApiClient(
+            httpClient: MockClient((request) async {
+              requestCount++;
+              return _jsonResponse(500, const <String, Object?>{});
+            }),
+          ),
+        );
+
+        final error = await _captureError(
+          api.signIn(
+            centerSlug: 'http://remote.example',
+            username: 'teacher',
+            password: 'do-not-send',
+            remember: true,
+          ),
+        );
+
+        expect(error.code, 'insecure_transport');
+        expect(requestCount, 0);
+        expect(api.hasSession, isFalse);
+      },
+    );
+
+    test('rejects a cleartext platform before center discovery', () async {
+      var requestCount = 0;
+      final api = StarforgeApi(
+        platformBaseUrl: 'http://platform.example',
+        vault: _RecordingVault(),
+        client: ApiClient(
+          httpClient: MockClient((request) async {
+            requestCount++;
+            return _jsonResponse(500, const <String, Object?>{});
+          }),
+        ),
+      );
+
+      final error = await _captureError(
+        api.signIn(
+          centerSlug: 'school-one',
+          username: 'teacher',
+          password: 'do-not-send',
+          remember: true,
+        ),
+      );
+
+      expect(error.code, 'insecure_transport');
+      expect(requestCount, 0);
+      expect(api.hasSession, isFalse);
+    });
+
+    test(
+      'rejects a cleartext platform before password reset secrets',
+      () async {
+        var requestCount = 0;
+        final api = StarforgeApi(
+          platformBaseUrl: 'http://platform.example',
+          vault: _RecordingVault(),
+          client: ApiClient(
+            httpClient: MockClient((request) async {
+              requestCount++;
+              return _jsonResponse(500, const <String, Object?>{});
+            }),
+          ),
+        );
+
+        final requestError = await _captureError(
+          api.requestPasswordReset(identifier: 'teacher@example.com'),
+        );
+        final confirmError = await _captureError(
+          api.confirmPasswordReset(
+            identifier: 'teacher@example.com',
+            code: '123456',
+            newPassword: 'do-not-send',
+          ),
+        );
+
+        expect(requestError.code, 'insecure_transport');
+        expect(confirmError.code, 'insecure_transport');
+        expect(requestCount, 0);
+      },
+    );
+
+    test('rejects and clears an insecure remembered tenant', () async {
+      final vault = _RecordingVault()
+        ..value = const StoredSession(
+          accessToken: 'unsafe-token',
+          connection: TenantConnection(
+            slug: 'unsafe',
+            name: 'Unsafe tenant',
+            baseUrl: 'http://remote.example',
+            wsUrl: 'ws://remote.example/ws/notifications/',
+            locale: 'en',
+          ),
+          deviceId: 'device-1',
+        );
+      var requestCount = 0;
+      final api = StarforgeApi(
+        platformBaseUrl: 'https://platform.example',
+        vault: vault,
+        client: ApiClient(
+          httpClient: MockClient((request) async {
+            requestCount++;
+            return _profileResponse();
+          }),
+        ),
+      );
+
+      final error = await _captureError(api.restore());
+
+      expect(error.code, 'insecure_transport');
+      expect(vault.value, isNull);
+      expect(requestCount, 0);
+      expect(api.hasSession, isFalse);
+    });
   });
 }
 

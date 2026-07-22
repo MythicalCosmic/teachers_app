@@ -8,6 +8,7 @@ import '../../data/api/api_models.dart';
 import '../../data/api/backend_core.dart';
 import '../../data/api/backend_models.dart';
 import '../../data/api/backend_work_api.dart';
+import '../../data/api/transport_security.dart';
 import '../../data/models.dart' as legacy;
 import 'messaging_models.dart';
 import 'messaging_storage.dart';
@@ -18,6 +19,8 @@ import 'messaging_storage.dart';
 /// backend. Archive, pin, mute, folders, local reactions and call previews stay
 /// deliberately device-local because the server exposes no such mutations.
 class MessagingController extends ChangeNotifier {
+  static const int maxAttachmentBytes = 25 * 1024 * 1024;
+
   MessagingController({
     DateTime Function()? clock,
     MessagingStorage? storage,
@@ -43,6 +46,8 @@ class MessagingController extends ChangeNotifier {
   ];
 
   String? _sessionUserId;
+  String? _messagingUserId;
+  String? _sessionStorageKey;
   bool _initialized = false;
   bool _isRestoring = false;
   String _currentUserName = 'Siz';
@@ -53,11 +58,17 @@ class MessagingController extends ChangeNotifier {
   String? _persistenceError;
   bool _isRefreshing = false;
   bool _isLoadingMore = false;
+  bool _isDirectoryLoading = false;
+  bool _hasLoadedDirectory = false;
+  String? _directoryError;
   bool _backendUnavailable = false;
   String? _backendError;
   final Map<String, int> _olderMessagePage = <String, int>{};
+  final Map<String, int> _threadLoadVersions = <String, int>{};
   final Set<String> _loadedRemoteThreads = <String>{};
   final Set<String> _hiddenRemoteThreadIds = <String>{};
+  final Map<String, Map<String, Object?>> _productionThreadPreferences =
+      <String, Map<String, Object?>>{};
   int _remoteGeneration = 0;
   http.Client? _activeUploadClient;
   double? _uploadProgress;
@@ -66,7 +77,15 @@ class MessagingController extends ChangeNotifier {
   Future<void> _restored = Future<void>.value();
   Future<void> _writeQueue = Future<void>.value();
 
-  String get currentUserId => _sessionUserId ?? 'current-user';
+  /// The bridge User id used by messaging participants.
+  ///
+  /// Production role-native sessions expose a teacher/staff profile id, which
+  /// is deliberately kept in [_sessionUserId] for cache/session ownership. It
+  /// must never be compared with thread participant ids. The scoped contacts
+  /// endpoint supplies the explicit bridge id below.
+  String get currentUserId => isProduction
+      ? (_messagingUserId ?? '')
+      : (_sessionUserId ?? 'current-user');
   String get currentUserName => _currentUserName;
   List<MessagingThread> get threads => List.unmodifiable(_threads);
   List<MessagingContact> get contacts => List.unmodifiable(_contacts);
@@ -79,6 +98,9 @@ class MessagingController extends ChangeNotifier {
   bool get isProduction => _backend != null;
   bool get isRefreshing => _isRefreshing;
   bool get isLoadingMore => _isLoadingMore;
+  bool get isDirectoryLoading => _isDirectoryLoading;
+  bool get hasLoadedDirectory => _hasLoadedDirectory;
+  String? get directoryError => _directoryError;
   bool get backendUnavailable => _backendUnavailable;
   String? get backendError => _backendError;
   double? get uploadProgress => _uploadProgress;
@@ -108,14 +130,31 @@ class MessagingController extends ChangeNotifier {
     required String userId,
     required String userName,
     required Iterable<legacy.MessageThread> sourceThreads,
+    String storageScope = '',
   }) {
-    if (_initialized && _sessionUserId == userId) return;
+    final sessionStorageKey = _storageKeyFor(
+      userId: userId,
+      storageScope: storageScope,
+    );
+    if (_initialized &&
+        _sessionUserId == userId &&
+        _sessionStorageKey == sessionStorageKey) {
+      return;
+    }
     _initialized = true;
     _isRestoring = true;
     _sessionUserId = userId;
+    _messagingUserId = null;
+    _sessionStorageKey = sessionStorageKey;
     _currentUserName = userName;
     _stateVersion = 0;
+    _isRefreshing = false;
+    _isLoadingMore = false;
+    _isDirectoryLoading = false;
+    _hasLoadedDirectory = false;
+    _directoryError = null;
     _threads.clear();
+    _threadLoadVersions.clear();
     _folders
       ..clear()
       ..addAll(_defaultFolders);
@@ -126,6 +165,7 @@ class MessagingController extends ChangeNotifier {
     _olderMessagePage.clear();
     _loadedRemoteThreads.clear();
     _hiddenRemoteThreadIds.clear();
+    _productionThreadPreferences.clear();
     _backendError = null;
     _backendUnavailable = false;
     final generation = ++_remoteGeneration;
@@ -175,15 +215,16 @@ class MessagingController extends ChangeNotifier {
     // notification would ask an already-mounted ListenableBuilder to rebuild
     // while the framework is still building its parent. The asynchronous
     // restore below, and every subsequent user mutation, continue to notify.
-    _restored = _restore(userId, _stateVersion).then((_) async {
-      if (!isProduction ||
-          _sessionUserId != userId ||
-          generation != _remoteGeneration) {
-        return;
-      }
-      await refreshThreads();
-      await refreshDirectory();
-    });
+    _restored = _restore(sessionStorageKey, _stateVersion, legacyUserId: userId)
+        .then((_) async {
+          if (!isProduction ||
+              _sessionUserId != userId ||
+              generation != _remoteGeneration) {
+            return;
+          }
+          await refreshDirectory();
+          await refreshThreads();
+        });
   }
 
   MessagingThread? threadById(String? id) {
@@ -228,6 +269,10 @@ class MessagingController extends ChangeNotifier {
   Future<void> refreshThreads({bool silent = false}) async {
     final backend = _backend;
     if (backend == null || _sessionUserId == null || _isRefreshing) return;
+    if (_messagingUserId == null) {
+      await refreshDirectory();
+      if (_messagingUserId == null) return;
+    }
     final generation = _remoteGeneration;
     _isRefreshing = true;
     _backendError = null;
@@ -250,7 +295,9 @@ class MessagingController extends ChangeNotifier {
       for (final remote in page.items) {
         final id = '${remote.id}';
         if (_hiddenRemoteThreadIds.contains(id)) continue;
-        final mapped = _threadFromBackend(remote, overlay: existing[id]);
+        final mapped = _applyProductionThreadPreference(
+          _threadFromBackend(remote, overlay: existing[id]),
+        );
         next.add(mapped);
         for (final participant in remote.participants) {
           final participantId = '${participant.userId}';
@@ -298,11 +345,16 @@ class MessagingController extends ChangeNotifier {
     final numericId = int.tryParse(threadId);
     if (numericId == null) return;
     final generation = _remoteGeneration;
+    final requestVersion = (_threadLoadVersions[threadId] ?? 0) + 1;
+    _threadLoadVersions[threadId] = requestVersion;
+    bool isCurrentRequest() =>
+        _isCurrentRemoteGeneration(generation) &&
+        _threadLoadVersions[threadId] == requestVersion;
     _backendError = null;
     notifyListeners();
     try {
       var result = await backend.messages(numericId);
-      if (!_isCurrentRemoteGeneration(generation)) return;
+      if (!isCurrentRequest()) return;
       if (result.isUnavailable) {
         _backendUnavailable = true;
         _backendError = result.error?.message;
@@ -311,7 +363,7 @@ class MessagingController extends ChangeNotifier {
       var page = result.value!;
       if (page.pages > 1) {
         result = await backend.messages(numericId, page: page.pages);
-        if (!_isCurrentRemoteGeneration(generation)) return;
+        if (!isCurrentRequest()) return;
         if (result.isUnavailable) {
           _backendUnavailable = true;
           _backendError = result.error?.message;
@@ -330,93 +382,111 @@ class MessagingController extends ChangeNotifier {
       _backendUnavailable = false;
       _backendError = null;
     } on ApiException catch (error) {
-      if (!_isCurrentRemoteGeneration(generation)) return;
+      if (!isCurrentRequest()) return;
       _backendError = error.message;
       await _handleApiError(error);
     } on Object {
-      if (_isCurrentRemoteGeneration(generation)) {
+      if (isCurrentRequest()) {
         _backendError = 'Xabarlar tarixini yuklab bo\u2018lmadi.';
       }
     } finally {
-      if (_isCurrentRemoteGeneration(generation)) notifyListeners();
+      if (isCurrentRequest()) notifyListeners();
     }
   }
 
-  /// Loads the staff directory when the signed-in role has `users:read`.
-  /// A scoped 403 is expected for some teachers; their existing participants
-  /// remain available without turning the entire messaging module into error.
-  Future<void> refreshDirectory() async {
+  /// Loads only recipients approved by the messaging backend.
+  ///
+  /// The dedicated endpoint returns principal `user_id` values plus an exact
+  /// `staff`/`teacher`/`student` kind. In particular, student-profile ids from
+  /// `/students/` are never treated as messaging principals. A missing or
+  /// forbidden directory therefore falls back only to participants in threads
+  /// the current user already belongs to.
+  Future<void> refreshDirectory({bool force = false}) async {
     final backend = _backend;
     if (backend == null || _sessionUserId == null) return;
+    if (_isDirectoryLoading || (!force && _hasLoadedDirectory)) return;
     final generation = _remoteGeneration;
+    _isDirectoryLoading = true;
+    _directoryError = null;
+    notifyListeners();
     try {
-      final response = await backend.transport.get(
-        '/api/v1/users/',
-        query: const <String, Object?>{'page_size': 100, 'is_active': true},
-      );
-      if (!_isCurrentRemoteGeneration(generation)) return;
       final next = <MessagingContact>[];
-      for (final user in backendMaps(response.data)) {
-        final id = '${backendInt(user['id'])}';
-        if (id == '0' || id == currentUserId) continue;
-        final memberships = backendMaps(user['role_memberships']);
-        final slugs = <String>{
-          for (final membership in memberships)
-            backendString(
-              membership['account_type_slug'],
-              fallback: backendString(membership['legacy_role']),
-            ).toLowerCase(),
-        }..removeWhere((value) => value.isEmpty);
-        const blocked = <String>{
-          'student',
-          'parent',
-          'ceo',
-          'owner',
-          'director',
-          'manager',
-        };
-        if (slugs.any(
-          (slug) => blocked.any((fragment) => slug.contains(fragment)),
-        )) {
-          continue;
-        }
-        if (!backendBool(user['is_staff']) && slugs.isEmpty) continue;
-        final fullName = backendString(user['full_name']);
-        final username = backendString(user['username']);
-        next.add(
-          MessagingContact(
-            id: id,
-            name: fullName.isNotEmpty
-                ? fullName
-                : username.isNotEmpty
-                ? username
-                : 'Xodim #$id',
-            username: username.isEmpty ? '' : '@$username',
-            phone: backendString(user['phone']),
-            role: slugs.isEmpty ? 'Xodim' : slugs.first,
-            bio: backendString(user['email']),
-            isOnline:
-                backendDate(
-                  user['last_seen_at'],
-                )?.isAfter(_clock().subtract(const Duration(minutes: 5))) ??
-                false,
-          ),
+      int? selfUserId;
+      var page = 1;
+      var pages = 1;
+      do {
+        final response = await backend.transport.get(
+          '/api/v1/messaging/contacts/',
+          query: <String, Object?>{'page_size': 100, 'page': page},
         );
-      }
-      if (next.isEmpty) return;
+        if (!_isCurrentRemoteGeneration(generation)) return;
+        final pagination = backendMap(response.pagination);
+        final pageSelfUserId = backendInt(pagination['self_user_id']);
+        final establishedSelfUserId = int.tryParse(_messagingUserId ?? '');
+        if (pageSelfUserId < 1 ||
+            (establishedSelfUserId != null &&
+                establishedSelfUserId != pageSelfUserId) ||
+            (selfUserId != null && selfUserId != pageSelfUserId)) {
+          throw const FormatException(
+            'Messaging directory did not return one stable self_user_id.',
+          );
+        }
+        selfUserId = pageSelfUserId;
+        for (final row in backendMaps(response.data)) {
+          final contact = _contactFromDirectoryRow(row);
+          if (contact != null && contact.id != '$selfUserId') {
+            next.add(contact);
+          }
+        }
+        pages = backendInt(
+          pagination['pages'],
+          fallback: 1,
+        ).clamp(1, 1000).toInt();
+        page++;
+      } while (page <= pages);
+      _messagingUserId = '$selfUserId';
       final byId = <String, MessagingContact>{
-        for (final contact in _contacts) contact.id: contact,
+        // Successful refresh is authoritative. Preserve only unclassified
+        // participants from existing threads; stale explicit directory rows
+        // may have been revoked and must not remain startable recipients.
+        for (final contact in _contacts)
+          if (contact.kind == MessagingContactKind.unknown) contact.id: contact,
         for (final contact in next) contact.id: contact,
       };
       _contacts
         ..clear()
         ..addAll(byId.values);
-      notifyListeners();
+      _hasLoadedDirectory = true;
+      _directoryError = null;
     } on ApiException catch (error) {
-      if (error.statusCode == 403 || error.statusCode == 404) return;
-      await _handleApiError(error);
+      if (!_isCurrentRemoteGeneration(generation)) return;
+      _hasLoadedDirectory = true;
+      if (error.statusCode == 403) {
+        _directoryError =
+            'Bu hisob uchun yangi suhbatlar katalogiga ruxsat berilmagan. '
+            'Mavjud suhbatlaringiz Xabarlar bo\u2018limida qoladi.';
+      } else if (error.statusCode == 404) {
+        _directoryError =
+            'Kontaktlar katalogi bu serverda hali mavjud emas. '
+            'Mavjud suhbatlaringiz Xabarlar bo\u2018limida qoladi.';
+      } else {
+        _directoryError = error.message;
+        await _handleApiError(error);
+      }
+    } on FormatException {
+      if (!_isCurrentRemoteGeneration(generation)) return;
+      _hasLoadedDirectory = true;
+      _directoryError =
+          'Server xavfsiz xabar almashish identifikatorini qaytarmadi.';
     } on Object {
-      // The directory is optional; existing server participants remain usable.
+      if (!_isCurrentRemoteGeneration(generation)) return;
+      _hasLoadedDirectory = true;
+      _directoryError = 'Kontaktlarni yuklab bo\u2018lmadi.';
+    } finally {
+      if (_isCurrentRemoteGeneration(generation)) {
+        _isDirectoryLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -563,6 +633,20 @@ class MessagingController extends ChangeNotifier {
       (thread) => !thread.isGroup && thread.contact.id == contactId,
     );
     if (existing.isNotEmpty) return existing.first;
+    if (_messagingUserId == null) {
+      await refreshDirectory(force: true);
+      if (_messagingUserId == null) {
+        throw ArgumentError(
+          'Xabar almashish identifikatorini serverdan olib bo\u2018lmadi.',
+        );
+      }
+    }
+    final contact = contactById(contactId);
+    if (contact == null || contact.kind == MessagingContactKind.unknown) {
+      throw ArgumentError(
+        'Qabul qiluvchi kontaktlar ro\u2018yxatida topilmadi.',
+      );
+    }
     final participantId = int.tryParse(contactId);
     if (participantId == null) {
       throw ArgumentError('Xodim server identifikatori noto\u2018g\u2018ri.');
@@ -590,6 +674,9 @@ class MessagingController extends ChangeNotifier {
       _changed();
       return mapped;
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
       _backendError = error.message;
       await _handleApiError(error);
       throw ArgumentError(error.message);
@@ -728,6 +815,9 @@ class MessagingController extends ChangeNotifier {
       throw ArgumentError('Fayl yuborish faqat server suhbatida ishlaydi.');
     }
     if (bytes.isEmpty) throw ArgumentError('Tanlangan fayl bo\u2018sh.');
+    if (bytes.length > maxAttachmentBytes) {
+      throw ArgumentError('Fayl hajmi 25 MB dan oshmasligi kerak.');
+    }
     if (kind == MessagingKind.video &&
         (duration == null || duration > const Duration(minutes: 1))) {
       throw ArgumentError('Video 1 daqiqadan oshmasligi kerak.');
@@ -791,6 +881,9 @@ class MessagingController extends ChangeNotifier {
         body: body.trim(),
         attachments: <String>[grant.key],
       );
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
       final sent = _availableOrThrow(
         sentResult,
         fallback: 'Bu suhbatga xabar yuborishga ruxsat yo\u2018q.',
@@ -801,10 +894,16 @@ class MessagingController extends ChangeNotifier {
       unawaited(refreshThreads(silent: true));
       return mapped;
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
       _removePendingMessage(threadId, provisional.id);
       await _handleApiError(error);
       throw ArgumentError(error.message);
     } on Object catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
       _removePendingMessage(threadId, provisional.id);
       if (error is ArgumentError) rethrow;
       throw ArgumentError(
@@ -840,16 +939,28 @@ class MessagingController extends ChangeNotifier {
     if (backend == null || numericId == null || attachmentKey.isEmpty) {
       throw ArgumentError('Fayl manzili mavjud emas.');
     }
+    final generation = _remoteGeneration;
     try {
       final result = await backend.messageAttachmentDownloadUrl(
         numericId,
         attachmentKey,
       );
-      return _availableOrThrow(
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
+      final url = _availableOrThrow(
         result,
         fallback: 'Bu faylni ochishga ruxsat yo\u2018q.',
       );
+      final uri = Uri.tryParse(url);
+      if (uri == null || !isPermittedHttpUri(uri)) {
+        throw ArgumentError('Server xavfsiz HTTPS fayl manzilini qaytarmadi.');
+      }
+      return url;
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
       await _handleApiError(error);
       throw ArgumentError(error.message);
     }
@@ -862,19 +973,63 @@ class MessagingController extends ChangeNotifier {
     }
   }
 
-  void clearRemoteSession() {
+  Future<void> clearRemoteSession({
+    String? userId,
+    String storageScope = '',
+    bool purgeScopeWhenUserUnknown = false,
+  }) async {
     if (!isProduction) return;
+    final storageKeys = <String>{};
+    final activeStorageKey = _sessionStorageKey;
+    if (activeStorageKey != null) storageKeys.add(activeStorageKey);
+    if (userId != null) {
+      storageKeys
+        ..add(_storageKeyFor(userId: userId, storageScope: storageScope))
+        ..add(userId);
+    }
     cancelAttachmentUpload();
     ++_remoteGeneration;
     _sessionUserId = null;
+    _messagingUserId = null;
+    _sessionStorageKey = null;
     _initialized = false;
+    _isRefreshing = false;
+    _isLoadingMore = false;
+    _isDirectoryLoading = false;
+    _hasLoadedDirectory = false;
+    _directoryError = null;
     _threads.clear();
     _contacts.clear();
     _loadedRemoteThreads.clear();
     _olderMessagePage.clear();
+    _threadLoadVersions.clear();
+    _productionThreadPreferences.clear();
     _backendError = null;
     _backendUnavailable = false;
     notifyListeners();
+    // A queued write captured the old session key. Let it finish before the
+    // final removal so logout cannot accidentally recreate the cache.
+    try {
+      await _writeQueue;
+      if (storageKeys.isEmpty) {
+        if (purgeScopeWhenUserUnknown) {
+          final scope = storageScope.trim();
+          if (scope.isEmpty || scope == 'local-demo') {
+            await _storage.clearAll();
+          } else {
+            await _storage.removeScope(scope);
+          }
+        }
+      } else {
+        for (final storageKey in storageKeys) {
+          await _storage.remove(storageKey);
+        }
+      }
+    } on Object catch (error) {
+      _persistenceError =
+          'Signed-out message metadata could not be removed: $error';
+      notifyListeners();
+    }
   }
 
   Future<MessagingMessage> _sendRemote(
@@ -905,10 +1060,16 @@ class MessagingController extends ChangeNotifier {
       unawaited(refreshThreads(silent: true));
       return mapped;
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
       _removePendingMessage(threadId, provisional.id);
       await _handleApiError(error);
       throw ArgumentError(error.message);
     } on Object catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
       _removePendingMessage(threadId, provisional.id);
       if (error is ArgumentError) rethrow;
       throw ArgumentError(
@@ -968,10 +1129,7 @@ class MessagingController extends ChangeNotifier {
     required Uint8List bytes,
   }) async {
     final uri = Uri.tryParse(grant.url);
-    if (uri == null ||
-        !uri.hasScheme ||
-        uri.host.isEmpty ||
-        (uri.scheme != 'https' && uri.scheme != 'http')) {
+    if (uri == null || !isPermittedHttpUri(uri)) {
       throw const ApiException(
         message: 'Server xavfsiz fayl manzilini qaytarmadi.',
         code: 'invalid_upload_grant',
@@ -980,27 +1138,30 @@ class MessagingController extends ChangeNotifier {
     final method = grant.method.trim().toUpperCase();
     late final http.StreamedResponse response;
     if (method == 'POST') {
-      final request = http.MultipartRequest('POST', uri);
+      final request = http.MultipartRequest('POST', uri)
+        ..followRedirects = false;
       for (final entry in grant.fields.entries) {
         request.fields[entry.key] = '${entry.value ?? ''}';
       }
       request.files.add(
         http.MultipartFile.fromBytes('file', bytes, filename: filename),
       );
-      response = await client.send(request);
+      response = await client.send(request).timeout(const Duration(minutes: 2));
     } else if (method == 'PUT') {
-      final request = http.Request('PUT', uri)..bodyBytes = bytes;
+      final request = http.Request('PUT', uri)
+        ..followRedirects = false
+        ..bodyBytes = bytes;
       for (final entry in grant.fields.entries) {
         request.headers[entry.key] = '${entry.value ?? ''}';
       }
-      response = await client.send(request);
+      response = await client.send(request).timeout(const Duration(minutes: 2));
     } else {
       throw const ApiException(
         message: 'Server noma\u2019lum yuklash usulini qaytardi.',
         code: 'invalid_upload_grant',
       );
     }
-    await response.stream.drain<void>();
+    await response.stream.timeout(const Duration(minutes: 2)).drain<void>();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw const ApiException(
         message: 'Fayl omboriga yuklash tugallanmadi.',
@@ -1020,7 +1181,7 @@ class MessagingController extends ChangeNotifier {
     final others = value.participants
         .where((participant) => '${participant.userId}' != currentUserId)
         .toList(growable: false);
-    final title = value.subject.trim().isNotEmpty
+    final provisionalTitle = value.subject.trim().isNotEmpty
         ? value.subject.trim()
         : others.length == 1
         ? 'Xodim #${others.first.userId}'
@@ -1030,15 +1191,19 @@ class MessagingController extends ChangeNotifier {
         (others.isEmpty
             ? MessagingContact(
                 id: '${value.createdBy ?? value.id}',
-                name: title,
+                name: provisionalTitle,
                 username: '',
                 phone: '',
                 role: 'Xodim',
+                kind: MessagingContactKind.unknown,
               )
             : _contactForRemoteParticipant(
                 others.first.userId,
-                threadTitle: title,
+                threadTitle: provisionalTitle,
               ));
+    final title = value.subject.trim().isNotEmpty || others.length != 1
+        ? provisionalTitle
+        : contact.name;
     return MessagingThread(
       id: '${value.id}',
       title: title,
@@ -1070,7 +1235,82 @@ class MessagingController extends ChangeNotifier {
       username: '@user$userId',
       phone: '',
       role: 'Xodim',
+      kind: MessagingContactKind.unknown,
       bio: 'Server profilida mavjud bo\u2018lgan suhbat ishtirokchisi.',
+    );
+  }
+
+  MessagingContact? _contactFromDirectoryRow(BackendJson row) {
+    // Only the explicit bridge principal is valid for thread creation. `id`
+    // and `principal_id` can be role-native profile ids and are intentionally
+    // never used as a fallback here.
+    final userId = backendInt(row['user_id']);
+    if (userId < 1) return null;
+    final rawKind = backendString(
+      row['category'],
+      fallback: backendString(
+        row['kind'],
+        fallback: backendString(
+          row['account_kind'],
+          fallback: backendString(row['principal_kind']),
+        ),
+      ),
+    ).toLowerCase();
+    final kind = switch (rawKind) {
+      'staff' || 'teacher' => MessagingContactKind.staff,
+      'student' => MessagingContactKind.student,
+      _ => null,
+    };
+    if (kind == null) return null;
+    final id = '$userId';
+    final displayName = backendString(
+      row['display_name'],
+      fallback: backendString(
+        row['full_name'],
+        fallback: backendString(row['name']),
+      ),
+    );
+    final rawUsername = backendString(row['username']);
+    final username = rawUsername.startsWith('@')
+        ? rawUsername
+        : rawUsername.isEmpty
+        ? ''
+        : '@$rawUsername';
+    final role = backendString(
+      row['role_label'],
+      fallback: backendString(
+        row['role'],
+        fallback: backendString(
+          row['account_type_name'],
+          fallback: backendString(
+            row['role_slug'],
+            fallback: kind == MessagingContactKind.student
+                ? 'O\u2018quvchi'
+                : 'Xodim',
+          ),
+        ),
+      ),
+    );
+    return MessagingContact(
+      id: id,
+      name: displayName.isNotEmpty
+          ? displayName
+          : rawUsername.isNotEmpty
+          ? rawUsername
+          : kind == MessagingContactKind.student
+          ? 'O\u2018quvchi #$id'
+          : 'Xodim #$id',
+      username: username,
+      phone: backendString(row['phone']),
+      role: role,
+      kind: kind,
+      bio: backendString(row['bio'], fallback: backendString(row['email'])),
+      isOnline:
+          backendBool(row['is_online']) ||
+          (backendDate(
+                row['last_seen_at'],
+              )?.isAfter(_clock().subtract(const Duration(minutes: 5))) ??
+              false),
     );
   }
 
@@ -1112,7 +1352,11 @@ class MessagingController extends ChangeNotifier {
     final mapped = values
         .map((value) {
           final remote = _messageFromBackend(value);
-          return remote.copyWith(reactions: currentById[remote.id]?.reactions);
+          final current = currentById[remote.id];
+          return remote.copyWith(
+            reactions:
+                current?.reactions ?? _storedReactions(threadId, remote.id),
+          );
         })
         .toList(growable: false);
     final pending = preservePending
@@ -1197,14 +1441,17 @@ class MessagingController extends ChangeNotifier {
   Future<void> _markRemoteRead(String threadId) async {
     final numericId = int.tryParse(threadId);
     if (_backend == null || numericId == null) return;
+    final generation = _remoteGeneration;
     try {
       final result = await _backend.markThreadRead(numericId);
+      if (!_isCurrentRemoteGeneration(generation)) return;
       if (result.isUnavailable) {
         _backendUnavailable = true;
         _backendError = result.error?.message;
         notifyListeners();
       }
     } on ApiException catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) return;
       _backendError = error.message;
       await _handleApiError(error);
       notifyListeners();
@@ -1265,10 +1512,19 @@ class MessagingController extends ChangeNotifier {
     _queuePersist();
   }
 
-  Future<void> _restore(String userId, int versionAtStart) async {
+  Future<void> _restore(
+    String storageKey,
+    int versionAtStart, {
+    required String legacyUserId,
+  }) async {
     try {
-      final raw = await _storage.read(userId);
-      if (_sessionUserId != userId) return;
+      if (isProduction && storageKey != legacyUserId) {
+        // Versions before v2 used only the numeric user id and contained full
+        // message bodies. Remove that cross-tenant legacy value eagerly.
+        await _storage.remove(legacyUserId);
+      }
+      final raw = await _storage.read(storageKey);
+      if (_sessionStorageKey != storageKey) return;
       if (raw == null || raw.isEmpty) {
         _queuePersist();
         return;
@@ -1282,15 +1538,36 @@ class MessagingController extends ChangeNotifier {
       final storedFolders = _objectMaps(
         map['folders'],
       ).map(_folderFromJson).whereType<MessagingFolder>().toList();
-      final storedThreads = _objectMaps(
-        map['threads'],
-      ).map(_threadFromJson).whereType<MessagingThread>().toList();
       _folders
         ..clear()
         ..addAll(storedFolders.isEmpty ? _defaultFolders : storedFolders);
-      _threads
-        ..clear()
-        ..addAll(storedThreads);
+      if (isProduction) {
+        final preferences = <String, Map<String, Object?>>{};
+        for (final value in _objectMaps(map['threadPreferences'])) {
+          final id = value['id'];
+          if (id is String && id.isNotEmpty) preferences[id] = value;
+        }
+        // Migrate organization flags from an old scoped test/cache without
+        // ever restoring its contact or message content to the production UI.
+        if (preferences.isEmpty) {
+          for (final value in _objectMaps(map['threads'])) {
+            final preference = _threadPreferenceFromLegacyJson(value);
+            final id = preference?['id'];
+            if (id is String) preferences[id] = preference!;
+          }
+        }
+        _productionThreadPreferences
+          ..clear()
+          ..addAll(preferences);
+        _threads.clear();
+      } else {
+        final storedThreads = _objectMaps(
+          map['threads'],
+        ).map(_threadFromJson).whereType<MessagingThread>().toList();
+        _threads
+          ..clear()
+          ..addAll(storedThreads);
+      }
       notifyListeners();
     } on Object {
       // Corrupt or obsolete feature data should never prevent the staff app
@@ -1299,7 +1576,7 @@ class MessagingController extends ChangeNotifier {
           'Saved conversations could not be read. Fresh local demo data is shown.';
       _queuePersist();
     } finally {
-      if (_sessionUserId == userId) {
+      if (_sessionStorageKey == storageKey) {
         _isRestoring = false;
         notifyListeners();
       }
@@ -1313,24 +1590,33 @@ class MessagingController extends ChangeNotifier {
   }
 
   void _queuePersist() {
-    final userId = _sessionUserId;
-    if (userId == null) return;
+    final storageKey = _sessionStorageKey;
+    if (storageKey == null) return;
+    if (isProduction) {
+      for (final thread in _threads) {
+        _productionThreadPreferences[thread.id] = _threadPreferenceToJson(
+          thread,
+        );
+      }
+    }
     final snapshot = jsonEncode({
-      'version': 1,
+      'version': isProduction ? 2 : 1,
       'folders': _folders.map(_folderToJson).toList(),
-      'threads': _threads.map(_threadToJson).toList(),
-      if (isProduction)
+      if (isProduction) ...{
         'hiddenRemoteThreadIds': _hiddenRemoteThreadIds.toList(),
+        'threadPreferences': _productionThreadPreferences.values.toList(),
+      } else
+        'threads': _threads.map(_threadToJson).toList(),
     });
     _writeQueue = _writeQueue.then((_) async {
       try {
-        await _storage.write(userId, snapshot);
-        if (_sessionUserId == userId && _persistenceError != null) {
+        await _storage.write(storageKey, snapshot);
+        if (_sessionStorageKey == storageKey && _persistenceError != null) {
           _persistenceError = null;
           notifyListeners();
         }
       } on Object catch (error) {
-        if (_sessionUserId != userId) return;
+        if (_sessionStorageKey != storageKey) return;
         _persistenceError =
             'Messages could not be saved on this device: $error';
         notifyListeners();
@@ -1342,6 +1628,78 @@ class MessagingController extends ChangeNotifier {
     'id': folder.id,
     'name': folder.name,
   };
+
+  String _storageKeyFor({
+    required String userId,
+    required String storageScope,
+  }) {
+    final scope = storageScope.trim();
+    return scope.isEmpty ? userId : '${Uri.encodeComponent(scope)}::$userId';
+  }
+
+  Map<String, Object?> _threadPreferenceToJson(MessagingThread thread) => {
+    'id': thread.id,
+    'isPinned': thread.isPinned,
+    'isMuted': thread.isMuted,
+    'isArchived': thread.isArchived,
+    'folderIds': thread.folderIds.toList(),
+    'reactions': <String, Object?>{
+      for (final message in thread.messages)
+        if (message.reactions.isNotEmpty) message.id: message.reactions,
+    },
+  };
+
+  Map<String, Object?>? _threadPreferenceFromLegacyJson(
+    Map<String, Object?> json,
+  ) {
+    final id = json['id'];
+    if (id is! String || id.isEmpty) return null;
+    final reactions = <String, Object?>{};
+    for (final message in _objectMaps(json['messages'])) {
+      final messageId = message['id'];
+      final rawReactions = message['reactions'];
+      if (messageId is String &&
+          rawReactions is Map &&
+          rawReactions.isNotEmpty) {
+        reactions[messageId] = Map<String, Object?>.from(rawReactions);
+      }
+    }
+    return <String, Object?>{
+      'id': id,
+      'isPinned': json['isPinned'] == true,
+      'isMuted': json['isMuted'] == true,
+      'isArchived': json['isArchived'] == true,
+      'folderIds': _strings(json['folderIds']).toList(),
+      'reactions': reactions,
+    };
+  }
+
+  MessagingThread _applyProductionThreadPreference(MessagingThread thread) {
+    final preference = _productionThreadPreferences[thread.id];
+    if (preference == null) return thread;
+    return thread.copyWith(
+      isPinned: preference['isPinned'] == true,
+      isMuted: preference['isMuted'] == true,
+      isArchived: preference['isArchived'] == true,
+      folderIds: _strings(preference['folderIds']).toSet(),
+      messages: [
+        for (final message in thread.messages)
+          message.copyWith(reactions: _storedReactions(thread.id, message.id)),
+      ],
+    );
+  }
+
+  Map<String, int> _storedReactions(String threadId, String messageId) {
+    final all = _productionThreadPreferences[threadId]?['reactions'];
+    if (all is! Map) return const <String, int>{};
+    final raw = all[messageId];
+    if (raw is! Map) return const <String, int>{};
+    return <String, int>{
+      for (final entry in raw.entries)
+        if (entry.key is String && entry.value is num)
+          entry.key as String: (entry.value as num).toInt(),
+    };
+  }
 
   MessagingFolder? _folderFromJson(Map<String, Object?> json) {
     final id = json['id'];
@@ -1358,6 +1716,7 @@ class MessagingController extends ChangeNotifier {
     'username': contact.username,
     'phone': contact.phone,
     'role': contact.role,
+    'kind': contact.kind.name,
     'bio': contact.bio,
     'isOnline': contact.isOnline,
   };
@@ -1372,6 +1731,11 @@ class MessagingController extends ChangeNotifier {
       username: json['username'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
       role: json['role'] as String? ?? '',
+      kind: _enumValue(
+        MessagingContactKind.values,
+        json['kind'],
+        MessagingContactKind.staff,
+      ),
       bio: json['bio'] as String? ?? '',
       isOnline: json['isOnline'] as bool? ?? false,
     );

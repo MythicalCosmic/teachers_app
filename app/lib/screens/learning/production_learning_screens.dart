@@ -22,6 +22,7 @@ import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pill.dart';
 import '../../widgets/sf_pressable.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_search_field.dart';
 import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_tab_bar.dart';
 import '../../widgets/sf_toast.dart';
@@ -800,30 +801,26 @@ class _ProductionCohortListScreenState
               padding: const EdgeInsets.fromLTRB(18, 4, 18, 13),
               child: Column(
                 children: [
-                  TextField(
+                  SfSearchField(
                     key: const ValueKey('production-group-search'),
                     controller: _search,
                     onChanged: _onSearch,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: _text(
-                        context,
-                        uz: 'Guruh, daraja yoki bo‘limni qidiring',
-                        ru: 'Поиск группы, уровня или отдела',
-                        en: 'Search group, level or department',
-                      ),
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _search.text.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _search.clear();
-                                setState(() {});
-                                unawaited(_load());
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
+                    hintText: _text(
+                      context,
+                      uz: 'Guruh, daraja yoki bo‘limni qidiring',
+                      ru: 'Поиск группы, уровня или отдела',
+                      en: 'Search group, level or department',
                     ),
+                    clearTooltip: _text(
+                      context,
+                      uz: 'Qidiruvni tozalash',
+                      ru: 'Очистить поиск',
+                      en: 'Clear search',
+                    ),
+                    onClear: () {
+                      _debounce?.cancel();
+                      unawaited(_load());
+                    },
                   ),
                   const SizedBox(height: 10),
                   SingleChildScrollView(
@@ -1627,17 +1624,20 @@ class _ProductionAttendanceScreenState
                         }),
                       ),
                       const SizedBox(height: 12),
-                      TextField(
+                      SfSearchField(
                         controller: _search,
                         onChanged: (_) => setState(() {}),
-                        decoration: InputDecoration(
-                          hintText: _text(
-                            context,
-                            uz: 'O‘quvchini qidiring',
-                            ru: 'Найти ученика',
-                            en: 'Search students',
-                          ),
-                          prefixIcon: const Icon(Icons.search_rounded),
+                        hintText: _text(
+                          context,
+                          uz: 'O‘quvchini qidiring',
+                          ru: 'Найти ученика',
+                          en: 'Search students',
+                        ),
+                        clearTooltip: _text(
+                          context,
+                          uz: 'Qidiruvni tozalash',
+                          ru: 'Очистить поиск',
+                          en: 'Clear search',
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -4727,18 +4727,21 @@ class _CohortMembers extends StatelessWidget {
         .toList();
     return Column(
       children: [
-        TextField(
+        SfSearchField(
           key: const ValueKey('production-member-search'),
           controller: search,
           onChanged: onSearchChanged,
-          decoration: InputDecoration(
-            hintText: _text(
-              context,
-              uz: 'O‘quvchini qidiring',
-              ru: 'Найти ученика',
-              en: 'Search students',
-            ),
-            prefixIcon: const Icon(Icons.search_rounded),
+          hintText: _text(
+            context,
+            uz: 'O‘quvchini qidiring',
+            ru: 'Найти ученика',
+            en: 'Search students',
+          ),
+          clearTooltip: _text(
+            context,
+            uz: 'Qidiruvni tozalash',
+            ru: 'Очистить поиск',
+            en: 'Clear search',
           ),
         ),
         const SizedBox(height: 12),

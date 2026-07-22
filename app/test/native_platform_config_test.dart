@@ -20,6 +20,26 @@ void main() {
       ).allMatches(manifest),
       hasLength(1),
     );
+    expect(manifest, contains('android:allowBackup="false"'));
+    expect(manifest, contains('android:fullBackupContent="false"'));
+    expect(manifest, contains('android:usesCleartextTraffic="false"'));
+  });
+
+  test('iOS native plugins are integrated through CocoaPods', () {
+    final podfile = File('ios/Podfile').readAsStringSync();
+    final debugConfig = File('ios/Flutter/Debug.xcconfig').readAsStringSync();
+    final releaseConfig = File(
+      'ios/Flutter/Release.xcconfig',
+    ).readAsStringSync();
+
+    expect(podfile, contains("platform :ios, '13.0'"));
+    expect(podfile, contains('flutter_ios_podfile_setup'));
+    expect(podfile, contains('flutter_install_all_ios_pods'));
+    expect(podfile, contains('flutter_additional_ios_build_settings'));
+    expect(debugConfig, contains('Pods-Runner.debug.xcconfig'));
+    expect(releaseConfig, contains('Pods-Runner.release.xcconfig'));
+    expect(debugConfig, contains('#include "Generated.xcconfig"'));
+    expect(releaseConfig, contains('#include "Generated.xcconfig"'));
   });
 
   test('iOS declares privacy reasons for messaging media', () {

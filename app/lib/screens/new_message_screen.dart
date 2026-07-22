@@ -13,32 +13,57 @@ import '../widgets/sf_card.dart';
 import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_search_field.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
 import 'groups/group_workspace_store.dart';
 
 class NewMessageScreen extends StatefulWidget {
-  const NewMessageScreen({super.key, this.groupId, this.studentId});
+  const NewMessageScreen({
+    super.key,
+    this.groupId,
+    this.studentId,
+    this.controller,
+  });
 
   final String? groupId;
   final String? studentId;
+  final MessagingController? controller;
 
   @override
   State<NewMessageScreen> createState() => _NewMessageScreenState();
 }
+
+enum _ContactFilter { all, staff, students }
 
 class _NewMessageScreenState extends State<NewMessageScreen> {
   final _search = TextEditingController();
   final _message = TextEditingController();
   String? _contactId;
   bool _sending = false;
+  _ContactFilter _filter = _ContactFilter.all;
   MessagingController? _activeController;
 
   MessagingController get _controller =>
       _activeController ?? MessagingController.shared;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = widget.controller ?? AppScope.of(context).messagingController;
+    if (identical(next, _activeController)) return;
+    _activeController?.removeListener(_onControllerChanged);
+    _activeController = next;
+    next.addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _activeController?.removeListener(_onControllerChanged);
     _search.dispose();
     _message.dispose();
     super.dispose();
@@ -46,11 +71,13 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
 
   Future<void> _send() async {
     final contactId = _contactId;
-    if (_sending || contactId == null || _message.text.trim().isEmpty) return;
+    if (_sending || contactId == null) return;
     setState(() => _sending = true);
     try {
       final thread = await _controller.createOrOpenDirectThreadAsync(contactId);
-      await _controller.sendText(thread.id, _messageBody());
+      if (_message.text.trim().isNotEmpty) {
+        await _controller.sendText(thread.id, _messageBody());
+      }
       if (!mounted) return;
       context.pushReplacement(
         '/messages/chat?thread=${Uri.encodeQueryComponent(thread.id)}',
@@ -88,7 +115,6 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    _activeController = app.messagingController;
     final m = MessagingL10n.of(context);
     final session = app.session;
     if (session == null || !session.can(StaffCapability.useStaffMessaging)) {
@@ -100,15 +126,34 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
       userId: session.userId,
       userName: session.displayName,
       sourceThreads: app.messageThreads,
+      storageScope: app.messagingStorageScope,
     );
+    if (_controller.isProduction &&
+        !_controller.hasLoadedDirectory &&
+        !_controller.isDirectoryLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _controller.refreshDirectory();
+      });
+    }
     final query = _search.text.trim().toLowerCase();
-    final contacts = _controller.contacts
-        .where(
-          (contact) =>
-              contact.name.toLowerCase().contains(query) ||
-              contact.username.toLowerCase().contains(query) ||
-              contact.role.toLowerCase().contains(query),
-        )
+    final permittedContacts = _controller.contacts
+        .where((contact) => contact.kind != MessagingContactKind.unknown)
+        .toList(growable: false);
+    final contacts = permittedContacts
+        .where((contact) {
+          final matchesFilter = switch (_filter) {
+            _ContactFilter.all =>
+              contact.kind == MessagingContactKind.staff ||
+                  contact.kind == MessagingContactKind.student,
+            _ContactFilter.staff => contact.kind == MessagingContactKind.staff,
+            _ContactFilter.students =>
+              contact.kind == MessagingContactKind.student,
+          };
+          return matchesFilter &&
+              (contact.name.toLowerCase().contains(query) ||
+                  contact.username.toLowerCase().contains(query) ||
+                  contact.role.toLowerCase().contains(query));
+        })
         .toList(growable: false);
     final selected = _controller.contactById(_contactId);
     final c = SfTheme.colorsOf(context);
@@ -128,16 +173,17 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
         ),
         actions: [
           TextButton(
-            onPressed:
-                _sending || selected == null || _message.text.trim().isEmpty
-                ? null
-                : _send,
+            onPressed: _sending || selected == null ? null : _send,
             child: _sending
                 ? const SizedBox.square(
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(m.text('send')),
+                : Text(
+                    _message.text.trim().isEmpty
+                        ? m.text('open_chat')
+                        : m.text('send'),
+                  ),
           ),
         ],
       ),
@@ -183,24 +229,34 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
             ),
           Padding(
             padding: EdgeInsets.fromLTRB(16, group == null ? 12 : 10, 16, 10),
-            child: SfTextField(
+            child: SfSearchField(
+              key: const ValueKey('new-message-search'),
               controller: _search,
               autofocus: selected == null,
-              hint: m.text('search_staff'),
-              prefixIcon: SfIcons.search,
+              hintText: m.text('search_contacts'),
+              semanticLabel: m.text('search_contacts'),
+              clearTooltip: m.text('clear'),
+              clearButtonKey: const ValueKey('new-message-search-clear'),
               onChanged: (_) => setState(() {}),
-              suffix: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: m.text('clear'),
-                      onPressed: () {
-                        _search.clear();
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.close_rounded),
-                    ),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: _ContactFilterBar(
+              value: _filter,
+              onChanged: (value) => setState(() => _filter = value),
+              allLabel: m.text('contact_filter_all'),
+              staffLabel: m.text('contact_filter_staff'),
+              studentsLabel: m.text('contact_filter_students'),
+            ),
+          ),
+          if (_controller.directoryError != null &&
+              permittedContacts.isNotEmpty)
+            _DirectoryNotice(
+              message: _controller.directoryError!,
+              retryLabel: m.text('retry'),
+              onRetry: () => _controller.refreshDirectory(force: true),
+            ),
           if (selected != null)
             AnimatedContainer(
               duration: SfMotion.resolve(
@@ -245,11 +301,33 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
               ),
             ),
           Expanded(
-            child: contacts.isEmpty
+            child: _controller.isDirectoryLoading && permittedContacts.isEmpty
+                ? SfLoadingState(
+                    key: const ValueKey('contact-directory-loading'),
+                    label: m.text('contact_directory_loading'),
+                    message: m.text('contact_directory_loading_help'),
+                  )
+                : _controller.directoryError != null &&
+                      permittedContacts.isEmpty
+                ? SfErrorState(
+                    key: const ValueKey('contact-directory-error'),
+                    title: m.text('contact_directory_error'),
+                    message: _controller.directoryError,
+                    retryLabel: m.text('retry'),
+                    onRetry: () => _controller.refreshDirectory(force: true),
+                  )
+                : contacts.isEmpty
                 ? SfEmptyState(
-                    title: m.text('staff_not_found'),
-                    message: m.text('staff_search_help'),
-                    icon: SfIcons.search,
+                    key: const ValueKey('contact-directory-empty'),
+                    title: permittedContacts.isEmpty
+                        ? m.text('no_permitted_contacts')
+                        : m.text('contacts_not_found'),
+                    message: permittedContacts.isEmpty
+                        ? m.text('no_permitted_contacts_help')
+                        : m.text('contact_search_help'),
+                    icon: permittedContacts.isEmpty
+                        ? Icons.forum_outlined
+                        : SfIcons.search,
                   )
                 : ListView.separated(
                     keyboardDismissBehavior:
@@ -260,6 +338,7 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
                     itemBuilder: (context, index) {
                       final contact = contacts[index];
                       return _ContactTile(
+                        key: ValueKey('new-message-contact-${contact.id}'),
                         contact: contact,
                         selected: contact.id == _contactId,
                         onTap: () {
@@ -322,8 +401,132 @@ class _NewMessageScreenState extends State<NewMessageScreen> {
   }
 }
 
+class _ContactFilterBar extends StatelessWidget {
+  const _ContactFilterBar({
+    required this.value,
+    required this.onChanged,
+    required this.allLabel,
+    required this.staffLabel,
+    required this.studentsLabel,
+  });
+
+  final _ContactFilter value;
+  final ValueChanged<_ContactFilter> onChanged;
+  final String allLabel;
+  final String staffLabel;
+  final String studentsLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      key: const ValueKey('new-message-contact-filters'),
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        children: [
+          _ContactFilterChip(
+            key: const ValueKey('contact-filter-all'),
+            label: allLabel,
+            icon: Icons.people_alt_outlined,
+            selected: value == _ContactFilter.all,
+            onSelected: () => onChanged(_ContactFilter.all),
+          ),
+          const SizedBox(width: 8),
+          _ContactFilterChip(
+            key: const ValueKey('contact-filter-staff'),
+            label: staffLabel,
+            icon: Icons.badge_outlined,
+            selected: value == _ContactFilter.staff,
+            onSelected: () => onChanged(_ContactFilter.staff),
+          ),
+          const SizedBox(width: 8),
+          _ContactFilterChip(
+            key: const ValueKey('contact-filter-students'),
+            label: studentsLabel,
+            icon: Icons.school_outlined,
+            selected: value == _ContactFilter.students,
+            onSelected: () => onChanged(_ContactFilter.students),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContactFilterChip extends StatelessWidget {
+  const _ContactFilterChip({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      showCheckmark: false,
+      avatar: Icon(icon, size: 17),
+      label: Text(label),
+      visualDensity: const VisualDensity(horizontal: -1, vertical: -1),
+      materialTapTargetSize: MaterialTapTargetSize.padded,
+    );
+  }
+}
+
+class _DirectoryNotice extends StatelessWidget {
+  const _DirectoryNotice({
+    required this.message,
+    required this.retryLabel,
+    required this.onRetry,
+  });
+
+  final String message;
+  final String retryLabel;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        key: const ValueKey('contact-directory-notice'),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+        decoration: BoxDecoration(
+          color: c.warnSoft,
+          border: Border.all(color: c.warn.withValues(alpha: 0.32)),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline_rounded, size: 19, color: c.warn),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                message,
+                style: SfType.ui(size: 11, color: c.ink, height: 1.35),
+              ),
+            ),
+            TextButton(onPressed: onRetry, child: Text(retryLabel)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ContactTile extends StatelessWidget {
   const _ContactTile({
+    super.key,
     required this.contact,
     required this.selected,
     required this.onTap,
@@ -336,6 +539,19 @@ class _ContactTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
+    final m = MessagingL10n.of(context);
+    final category = switch (contact.kind) {
+      MessagingContactKind.staff => m.text('contact_filter_staff'),
+      MessagingContactKind.student => m.text('contact_filter_students'),
+      MessagingContactKind.unknown => m.text('existing_contact'),
+    };
+    final subtitle = <String>[
+      category,
+      if (contact.role.isNotEmpty &&
+          contact.role.toLowerCase() != category.toLowerCase())
+        contact.role,
+      if (contact.username.isNotEmpty) contact.username,
+    ].join(' · ');
     return AnimatedContainer(
       duration: SfMotion.resolve(context, const Duration(milliseconds: 160)),
       decoration: BoxDecoration(
@@ -373,7 +589,7 @@ class _ContactTile extends StatelessWidget {
             contact.name,
             style: SfType.ui(weight: FontWeight.w800, color: c.ink),
           ),
-          subtitle: Text('${contact.role} · ${contact.username}'),
+          subtitle: Text(subtitle),
           trailing: selected
               ? Icon(Icons.check_circle_rounded, color: c.primary)
               : const Icon(Icons.chevron_right_rounded),

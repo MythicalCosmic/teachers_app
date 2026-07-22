@@ -5,6 +5,7 @@ import 'api_client.dart';
 import 'api_config.dart';
 import 'api_models.dart';
 import 'session_vault.dart';
+import 'transport_security.dart';
 
 final class StarforgeApi {
   StarforgeApi({
@@ -43,6 +44,12 @@ final class StarforgeApi {
   Future<AuthenticatedIdentity?> restore() async {
     final stored = await _vault.read();
     if (stored == null) return null;
+    try {
+      _validateConnection(stored.connection);
+    } on ApiException {
+      await _vault.clear();
+      rethrow;
+    }
     _stored = stored;
     _remembered = true;
     try {
@@ -56,7 +63,7 @@ final class StarforgeApi {
       );
     } on ApiException catch (error) {
       if (error.statusCode == 401 && hasSession) {
-        await _clearExpiredSession();
+        await _clearExpiredSession(stored);
       }
       rethrow;
     }
@@ -65,21 +72,24 @@ final class StarforgeApi {
   Future<TenantConnection> resolveCenter(String slug) async {
     final normalized = slug.trim().toLowerCase();
     if (normalized.isEmpty) {
-      final uri = Uri.parse(platformBaseUrl);
+      final safePlatformBaseUrl = _requireSecurePlatformBaseUrl();
+      final uri = Uri.parse(safePlatformBaseUrl);
       return TenantConnection(
         slug: uri.host,
         name: 'StarForge EDU',
-        baseUrl: platformBaseUrl,
-        wsUrl: 'wss://${uri.authority}/ws/notifications/',
+        baseUrl: safePlatformBaseUrl,
+        wsUrl:
+            '${uri.scheme == 'https' ? 'wss' : 'ws'}://${uri.authority}/ws/notifications/',
         locale: _locale,
       );
     }
     if (normalized.startsWith('https://') || normalized.startsWith('http://')) {
-      final uri = Uri.parse(normalized);
-      if (!uri.hasScheme || uri.host.isEmpty) {
+      final uri = Uri.tryParse(normalized);
+      if (uri == null || !isPermittedHttpUri(uri)) {
         throw const ApiException(
-          message: 'Markaz server manzili noto‘g‘ri.',
-          code: 'validation_error',
+          message:
+              'Markaz serveri HTTPS ishlatishi kerak. HTTP faqat shu qurilmadagi test serveri uchun ruxsat etiladi.',
+          code: 'insecure_transport',
         );
       }
       final base = uri
@@ -95,7 +105,7 @@ final class StarforgeApi {
       );
     }
     final response = await _client.get(
-      platformBaseUrl,
+      _requireSecurePlatformBaseUrl(),
       '/api/v1/platform/resolve/',
       locale: _locale,
       query: {'slug': normalized},
@@ -106,10 +116,19 @@ final class StarforgeApi {
         code: 'invalid_response',
       );
     }
-    return TenantConnection.fromJson(
-      Map<String, Object?>.from(response.data! as Map),
-      slug: normalized,
-    );
+    try {
+      final connection = TenantConnection.fromJson(
+        Map<String, Object?>.from(response.data! as Map),
+        slug: normalized,
+      );
+      _validateConnection(connection);
+      return connection;
+    } on FormatException {
+      throw const ApiException(
+        message: 'Markaz serveri xavfsiz HTTPS/WSS manzilini qaytarmadi.',
+        code: 'insecure_transport',
+      );
+    }
   }
 
   Future<AuthenticatedIdentity> signIn({
@@ -118,7 +137,10 @@ final class StarforgeApi {
     required String password,
     required bool remember,
   }) async {
-    final connection = await resolveCenter(centerSlug);
+    final requestedCenter = centerSlug.trim().isEmpty
+        ? ApiConfig.defaultCenterSlug
+        : centerSlug;
+    final connection = await resolveCenter(requestedCenter);
     final priorDeviceId = await _vault.readDeviceId();
     final stableDeviceId = priorDeviceId?.isNotEmpty == true
         ? priorDeviceId!
@@ -149,11 +171,12 @@ final class StarforgeApi {
         code: 'invalid_response',
       );
     }
-    _stored = StoredSession(
+    final authenticatingSession = StoredSession(
       accessToken: token,
       connection: connection,
       deviceId: stableDeviceId,
     );
+    _stored = authenticatingSession;
     try {
       final profile = await me();
       final principalKind = apiString(profile['principal_kind']);
@@ -165,10 +188,22 @@ final class StarforgeApi {
           code: 'staff_app_only',
         );
       }
+      if (!identical(_stored, authenticatingSession)) {
+        throw const ApiException(
+          message: 'Sessiya kirish vaqtida o‘zgardi.',
+          code: 'session_changed',
+        );
+      }
       if (remember) {
-        await _vault.write(_stored!);
+        await _vault.write(authenticatingSession);
       } else {
         await _vault.clear();
+      }
+      if (!identical(_stored, authenticatingSession)) {
+        throw const ApiException(
+          message: 'Sessiya kirish vaqtida o‘zgardi.',
+          code: 'session_changed',
+        );
       }
       _remembered = remember;
       return AuthenticatedIdentity(
@@ -179,8 +214,7 @@ final class StarforgeApi {
         mustChangePassword: apiBool(auth['must_change_password']),
       );
     } on Object {
-      _stored = null;
-      await _vault.clear();
+      await clearSession(expectedSession: authenticatingSession);
       rethrow;
     }
   }
@@ -212,7 +246,7 @@ final class StarforgeApi {
     String accountType = 'staff',
   }) async {
     await _client.post(
-      platformBaseUrl,
+      _requireSecurePlatformBaseUrl(),
       '/api/v1/auth/password/reset/request/',
       locale: _locale,
       body: {'identifier': identifier.trim(), 'account_type': accountType},
@@ -226,7 +260,7 @@ final class StarforgeApi {
     String accountType = 'staff',
   }) async {
     await _client.post(
-      platformBaseUrl,
+      _requireSecurePlatformBaseUrl(),
       '/api/v1/auth/password/reset/confirm/',
       locale: _locale,
       body: {
@@ -242,20 +276,32 @@ final class StarforgeApi {
     required String oldPassword,
     required String newPassword,
   }) async {
+    final expectedSession = _requireSession();
     final response = await post(
       '/api/v1/auth/password/change/',
       body: {'old_password': oldPassword, 'new_password': newPassword},
     );
     if (response.data is! Map) return;
     final newToken = apiString((response.data! as Map)['access']);
-    final current = _stored;
-    if (newToken.isEmpty || current == null) return;
+    if (newToken.isEmpty || !identical(_stored, expectedSession)) return;
     _stored = StoredSession(
       accessToken: newToken,
-      connection: current.connection,
-      deviceId: current.deviceId,
+      connection: expectedSession.connection,
+      deviceId: expectedSession.deviceId,
     );
     if (_remembered) await _vault.write(_stored!);
+  }
+
+  String _requireSecurePlatformBaseUrl() {
+    final uri = Uri.tryParse(platformBaseUrl);
+    if (uri == null || !isPermittedHttpUri(uri)) {
+      throw const ApiException(
+        message:
+            'Platform serveri HTTPS ishlatishi kerak. HTTP faqat shu qurilmadagi test serveri uchun ruxsat etiladi.',
+        code: 'insecure_transport',
+      );
+    }
+    return platformBaseUrl;
   }
 
   Future<ApiResponse> get(
@@ -264,6 +310,7 @@ final class StarforgeApi {
   }) async {
     final session = _requireSession();
     return _guardSession(
+      session,
       () => _client.get(
         session.connection.baseUrl,
         path,
@@ -281,6 +328,7 @@ final class StarforgeApi {
   }) async {
     final session = _requireSession();
     return _guardSession(
+      session,
       () => _client.post(
         session.connection.baseUrl,
         path,
@@ -295,6 +343,7 @@ final class StarforgeApi {
   Future<ApiResponse> patch(String path, {Object? body}) async {
     final session = _requireSession();
     return _guardSession(
+      session,
       () => _client.patch(
         session.connection.baseUrl,
         path,
@@ -308,6 +357,7 @@ final class StarforgeApi {
   Future<ApiResponse> put(String path, {Object? body}) async {
     final session = _requireSession();
     return _guardSession(
+      session,
       () => _client.put(
         session.connection.baseUrl,
         path,
@@ -321,6 +371,7 @@ final class StarforgeApi {
   Future<ApiResponse> delete(String path, {Object? body}) async {
     final session = _requireSession();
     return _guardSession(
+      session,
       () => _client.delete(
         session.connection.baseUrl,
         path,
@@ -332,23 +383,38 @@ final class StarforgeApi {
   }
 
   Future<ApiResponse> _guardSession(
+    StoredSession expectedSession,
     Future<ApiResponse> Function() operation,
   ) async {
     try {
       return await operation();
     } on ApiException catch (error) {
-      if (error.statusCode == 401) await _clearExpiredSession();
+      if (error.statusCode == 401 && identical(_stored, expectedSession)) {
+        await _clearExpiredSession(expectedSession);
+      }
       rethrow;
     }
   }
 
-  Future<void> _clearExpiredSession() async {
-    await clearSession();
-    await _onAuthenticationRequired?.call();
+  Future<void> _clearExpiredSession(StoredSession expectedSession) async {
+    Future<void>? cleanup;
+    try {
+      cleanup = _onAuthenticationRequired?.call();
+    } on Object {
+      // Credential removal below remains mandatory even if the UI callback
+      // fails synchronously.
+    }
+    await clearSession(expectedSession: expectedSession);
+    try {
+      await cleanup;
+    } on Object {
+      // The token is already gone. UI/cache cleanup reports its own failure.
+    }
   }
 
   Future<void> signOut({bool remote = true}) async {
     final session = _stored;
+    await clearSession(expectedSession: session);
     if (remote && session != null) {
       try {
         await _client.post(
@@ -361,13 +427,38 @@ final class StarforgeApi {
         // Local credential removal is mandatory even when the server is offline.
       }
     }
-    await clearSession();
   }
 
-  Future<void> clearSession() async {
+  Future<void> clearSession({StoredSession? expectedSession}) async {
+    if (expectedSession != null && !identical(_stored, expectedSession)) return;
     _stored = null;
     _remembered = false;
     await _vault.clear();
+  }
+
+  Future<void> clearSessionIfCurrent(String? expectedAccessToken) async {
+    if (expectedAccessToken == null || expectedAccessToken.isEmpty) return;
+    final session = _stored;
+    if (session == null || session.accessToken != expectedAccessToken) return;
+    await clearSession(expectedSession: session);
+  }
+
+  void _validateConnection(TenantConnection connection) {
+    final baseUri = Uri.tryParse(connection.baseUrl);
+    if (baseUri == null || !isPermittedHttpUri(baseUri)) {
+      throw const ApiException(
+        message: 'Saqlangan markaz serveri HTTPS bilan himoyalanmagan.',
+        code: 'insecure_transport',
+      );
+    }
+    if (connection.wsUrl.isEmpty) return;
+    final wsUri = Uri.tryParse(connection.wsUrl);
+    if (wsUri == null || !isPermittedWebSocketUri(wsUri)) {
+      throw const ApiException(
+        message: 'Saqlangan bildirishnoma manzili WSS bilan himoyalanmagan.',
+        code: 'insecure_transport',
+      );
+    }
   }
 
   StoredSession _requireSession() {

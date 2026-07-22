@@ -30,12 +30,18 @@ void main() {
         expect(controller.threads.single.isRead, isFalse);
         expect(
           controller.contacts.map((item) => item.id),
-          containsAll(['2', '3']),
+          containsAll(['2', '3', '5']),
         );
         expect(
           controller.contacts.map((item) => item.id),
           isNot(contains('4')),
         );
+        expect(
+          controller.contacts.map((item) => item.id),
+          isNot(contains('88')),
+        );
+        expect(controller.currentUserId, '1');
+        expect(controller.contactById('5')?.kind, MessagingContactKind.student);
 
         controller.togglePinned(const ['10']);
         controller.toggleMuted(const ['10']);
@@ -50,6 +56,157 @@ void main() {
         expect(refreshed.folderIds, contains('folder-important'));
       },
     );
+
+    test(
+      'keeps role-native session and messaging bridge identities separate',
+      () async {
+        final controller = _controller(_RoutingTransport(_baseHandler));
+        addTearDown(controller.dispose);
+
+        controller.initialize(
+          userId: 'teacher-profile-42',
+          userName: 'Current Teacher',
+          sourceThreads: const [],
+        );
+        await controller.restored;
+
+        expect(controller.currentUserId, '1');
+        expect(controller.threadById('10')?.contact.id, '2');
+        expect(
+          controller.contacts.map((contact) => contact.id),
+          isNot(contains('1')),
+        );
+      },
+    );
+
+    test(
+      'keeps existing permitted contacts when the directory becomes unavailable',
+      () async {
+        var directoryUnavailable = false;
+        final transport = _RoutingTransport((method, path, query, body) {
+          if (path == '/api/v1/messaging/contacts/' && directoryUnavailable) {
+            throw const ApiException(
+              message: 'Not found',
+              statusCode: 404,
+              code: 'not_found',
+            );
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+        await _initialize(controller);
+        final before = controller.contacts.map((item) => item.id).toSet();
+
+        directoryUnavailable = true;
+        await controller.refreshDirectory(force: true);
+
+        expect(controller.contacts.map((item) => item.id).toSet(), before);
+        expect(controller.directoryError, isNotNull);
+        expect(controller.currentUserId, '1');
+      },
+    );
+
+    test(
+      'successful refresh removes revoked explicit directory contacts',
+      () async {
+        var reducedDirectory = false;
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (path == '/api/v1/messaging/contacts/' && reducedDirectory) {
+            return _response(
+              data: [
+                _contactJson(
+                  2,
+                  'Ali Teacher',
+                  category: 'staff',
+                  role: 'Teacher',
+                ),
+              ],
+              pagination: {..._page(), 'self_user_id': 1},
+            );
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+        await _initialize(controller);
+        expect(controller.contactById('5'), isNotNull);
+
+        reducedDirectory = true;
+        await controller.refreshDirectory(force: true);
+
+        expect(controller.contactById('2'), isNotNull);
+        expect(controller.contactById('3'), isNull);
+        expect(controller.contactById('5'), isNull);
+      },
+    );
+
+    test(
+      'fails closed when the directory omits the bridge self identity',
+      () async {
+        var threadReads = 0;
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (path == '/api/v1/messaging/contacts/') {
+            return _response(
+              data: [
+                _contactJson(
+                  5,
+                  'Mina Student',
+                  category: 'student',
+                  role: 'Student',
+                ),
+              ],
+              pagination: _page(),
+            );
+          }
+          if (path == '/api/v1/messaging/threads/') threadReads++;
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+
+        await _initialize(controller);
+
+        expect(controller.currentUserId, isEmpty);
+        expect(controller.contacts, isEmpty);
+        expect(controller.directoryError, isNotNull);
+        expect(threadReads, 0);
+      },
+    );
+
+    test('creates a direct thread with the contact bridge user id', () async {
+      Object? createBody;
+      final transport = _RoutingTransport((method, path, query, body) async {
+        if (method == 'POST' && path == '/api/v1/messaging/threads/') {
+          createBody = body;
+          return _response(
+            data: {
+              'id': 77,
+              'subject': '',
+              'created_by': 1,
+              'participants': [
+                {'user': 1},
+                {'user': 5},
+              ],
+              'unread_count': 0,
+            },
+          );
+        }
+        return _baseHandler(method, path, query, body);
+      });
+      final controller = _controller(transport);
+      addTearDown(controller.dispose);
+      await _initialize(controller);
+
+      final thread = await controller.createOrOpenDirectThreadAsync('5');
+
+      expect(createBody, {
+        'participant_ids': [5],
+      });
+      expect(thread.id, '77');
+      expect(thread.title, 'Mina Student');
+      expect(thread.contact.kind, MessagingContactKind.student);
+    });
 
     test(
       'loads newest page first and prepends older message history',
@@ -87,6 +244,207 @@ void main() {
         expect(controller.hasOlderMessages('10'), isFalse);
       },
     );
+
+    test(
+      'older overlapping thread load cannot replace newer messages',
+      () async {
+        final gates = [Completer<ApiResponse>(), Completer<ApiResponse>()];
+        var messageReads = 0;
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (method == 'GET' && path.endsWith('/messages/')) {
+            return gates[messageReads++].future;
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+        await _initialize(controller);
+
+        final olderRequest = controller.loadThreadMessages('10', refresh: true);
+        await Future<void>.delayed(Duration.zero);
+        final newerRequest = controller.loadThreadMessages('10', refresh: true);
+        await Future<void>.delayed(Duration.zero);
+        gates[1].complete(
+          _response(
+            data: [_messageJson(22, body: 'newer response')],
+            pagination: _page(),
+          ),
+        );
+        await newerRequest;
+        gates[0].complete(
+          _response(
+            data: [_messageJson(21, body: 'older response')],
+            pagination: _page(),
+          ),
+        );
+        await olderRequest;
+
+        expect(controller.threadById('10')!.messages.map((item) => item.body), [
+          'newer response',
+        ]);
+      },
+    );
+
+    test(
+      'production cache is tenant-scoped, metadata-only, and purged',
+      () async {
+        final storage = MemoryMessagingStorage({
+          '1': '{"threads":[{"body":"legacy cross-tenant secret"}]}',
+        });
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (path.endsWith('/messages/')) {
+            return _response(
+              data: [
+                _messageJson(
+                  9,
+                  body: 'private lesson note',
+                  attachments: const ['tenant/private/report.pdf'],
+                ),
+              ],
+              pagination: _page(),
+            );
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = MessagingController(
+          storage: storage,
+          backend: BackendWorkApi(transport),
+        );
+        addTearDown(controller.dispose);
+
+        controller.initialize(
+          userId: '1',
+          userName: 'Current Teacher',
+          sourceThreads: const [],
+          storageScope: 'https://tenant-a.example',
+        );
+        await controller.restored;
+        await controller.loadThreadMessages('10');
+        controller.togglePinned(const ['10']);
+        await controller.flushPersistence();
+
+        expect(storage.values, isNot(contains('1')));
+        expect(storage.values, hasLength(1));
+        final raw = storage.values.values.single;
+        expect(raw, contains('"version":2'));
+        expect(raw, contains('threadPreferences'));
+        expect(raw, isNot(contains('private lesson note')));
+        expect(raw, isNot(contains('tenant/private/report.pdf')));
+        expect(raw, isNot(contains('Ali Teacher')));
+        expect(raw, isNot(contains('+9982')));
+
+        await controller.clearRemoteSession();
+        expect(storage.values, isEmpty);
+      },
+    );
+
+    test('center slug separates caches on a shared API host', () async {
+      final storage = MemoryMessagingStorage();
+      final first = MessagingController(
+        storage: storage,
+        backend: BackendWorkApi(_RoutingTransport(_baseHandler)),
+      );
+      first.initialize(
+        userId: '1',
+        userName: 'First Teacher',
+        sourceThreads: const [],
+        storageScope: 'center-a::https://shared.example/TenantPath',
+      );
+      await first.restored;
+      first.togglePinned(const ['10']);
+      await first.flushPersistence();
+      first.dispose();
+
+      final second = MessagingController(
+        storage: storage,
+        backend: BackendWorkApi(_RoutingTransport(_baseHandler)),
+      );
+      addTearDown(second.dispose);
+      second.initialize(
+        userId: '1',
+        userName: 'Second Teacher',
+        sourceThreads: const [],
+        storageScope: 'center-b::https://shared.example/TenantPath',
+      );
+      await second.restored;
+
+      expect(second.threadById('10')?.isPinned, isFalse);
+      second.toggleMuted(const ['10']);
+      await second.flushPersistence();
+      expect(storage.values, hasLength(2));
+      expect(storage.values.keys.toSet(), hasLength(2));
+    });
+
+    test('stale send failure cannot expire or mutate a new session', () async {
+      final sendGate = Completer<ApiResponse>();
+      var selfUserId = 1;
+      final transport = _RoutingTransport((method, path, query, body) async {
+        if (method == 'POST' && path.endsWith('/messages/')) {
+          return sendGate.future;
+        }
+        if (path == '/api/v1/messaging/contacts/') {
+          final response = await _baseHandler(method, path, query, body);
+          return _response(
+            data: response.data,
+            pagination: {
+              ...backendMap(response.pagination),
+              'self_user_id': selfUserId,
+            },
+          );
+        }
+        return _baseHandler(method, path, query, body);
+      });
+      final controller = MessagingController(
+        storage: MemoryMessagingStorage(),
+        backend: BackendWorkApi(transport),
+      );
+      addTearDown(controller.dispose);
+      var unauthorizedCalls = 0;
+      controller.onUnauthorized = () async {
+        unauthorizedCalls++;
+      };
+      controller.initialize(
+        userId: '1',
+        userName: 'First Teacher',
+        sourceThreads: const [],
+        storageScope: 'center-a::https://shared.example',
+      );
+      await controller.restored;
+
+      final staleSend = controller.sendText('10', 'Old session message');
+      await Future<void>.delayed(Duration.zero);
+      await controller.clearRemoteSession(
+        userId: '1',
+        storageScope: 'center-a::https://shared.example',
+      );
+      selfUserId = 2;
+      controller.initialize(
+        userId: '2',
+        userName: 'Second Teacher',
+        sourceThreads: const [],
+        storageScope: 'center-b::https://shared.example',
+      );
+      await controller.restored;
+      sendGate.completeError(
+        const ApiException(
+          message: 'Old token expired',
+          statusCode: 401,
+          code: 'authentication_failed',
+        ),
+      );
+
+      await expectLater(staleSend, throwsA(isA<StateError>()));
+      expect(unauthorizedCalls, 0);
+      expect(controller.currentUserId, '2');
+      expect(
+        controller
+            .threadById('10')
+            ?.messages
+            .any((message) => message.body == 'Old session message'),
+        isFalse,
+      );
+      expect(controller.isRefreshing, isFalse);
+    });
 
     test('optimistic send replaces success and rolls back failure', () async {
       final send = Completer<ApiResponse>();
@@ -203,6 +561,54 @@ void main() {
         expect(controller.uploadProgress, isNull);
       },
     );
+
+    test('rejects insecure remote upload and download grants', () async {
+      var uploadRequests = 0;
+      final transport = _RoutingTransport((method, path, query, body) async {
+        if (path.endsWith('/attachments/upload-url/')) {
+          return _response(
+            data: {
+              'url': 'http://remote-storage.example/upload',
+              'method': 'PUT',
+              'key': 'private/file.png',
+              'fields': <String, Object?>{},
+            },
+          );
+        }
+        if (path.endsWith('/attachments/download/')) {
+          return _response(
+            data: {'url': 'http://remote-storage.example/download'},
+          );
+        }
+        return _baseHandler(method, path, query, body);
+      });
+      final controller = MessagingController(
+        storage: MemoryMessagingStorage(),
+        backend: BackendWorkApi(transport),
+        uploadClientFactory: () => MockClient((request) async {
+          uploadRequests++;
+          return http.Response('', 204);
+        }),
+      );
+      addTearDown(controller.dispose);
+      await _initialize(controller);
+
+      await expectLater(
+        controller.sendAttachment(
+          threadId: '10',
+          filename: 'file.png',
+          contentType: 'image/png',
+          bytes: Uint8List.fromList(const [1, 2, 3]),
+          kind: MessagingKind.image,
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+      await expectLater(
+        controller.attachmentDownloadUrl('10', 'private/file.png'),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(uploadRequests, 0);
+    });
 
     test('rejects videos over one minute before requesting a grant', () async {
       final transport = _RoutingTransport(_baseHandler);
@@ -336,13 +742,21 @@ Future<ApiResponse> _baseHandler(
   if (path == '/api/v1/messaging/threads/') {
     return _response(data: [_threadJson()], pagination: _page());
   }
-  if (path == '/api/v1/users/') {
+  if (path == '/api/v1/messaging/contacts/') {
     return _response(
       data: [
-        _userJson(2, 'Ali Teacher', ['teacher']),
-        _userJson(3, 'Sara Assistant', ['assistant']),
-        _userJson(4, 'Executive', ['manager']),
+        _contactJson(2, 'Ali Teacher', category: 'staff', role: 'Teacher'),
+        _contactJson(3, 'Sara Assistant', category: 'staff', role: 'Assistant'),
+        _contactJson(5, 'Mina Student', category: 'student', role: 'Student'),
+        _contactJson(4, 'Parent User', category: 'parent', role: 'Parent'),
+        {
+          'id': 88,
+          'principal_id': 88,
+          'category': 'student',
+          'display_name': 'Unsafe profile id',
+        },
       ],
+      pagination: {..._page(), 'self_user_id': 1},
     );
   }
   if (path.endsWith('/read/')) return _response(data: {'status': 'ok'});
@@ -375,17 +789,21 @@ Map<String, Object?> _messageJson(
   'created_at': '2026-07-19T10:00:00Z',
 };
 
-Map<String, Object?> _userJson(int id, String name, List<String> roles) => {
-  'id': id,
-  'username': 'user$id',
-  'full_name': name,
-  'phone': '+998$id',
-  'email': 'user$id@example.test',
-  'is_active': true,
-  'is_staff': true,
-  'role_memberships': [
-    for (final role in roles) {'account_type_slug': role},
-  ],
+Map<String, Object?> _contactJson(
+  int userId,
+  String name, {
+  required String category,
+  required String role,
+}) => {
+  'user_id': userId,
+  'principal_kind': category == 'student' ? 'student' : 'staff',
+  'principal_id': 9000 + userId,
+  'category': category,
+  'display_name': name,
+  'role_label': role,
+  'role_slug': role.toLowerCase(),
+  'username': 'user$userId',
+  'is_online': false,
 };
 
 Map<String, Object?> _page({

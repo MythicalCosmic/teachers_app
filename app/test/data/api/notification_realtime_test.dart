@@ -100,6 +100,34 @@ void main() {
     });
 
     test(
+      'missing configuration pauses without a retry loop and resumes later',
+      () async {
+        String? wsUrl;
+        final waits = <Duration>[];
+        final harness = _SocketHarness();
+        final client = NotificationRealtimeClient(
+          wsUrl: () => wsUrl,
+          accessToken: () => 'opaque-token',
+          socketFactory: harness.create,
+          delay: (duration) async => waits.add(duration),
+        );
+
+        await client.start();
+
+        expect(client.status, NotificationRealtimeStatus.paused);
+        expect(waits, isEmpty);
+        expect(harness.sockets, isEmpty);
+
+        wsUrl = 'wss://staff-center.example/ws/notifications/';
+        await client.resume();
+
+        expect(client.status, NotificationRealtimeStatus.connected);
+        expect(harness.sockets, hasLength(1));
+        await client.dispose();
+      },
+    );
+
+    test(
       'retries failures with jittered exponential delay capped at max',
       () async {
         var attempts = 0;

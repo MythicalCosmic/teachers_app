@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'transport_security.dart';
+
 typedef ApiJson = Map<String, Object?>;
 
 final class ApiException implements Exception {
@@ -65,11 +67,25 @@ final class TenantConnection {
       json,
       'base_url',
     ).replaceAll(RegExp(r'/+$'), '');
+    final baseUri = Uri.tryParse(baseUrl);
+    if (baseUri == null || !isPermittedHttpUri(baseUri)) {
+      throw const FormatException(
+        'Tenant base_url must use HTTPS (HTTP is allowed only on loopback).',
+      );
+    }
+    final wsUrl = _string(json['ws_url']);
+    final wsUri = wsUrl.isEmpty ? null : Uri.tryParse(wsUrl);
+    if (wsUrl.isNotEmpty &&
+        (wsUri == null || !isPermittedWebSocketUri(wsUri))) {
+      throw const FormatException(
+        'Tenant ws_url must use WSS (WS is allowed only on loopback).',
+      );
+    }
     return TenantConnection(
       slug: slug ?? _string(json['slug']),
       name: _string(json['name'], fallback: 'StarForge EDU'),
       baseUrl: baseUrl,
-      wsUrl: _string(json['ws_url']),
+      wsUrl: wsUrl,
       locale: _string(json['locale'], fallback: 'uz'),
       logoUrl: _string(json['logo']),
     );

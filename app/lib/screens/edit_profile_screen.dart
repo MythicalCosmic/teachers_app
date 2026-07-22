@@ -39,7 +39,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_initialized) return;
-    final session = AppScope.of(context).session;
+    final app = AppScope.of(context);
+    final session = app.session;
     if (session != null) {
       _name.text = session.displayName;
       _email.text = session.email;
@@ -47,7 +48,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ? session.email.split('@').first
           : session.username;
       _phone.text = session.phone;
-      _bio.text = session.bio.isEmpty
+      _bio.text = app.isProduction
+          ? session.bio
+          : session.bio.isEmpty
           ? _copy(
               context,
               uz: 'O‘quvchilarning o‘sishi uchun aniq, iliq va ishonchli ta’lim muhitini yarataman.',
@@ -93,12 +96,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ru: 'Профиль сохранён',
           en: 'Profile saved',
         ),
-        message: _copy(
-          context,
-          uz: 'Kontaktlar, bio va uslub qurilmaga saqlandi.',
-          ru: 'Контакты, описание и стиль сохранены.',
-          en: 'Your contacts, bio and profile style are saved.',
-        ),
+        message: app.isProduction
+            ? _copy(
+                context,
+                uz: 'Ism, email va telefon serverda saqlandi.',
+                ru: 'Имя, почта и телефон сохранены на сервере.',
+                en: 'Name, email, and phone were saved on the server.',
+              )
+            : _copy(
+                context,
+                uz: 'Kontaktlar, bio va uslub qurilmaga saqlandi.',
+                ru: 'Контакты, описание и стиль сохранены.',
+                en: 'Your contacts, bio and profile style are saved.',
+              ),
         tone: SfToastTone.success,
         glassEnabled: SfTheme.of(context).usesGlass,
         motionEnabled: !app.settings.reducedMotion,
@@ -223,53 +233,56 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     style: SfType.ui(size: 12, color: c.muted),
                   ),
                   const SizedBox(height: 15),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 9,
-                    children: [
-                      for (final color in [
-                        c.primary,
-                        const Color(0xFF346D91),
-                        const Color(0xFF8D4F7B),
-                        const Color(0xFFB55F35),
-                        const Color(0xFF4B7D64),
-                      ])
-                        SfPressable(
-                          onPressed: () => setState(
-                            () => _avatarColorValue = color.toARGB32(),
-                          ),
-                          selected: avatarColor.toARGB32() == color.toARGB32(),
-                          borderRadius: BorderRadius.circular(999),
-                          child: AnimatedContainer(
-                            duration: SfMotion.resolve(
-                              context,
-                              const Duration(milliseconds: 200),
+                  if (!app.isProduction) ...[
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 9,
+                      children: [
+                        for (final color in [
+                          c.primary,
+                          const Color(0xFF346D91),
+                          const Color(0xFF8D4F7B),
+                          const Color(0xFFB55F35),
+                          const Color(0xFF4B7D64),
+                        ])
+                          SfPressable(
+                            onPressed: () => setState(
+                              () => _avatarColorValue = color.toARGB32(),
                             ),
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              color: color,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color:
-                                    avatarColor.toARGB32() == color.toARGB32()
-                                    ? c.ink
-                                    : c.surface,
-                                width: 2.5,
+                            selected:
+                                avatarColor.toARGB32() == color.toARGB32(),
+                            borderRadius: BorderRadius.circular(999),
+                            child: AnimatedContainer(
+                              duration: SfMotion.resolve(
+                                context,
+                                const Duration(milliseconds: 200),
                               ),
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color:
+                                      avatarColor.toARGB32() == color.toARGB32()
+                                      ? c.ink
+                                      : c.surface,
+                                  width: 2.5,
+                                ),
+                              ),
+                              child: avatarColor.toARGB32() == color.toARGB32()
+                                  ? const Icon(
+                                      Icons.check_rounded,
+                                      size: 15,
+                                      color: Colors.white,
+                                    )
+                                  : null,
                             ),
-                            child: avatarColor.toARGB32() == color.toARGB32()
-                                ? const Icon(
-                                    Icons.check_rounded,
-                                    size: 15,
-                                    color: Colors.white,
-                                  )
-                                : null,
                           ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 17),
+                      ],
+                    ),
+                    const SizedBox(height: 17),
+                  ],
                   Row(
                     children: [
                       Expanded(
@@ -358,6 +371,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 13),
                   SfTextField(
                     controller: _username,
+                    enabled: !app.isProduction,
                     label: _copy(
                       context,
                       uz: 'Foydalanuvchi nomi',
@@ -421,6 +435,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 13),
                   SfTextField(
                     controller: _bio,
+                    enabled: !app.isProduction,
                     label: _copy(
                       context,
                       uz: 'Men haqimda',
@@ -452,9 +467,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               message: _copy(
                 context,
-                uz: '${session.role.uzLabel} roli va ${session.branchName} filiali faqat vakolatli administrator tomonidan o‘zgartiriladi.',
-                ru: 'Роль ${session.role.label} и филиал ${session.branchName} меняет только уполномоченный администратор.',
-                en: 'Your ${session.role.label} role and ${session.branchName} branch can only be changed by an authorized administrator.',
+                uz: app.isProduction
+                    ? 'Login, bio, profil uslubi, ${session.role.uzLabel} roli va ${session.branchName} filiali vakolatli administrator tomonidan boshqariladi.'
+                    : '${session.role.uzLabel} roli va ${session.branchName} filiali faqat vakolatli administrator tomonidan o‘zgartiriladi.',
+                ru: app.isProduction
+                    ? 'Логин, описание, стиль профиля, роль ${session.role.label} и филиал ${session.branchName} меняет уполномоченный администратор.'
+                    : 'Роль ${session.role.label} и филиал ${session.branchName} меняет только уполномоченный администратор.',
+                en: app.isProduction
+                    ? 'Your username, bio, profile style, ${session.role.label} role, and ${session.branchName} branch are managed by an authorized administrator.'
+                    : 'Your ${session.role.label} role and ${session.branchName} branch can only be changed by an authorized administrator.',
               ),
             ),
             const SizedBox(height: 20),

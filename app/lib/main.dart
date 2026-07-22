@@ -73,14 +73,14 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        _foreground = true;
+        if (!_foreground && mounted) setState(() => _foreground = true);
         unawaited(_reachability.resume());
         if (!_reachability.blocksApp) widget.appState.resumeRealtime();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        _foreground = false;
+        if (_foreground && mounted) setState(() => _foreground = false);
         _reachability.pause();
         widget.appState.pauseRealtime();
     }
@@ -167,13 +167,20 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
                   intensity: settings.motionIntensity,
                   child: AnnotatedRegion<SystemUiOverlayStyle>(
                     value: overlay,
-                    child: SfConnectivityGate(
-                      controller: _reachability,
-                      locale: settings.locale,
-                      child: _PersistenceAwareBody(
-                        appState: widget.appState,
-                        child: child ?? const SizedBox.shrink(),
-                      ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        SfConnectivityGate(
+                          controller: _reachability,
+                          locale: settings.locale,
+                          child: _PersistenceAwareBody(
+                            appState: widget.appState,
+                            child: child ?? const SizedBox.shrink(),
+                          ),
+                        ),
+                        if (!_foreground)
+                          _PrivacyShield(locale: settings.locale),
+                      ],
                     ),
                   ),
                 ),
@@ -182,6 +189,46 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
           ),
         );
       },
+    );
+  }
+}
+
+class _PrivacyShield extends StatelessWidget {
+  const _PrivacyShield({required this.locale});
+
+  final AppLocale locale;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = SfTheme.colorsOf(context);
+    final label = switch (locale) {
+      AppLocale.uz => 'StarForge Staff himoyalangan',
+      AppLocale.ru => 'StarForge Staff защищён',
+      AppLocale.en => 'StarForge Staff is protected',
+    };
+    return ColoredBox(
+      key: const Key('app-privacy-shield'),
+      color: colors.bg,
+      child: Center(
+        child: Semantics(
+          label: label,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.shield_rounded, size: 54, color: colors.primary),
+              const SizedBox(height: 14),
+              Text(
+                label,
+                style: SfType.ui(
+                  size: 15,
+                  color: colors.ink,
+                  weight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

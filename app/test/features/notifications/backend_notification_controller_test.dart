@@ -72,6 +72,48 @@ void main() {
       },
     );
 
+    test(
+      'refresh preserves realtime arrivals newer than its REST feed',
+      () async {
+        final socket = _FakeSocket();
+        final transport = _NotificationTransport();
+        final controller = _controller(transport, socket);
+        addTearDown(controller.dispose);
+        await controller.start();
+        transport.feedGate = Completer<ApiResponse>();
+
+        final refreshing = controller.refresh();
+        await Future<void>.delayed(Duration.zero);
+        socket.add(
+          jsonEncode({
+            'type': 'notification',
+            'payload': {
+              'id': '9',
+              'event_type': 'message.received',
+              'title': 'Realtime during refresh',
+              'body': 'Must survive the older REST response',
+              'data': {'thread_id': 44},
+              'created_at': '2026-07-19T12:00:00Z',
+            },
+          }),
+        );
+        await Future<void>.delayed(Duration.zero);
+        transport.feedGate!.complete(
+          _response(
+            data: [
+              _notification(1, createdAt: '2026-07-19T09:00:00Z'),
+              _notification(2, createdAt: '2026-07-19T10:00:00Z'),
+            ],
+            pagination: const {'next': null, 'previous': null},
+          ),
+        );
+        await refreshing;
+
+        expect(controller.notifications.map((item) => item.id), [9, 2, 1]);
+        expect(controller.unreadCount, 3);
+      },
+    );
+
     test('rolls back optimistic read when server mutation fails', () async {
       final socket = _FakeSocket();
       final transport = _NotificationTransport()..failRead = true;
@@ -84,6 +126,153 @@ void main() {
       expect(controller.notifications.first.readAt, isNull);
       expect(controller.unreadCount, 2);
       expect(controller.error, 'Read failed');
+    });
+
+    test(
+      'read rollback targets its id after realtime reorders the feed',
+      () async {
+        final socket = _FakeSocket();
+        final transport = _NotificationTransport()
+          ..readGate = Completer<ApiResponse>();
+        final controller = _controller(transport, socket);
+        addTearDown(controller.dispose);
+        await controller.start();
+
+        final marking = controller.markRead(2);
+        await Future<void>.delayed(Duration.zero);
+        socket.add(
+          jsonEncode({
+            'type': 'notification',
+            'payload': {
+              'id': '9',
+              'event_type': 'message.received',
+              'title': 'Concurrent event',
+              'body': 'Must survive rollback',
+              'data': {'thread_id': 44},
+              'created_at': '2026-07-19T12:00:00Z',
+            },
+          }),
+        );
+        await Future<void>.delayed(Duration.zero);
+        transport.readGate!.completeError(
+          const ApiException(
+            message: 'Read unavailable',
+            statusCode: 403,
+            code: 'permission_denied',
+          ),
+        );
+        await marking;
+
+        expect(controller.notifications.map((item) => item.id), [9, 2, 1]);
+        expect(controller.notifications.first.title, 'Concurrent event');
+        expect(
+          controller.notifications.firstWhere((item) => item.id == 2).readAt,
+          isNull,
+        );
+        expect(controller.unreadCount, 3);
+      },
+    );
+
+    test('mark-all rollback preserves realtime arrivals', () async {
+      final socket = _FakeSocket();
+      final transport = _NotificationTransport()
+        ..markAllGate = Completer<ApiResponse>();
+      final controller = _controller(transport, socket);
+      addTearDown(controller.dispose);
+      await controller.start();
+
+      final marking = controller.markAllRead();
+      await Future<void>.delayed(Duration.zero);
+      socket.add(
+        jsonEncode({
+          'type': 'notification',
+          'payload': {
+            'id': '9',
+            'event_type': 'message.received',
+            'title': 'Concurrent event',
+            'body': 'Must survive rollback',
+            'data': {'thread_id': 44},
+            'created_at': '2026-07-19T12:00:00Z',
+          },
+        }),
+      );
+      await Future<void>.delayed(Duration.zero);
+      transport.markAllGate!.completeError(
+        const ApiException(
+          message: 'Mark all unavailable',
+          statusCode: 403,
+          code: 'permission_denied',
+        ),
+      );
+      await marking;
+
+      expect(controller.notifications.map((item) => item.id), [9, 2, 1]);
+      expect(
+        controller.notifications.every((item) => item.readAt == null),
+        isTrue,
+      );
+      expect(controller.unreadCount, 3);
+    });
+
+    test(
+      'read rollback preserves a newer authoritative read timestamp',
+      () async {
+        final socket = _FakeSocket();
+        final transport = _NotificationTransport()
+          ..readGate = Completer<ApiResponse>();
+        final controller = _controller(transport, socket);
+        addTearDown(controller.dispose);
+        await controller.start();
+
+        final marking = controller.markRead(2);
+        await Future<void>.delayed(Duration.zero);
+        transport.readAtForTwo = '2026-07-19T11:30:00Z';
+        await controller.refresh();
+        transport.readGate!.completeError(
+          const ApiException(
+            message: 'Old request failed',
+            statusCode: 503,
+            code: 'server_error',
+          ),
+        );
+        await marking;
+
+        expect(
+          controller.notifications.firstWhere((item) => item.id == 2).readAt,
+          DateTime.parse('2026-07-19T11:30:00Z'),
+        );
+        expect(controller.unreadCount, 2);
+      },
+    );
+
+    test('stale read failure cannot expire or wedge a new session', () async {
+      final socket = _FakeSocket();
+      final transport = _NotificationTransport()
+        ..readGate = Completer<ApiResponse>();
+      final controller = _controller(transport, socket);
+      addTearDown(controller.dispose);
+      var unauthorizedCalls = 0;
+      controller.onUnauthorized = () async {
+        unauthorizedCalls++;
+      };
+      await controller.start();
+
+      final staleRead = controller.markRead(2);
+      await Future<void>.delayed(Duration.zero);
+      await controller.clearSession();
+      await controller.start();
+      transport.readGate!.completeError(
+        const ApiException(
+          message: 'Old token expired',
+          statusCode: 401,
+          code: 'authentication_failed',
+        ),
+      );
+      await staleRead;
+
+      expect(unauthorizedCalls, 0);
+      expect(controller.notifications, isNotEmpty);
+      expect(controller.isRefreshing, isFalse);
     });
 
     test(
@@ -178,8 +367,12 @@ final class _NotificationTransport implements BackendTransport {
   int feedReads = 0;
   int unreadCount = 2;
   bool failRead = false;
+  Completer<ApiResponse>? readGate;
+  Completer<ApiResponse>? markAllGate;
+  Completer<ApiResponse>? feedGate;
   String? lastCursor;
   Object? preferenceUpdate;
+  String? readAtForTwo;
 
   @override
   Future<ApiResponse> get(
@@ -189,11 +382,17 @@ final class _NotificationTransport implements BackendTransport {
     if (path == '/api/v1/notifications/') {
       feedReads++;
       lastCursor = query['cursor'] as String?;
+      final gatedFeed = feedGate;
+      if (gatedFeed != null) return gatedFeed.future;
       if (lastCursor == null) {
         return _response(
           data: [
             _notification(1, createdAt: '2026-07-19T09:00:00Z'),
-            _notification(2, createdAt: '2026-07-19T10:00:00Z'),
+            _notification(
+              2,
+              createdAt: '2026-07-19T10:00:00Z',
+              readAt: readAtForTwo,
+            ),
           ],
           pagination: {
             'next':
@@ -231,6 +430,8 @@ final class _NotificationTransport implements BackendTransport {
     String? idempotencyKey,
   }) async {
     if (path.endsWith('/read/')) {
+      final gate = readGate;
+      if (gate != null) return gate.future;
       if (failRead) {
         throw const ApiException(
           message: 'Read failed',
@@ -241,6 +442,8 @@ final class _NotificationTransport implements BackendTransport {
       return _response(data: {'read': true});
     }
     if (path == '/api/v1/notifications/read-all/') {
+      final gate = markAllGate;
+      if (gate != null) return gate.future;
       return _response(data: {'updated': unreadCount});
     }
     throw StateError('Unhandled POST $path');
@@ -268,6 +471,7 @@ final class _NotificationTransport implements BackendTransport {
 Map<String, Object?> _notification(
   int id, {
   String createdAt = '2026-07-19T10:00:00Z',
+  String? readAt,
 }) => {
   'id': id,
   'user': 1,
@@ -276,7 +480,7 @@ Map<String, Object?> _notification(
   'title': 'Notification $id',
   'body': 'Body $id',
   'data': id == 2 ? {'thread_id': 10} : <String, Object?>{},
-  'read_at': null,
+  'read_at': readAt,
   'created_at': createdAt,
 };
 

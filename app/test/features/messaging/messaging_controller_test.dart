@@ -48,7 +48,16 @@ class _DelayedReadStorage implements MessagingStorage {
   void completeRead() => _read.complete(value);
 
   @override
+  Future<void> clearAll() async {}
+
+  @override
   Future<String?> read(String userId) => _read.future;
+
+  @override
+  Future<void> remove(String userId) async {}
+
+  @override
+  Future<void> removeScope(String storageScope) async {}
 
   @override
   Future<void> write(String userId, String value) async {

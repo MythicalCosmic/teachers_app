@@ -11,6 +11,7 @@ import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pressable.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_search_field.dart';
 import '../../widgets/sf_shell_scope.dart';
 import '../../widgets/sf_star.dart';
 import '../../widgets/sf_tab_bar.dart';
@@ -102,27 +103,14 @@ class _AiChatListScreenState extends State<AiChatListScreen> {
                 : Padding(
                     key: const ValueKey('ai-search-visible'),
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: TextField(
+                    child: SfSearchField(
                       key: const Key('ai-workspace-search-field'),
                       controller: _search,
                       focusNode: _searchFocus,
-                      textInputAction: TextInputAction.search,
                       onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        hintText: copy.searchHint,
-                        prefixIcon: const Icon(Icons.search_rounded),
-                        suffixIcon: query.isEmpty
-                            ? null
-                            : IconButton(
-                                key: const Key('ai-search-clear'),
-                                tooltip: copy.clearSearch,
-                                onPressed: () {
-                                  _search.clear();
-                                  setState(() {});
-                                },
-                                icon: const Icon(Icons.close_rounded),
-                              ),
-                      ),
+                      hintText: copy.searchHint,
+                      clearTooltip: copy.clearSearch,
+                      clearButtonKey: const Key('ai-search-clear'),
                     ),
                   ),
           ),

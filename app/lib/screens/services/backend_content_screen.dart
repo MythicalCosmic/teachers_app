@@ -20,6 +20,7 @@ import '../../widgets/sf_media_player.dart';
 import '../../widgets/sf_pill.dart';
 import '../../widgets/sf_pressable.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_search_field.dart';
 import '../../widgets/sf_service_unavailable.dart';
 import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_toast.dart';
@@ -883,27 +884,16 @@ class _FilesViewState extends State<_FilesView> {
             audio: audioCount,
           ),
           const SizedBox(height: 14),
-          SfTextField(
+          SfSearchField(
             key: const Key('backend-content-file-search'),
             controller: _search,
-            hint: _copy(
+            hintText: _copy(
               context,
               uz: 'Material, dars yoki papkani izlash',
               en: 'Search material, lesson, or folder',
             ),
-            prefixIcon: Icons.search_rounded,
-            textInputAction: TextInputAction.search,
             onChanged: (_) => setState(() {}),
-            suffix: query.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: _copy(context, uz: 'Tozalash', en: 'Clear'),
-                    onPressed: () {
-                      _search.clear();
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                  ),
+            clearTooltip: _copy(context, uz: 'Tozalash', en: 'Clear'),
           ),
           const SizedBox(height: 12),
           SingleChildScrollView(

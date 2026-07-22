@@ -12,6 +12,7 @@ import '../../widgets/sf_button.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pressable.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_search_field.dart';
 import 'group_l10n.dart';
 import '../groups/group_workspace_store.dart';
 
@@ -400,23 +401,11 @@ class _GroupAttendanceCaptureScreenState
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
+              SfSearchField(
                 key: const ValueKey('capture-student-search'),
                 onChanged: (value) => setState(() => _query = value),
-                decoration: InputDecoration(
-                  hintText: context.gt('search_student_short'),
-                  prefixIcon: Icon(SfIcons.search, color: c.muted),
-                  filled: true,
-                  fillColor: c.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: c.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: c.border),
-                  ),
-                ),
+                hintText: context.gt('search_student_short'),
+                clearTooltip: context.gt('clear_search'),
               ),
               const SizedBox(height: 11),
               for (final entry in visible.asMap().entries) ...[

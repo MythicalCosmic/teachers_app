@@ -8,11 +8,11 @@ import '../theme/sf_theme.dart';
 import '../widgets/sf_app_bar.dart';
 import '../widgets/sf_avatar.dart';
 import '../widgets/sf_card.dart';
-import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_hint_card.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_pressable.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_search_field.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
 
@@ -66,23 +66,13 @@ class _SearchScreenState extends State<SearchScreen> {
           Container(
             color: c.surface,
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-            child: SfTextField(
+            child: SfSearchField(
               controller: _controller,
               autofocus: true,
-              hint: 'Vazifa, suhbat yoki bildirishnoma',
-              prefixIcon: SfIcons.search,
-              textInputAction: TextInputAction.search,
+              hintText: 'Vazifa, suhbat yoki bildirishnoma',
+              semanticLabel: 'Umumiy qidiruv',
+              clearTooltip: 'Izlashni tozalash',
               onChanged: (_) => setState(() {}),
-              suffix: _controller.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Izlashni tozalash',
-                      onPressed: () {
-                        _controller.clear();
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.close_rounded, size: 19),
-                    ),
             ),
           ),
         ],

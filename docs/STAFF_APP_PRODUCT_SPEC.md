@@ -62,10 +62,13 @@ not a security boundary.
 
 ## Data boundary
 
-The checked-in app currently uses a deterministic local repository so every
-screen and action can be exercised without an undocumented server. It is not a
-claim of production authentication, printing, push delivery, AI, or sync. A
-production adapter must provide authenticated sessions, server-issued
-capabilities, tenant scope, encrypted token storage, conflict handling,
-telemetry, and the organization’s API contracts without weakening the rules
-above.
+The shipped entry point uses authenticated, tenant-scoped production adapters
+for supported server modules. A deterministic local repository remains only for
+isolated development and tests. Demo records and device-only mutations must not
+be presented as server truth; an unimplemented production workflow must show an
+explicit availability state or route to a supported server-backed tool.
+
+Bearer tokens belong in encrypted platform storage. Cached domain data must be
+tenant-and-user scoped, minimized, and protected according to its sensitivity.
+Backend authorization remains authoritative; client capabilities are navigation
+and disclosure guards, not a substitute for server-issued grants.

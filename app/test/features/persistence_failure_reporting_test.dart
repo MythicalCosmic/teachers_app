@@ -22,7 +22,18 @@ class _FailingAppStorage implements AppStorage {
 
 class _FailingMessagingStorage implements MessagingStorage {
   @override
+  Future<void> clearAll() async => throw StateError('message disk unavailable');
+
+  @override
   Future<String?> read(String userId) async => null;
+
+  @override
+  Future<void> remove(String userId) async =>
+      throw StateError('message disk unavailable');
+
+  @override
+  Future<void> removeScope(String storageScope) async =>
+      throw StateError('message disk unavailable');
 
   @override
   Future<void> write(String userId, String value) async =>

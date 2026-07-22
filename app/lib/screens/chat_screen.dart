@@ -24,6 +24,7 @@ import '../widgets/sf_avatar.dart';
 import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_scaffold.dart';
+import '../widgets/sf_search_field.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
 
@@ -280,6 +281,7 @@ class _ChatScreenState extends State<ChatScreen> {
       userId: session.userId,
       userName: session.displayName,
       sourceThreads: app.messageThreads,
+      storageScope: app.messagingStorageScope,
     );
 
     return ListenableBuilder(
@@ -633,6 +635,10 @@ class _ChatScreenState extends State<ChatScreen> {
         imageQuality: 94,
       );
       if (file == null || !mounted) return;
+      final byteLength = await file.length();
+      if (byteLength > MessagingController.maxAttachmentBytes) {
+        throw ArgumentError('Fayl hajmi 25 MB dan oshmasligi kerak.');
+      }
       final bytes = await file.readAsBytes();
       await _controller.sendAttachment(
         threadId: thread.id,
@@ -664,6 +670,10 @@ class _ChatScreenState extends State<ChatScreen> {
         maxDuration: const Duration(minutes: 1),
       );
       if (file == null || !mounted) return;
+      final byteLength = await file.length();
+      if (byteLength > MessagingController.maxAttachmentBytes) {
+        throw ArgumentError('Fayl hajmi 25 MB dan oshmasligi kerak.');
+      }
       inspector = VideoPlayerController.file(File(file.path));
       await inspector.initialize();
       final duration = inspector.value.duration;
@@ -1119,29 +1129,18 @@ class _ChatSearchHeader extends StatelessWidget {
                 icon: const Icon(Icons.arrow_back_rounded),
               ),
               Expanded(
-                child: TextField(
+                child: SfSearchField(
+                  key: const ValueKey('chat-message-search'),
                   controller: controller,
                   autofocus: true,
                   onChanged: onChanged,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: m.text('search_in_chat'),
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    isDense: true,
-                  ),
+                  hintText: m.text('search_in_chat'),
+                  semanticLabel: m.text('search_in_chat'),
+                  clearTooltip: m.text('clear_search'),
+                  clearButtonKey: const ValueKey('chat-message-search-clear'),
                 ),
               ),
-              if (controller.text.isNotEmpty)
-                IconButton(
-                  tooltip: m.text('clear_search'),
-                  onPressed: () {
-                    controller.clear();
-                    onChanged('');
-                  },
-                  icon: const Icon(Icons.close_rounded),
-                )
-              else
-                const SizedBox(width: 8),
+              const SizedBox(width: 8),
             ],
           ),
         ),

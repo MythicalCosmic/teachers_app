@@ -15,7 +15,7 @@ workflows:
 
     environment:
       flutter: "3.44.6"
-      xcode: "16.4"
+      xcode: "26.4"
       cocoapods: default
 
     cache:

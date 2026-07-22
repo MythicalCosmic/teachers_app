@@ -57,6 +57,7 @@ class _MessagingContactProfileScreenState
         userId: session.userId,
         userName: session.displayName,
         sourceThreads: app.messageThreads,
+        storageScope: app.messagingStorageScope,
       );
     }
     final id = GoRouterState.of(context).uri.queryParameters['thread'];
@@ -185,7 +186,7 @@ class _MessagingContactProfileScreenState
           onSearch: () => context.pushReplacement(
             '/messages/chat?thread=${Uri.encodeQueryComponent(refreshed.id)}&search=1',
           ),
-          onCall: () => _startCall(refreshed),
+          onCall: _controller.isProduction ? null : () => _startCall(refreshed),
           onMute: () => _controller.toggleMuted([refreshed.id]),
           onShare: () => _share(refreshed.contact),
         );
@@ -211,7 +212,7 @@ class _ProfileView extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onMessage;
   final VoidCallback onSearch;
-  final VoidCallback onCall;
+  final VoidCallback? onCall;
   final VoidCallback onMute;
   final VoidCallback onShare;
 
@@ -265,11 +266,12 @@ class _ProfileView extends StatelessWidget {
                 label: m.text('message_action'),
                 onTap: onMessage,
               ),
-              _ProfileAction(
-                icon: Icons.call_rounded,
-                label: m.text('call'),
-                onTap: onCall,
-              ),
+              if (onCall != null)
+                _ProfileAction(
+                  icon: Icons.call_rounded,
+                  label: m.text('call'),
+                  onTap: onCall!,
+                ),
               _ProfileAction(
                 icon: Icons.search_rounded,
                 label: m.text('search'),

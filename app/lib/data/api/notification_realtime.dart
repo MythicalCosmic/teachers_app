@@ -111,7 +111,10 @@ final class NotificationRealtimeClient {
        // ignore: prefer_initializing_formals
        _accessToken = accessToken,
        _socketFactory = socketFactory ?? _connectSocket,
-       _delay = delay ?? Future<void>.delayed,
+       // Keep the public named argument `delay` while storing its optional
+       // test override privately.
+       // ignore: prefer_initializing_formals
+       _delay = delay,
        _random = random ?? Random.secure();
 
   static const unauthorizedCloseCode = 4401;
@@ -120,7 +123,7 @@ final class NotificationRealtimeClient {
   final NotificationRealtimeValueProvider _wsUrl;
   final NotificationRealtimeValueProvider _accessToken;
   final NotificationRealtimeSocketFactory _socketFactory;
-  final NotificationRealtimeDelay _delay;
+  final NotificationRealtimeDelay? _delay;
   final Random _random;
   final Duration initialReconnectDelay;
   final Duration maxReconnectDelay;
@@ -138,6 +141,7 @@ final class NotificationRealtimeClient {
   bool _active = false;
   bool _disposed = false;
   bool _reconnectScheduled = false;
+  Timer? _reconnectTimer;
   int _epoch = 0;
   int _reconnectAttempt = 0;
 
@@ -162,6 +166,7 @@ final class NotificationRealtimeClient {
       throw StateError('Notification realtime client is disposed.');
     }
     if (_active) return;
+    _cancelReconnect();
     _active = true;
     _reconnectScheduled = false;
     _reconnectAttempt = 0;
@@ -172,7 +177,7 @@ final class NotificationRealtimeClient {
   Future<void> pause() async {
     if (_disposed || (!_active && isPaused)) return;
     _active = false;
-    _reconnectScheduled = false;
+    _cancelReconnect();
     ++_epoch;
     await _closeCurrent(1000, 'paused');
     _setStatus(NotificationRealtimeStatus.paused);
@@ -182,7 +187,7 @@ final class NotificationRealtimeClient {
     if (_disposed) return;
     _disposed = true;
     _active = false;
-    _reconnectScheduled = false;
+    _cancelReconnect();
     ++_epoch;
     await _closeCurrent(1000, 'disposed');
     _setStatus(NotificationRealtimeStatus.disposed);
@@ -201,8 +206,9 @@ final class NotificationRealtimeClient {
       final token = (await _accessToken())?.trim() ?? '';
       if (!_isCurrent(epoch)) return;
       if (rawUrl.isEmpty || token.isEmpty) {
-        _emitIssue(NotificationRealtimeIssue.credentialsUnavailable);
-        _scheduleReconnect(epoch);
+        _stopForConfigurationIssue(
+          NotificationRealtimeIssue.credentialsUnavailable,
+        );
         return;
       }
       final uri = Uri.tryParse(rawUrl);
@@ -210,8 +216,9 @@ final class NotificationRealtimeClient {
           !uri.hasScheme ||
           uri.host.isEmpty ||
           (uri.scheme != 'ws' && uri.scheme != 'wss')) {
-        _emitIssue(NotificationRealtimeIssue.invalidWebSocketUrl);
-        _scheduleReconnect(epoch);
+        _stopForConfigurationIssue(
+          NotificationRealtimeIssue.invalidWebSocketUrl,
+        );
         return;
       }
       candidate = _socketFactory(uri, protocols: <String>['bearer.$token']);
@@ -306,12 +313,37 @@ final class NotificationRealtimeClient {
     _reconnectScheduled = true;
     _setStatus(NotificationRealtimeStatus.waitingToReconnect);
     final wait = _nextReconnectDelay();
-    unawaited(() async {
-      await _delay(wait);
+    final customDelay = _delay;
+    if (customDelay != null) {
+      unawaited(() async {
+        await customDelay(wait);
+        if (!_isCurrent(epoch)) return;
+        _reconnectScheduled = false;
+        await _connect(epoch);
+      }());
+      return;
+    }
+    _reconnectTimer = Timer(wait, () {
+      _reconnectTimer = null;
       if (!_isCurrent(epoch)) return;
       _reconnectScheduled = false;
-      await _connect(epoch);
-    }());
+      unawaited(_connect(epoch));
+    });
+  }
+
+  void _cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectScheduled = false;
+  }
+
+  void _stopForConfigurationIssue(NotificationRealtimeIssue issue) {
+    _emitIssue(issue);
+    _active = false;
+    _cancelReconnect();
+    // A missing or malformed endpoint cannot heal by retrying the same tenant
+    // configuration forever. A later explicit resume re-reads both providers.
+    _setStatus(NotificationRealtimeStatus.paused);
   }
 
   Duration _nextReconnectDelay() {

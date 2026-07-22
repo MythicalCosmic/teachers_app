@@ -16,6 +16,7 @@ import '../../widgets/sf_card.dart';
 import '../../widgets/sf_icons.dart';
 import '../../widgets/sf_pressable.dart';
 import '../../widgets/sf_scaffold.dart';
+import '../../widgets/sf_search_field.dart';
 import '../../widgets/sf_state_view.dart';
 import '../../widgets/sf_tab_bar.dart';
 
@@ -453,44 +454,20 @@ class _SearchAndView extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: TextField(
+          child: SfSearchField(
             controller: controller,
             onChanged: onSearch,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: _copy(
-                context,
-                uz: 'Sahifa va teglarni qidiring…',
-                ru: 'Поиск страниц и тегов…',
-                en: 'Search pages and tags…',
-              ),
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: controller.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: _copy(
-                        context,
-                        uz: 'Tozalash',
-                        ru: 'Очистить',
-                        en: 'Clear',
-                      ),
-                      onPressed: () {
-                        controller.clear();
-                        onSearch('');
-                      },
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-              filled: true,
-              fillColor: c.surface,
-              contentPadding: const EdgeInsets.symmetric(vertical: 13),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: c.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: c.border),
-              ),
+            hintText: _copy(
+              context,
+              uz: 'Sahifa va teglarni qidiring…',
+              ru: 'Поиск страниц и тегов…',
+              en: 'Search pages and tags…',
+            ),
+            clearTooltip: _copy(
+              context,
+              uz: 'Tozalash',
+              ru: 'Очистить',
+              en: 'Clear',
             ),
           ),
         ),
