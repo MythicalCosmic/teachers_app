@@ -57,7 +57,14 @@ workflows:
           # Push remains optional for unsigned QA builds. When Firebase secrets
           # are present, forward them explicitly: ordinary shell environment
           # variables are not visible to Dart's String.fromEnvironment.
-          firebase_defines=()
+          # Keep this array non-empty: macOS Bash 3.2 treats expansion of an
+          # empty array as an unbound variable when `set -u` is active.
+          flutter_build_args=(
+            ios
+            --release
+            --no-codesign
+            "--build-number=${PROJECT_BUILD_NUMBER:-1}"
+          )
           firebase_plist=""
           if [[ -n "${FIREBASE_IOS_CONFIG_BASE64:-}" ]]; then
             firebase_plist="$(mktemp)"
@@ -92,7 +99,7 @@ workflows:
               echo "Firebase iOS bundle id does not match uz.starforge.starforgeEdu." >&2
               exit 1
             fi
-            firebase_defines+=(
+            flutter_build_args+=(
               "--dart-define=FIREBASE_API_KEY=$firebase_api_key"
               "--dart-define=FIREBASE_APP_ID=$firebase_app_id"
               "--dart-define=FIREBASE_MESSAGING_SENDER_ID=$firebase_sender_id"
@@ -100,16 +107,14 @@ workflows:
               "--dart-define=FIREBASE_IOS_BUNDLE_ID=$firebase_bundle_id"
             )
             if [[ -n "$firebase_storage_bucket" ]]; then
-              firebase_defines+=("--dart-define=FIREBASE_STORAGE_BUCKET=$firebase_storage_bucket")
+              flutter_build_args+=("--dart-define=FIREBASE_STORAGE_BUCKET=$firebase_storage_bucket")
             fi
             echo "Firebase client configuration enabled for this build."
           else
             echo "Firebase client configuration absent; building with push safely disabled."
           fi
 
-          flutter build ios --release --no-codesign \
-            --build-number="${PROJECT_BUILD_NUMBER:-1}" \
-            "${firebase_defines[@]}"
+          flutter build "${flutter_build_args[@]}"
 
       - name: Package and verify 3uTools artifacts
         script: |
