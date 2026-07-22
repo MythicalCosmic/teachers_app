@@ -1,4 +1,5 @@
-platform :ios, '13.0'
+# Firebase Apple SDK 12 (used by current FlutterFire) supports iOS 15+.
+platform :ios, '15.0'
 
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 

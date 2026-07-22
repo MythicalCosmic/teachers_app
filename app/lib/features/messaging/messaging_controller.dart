@@ -16,10 +16,13 @@ import 'messaging_storage.dart';
 /// Messaging state shared by the demo workspace and production server adapter.
 ///
 /// In production, threads/messages/read state and attachments come from the
-/// backend. Archive, pin, mute, folders, local reactions and call previews stay
-/// deliberately device-local because the server exposes no such mutations.
+/// backend. Mute is participant-scoped and server-backed so background push
+/// agrees across devices. Archive, pin, folders, local reactions and call
+/// previews remain device-local.
 class MessagingController extends ChangeNotifier {
   static const int maxAttachmentBytes = 25 * 1024 * 1024;
+  static const int maxDayFilterMessages = 500;
+  static const int _dayFilterPageSize = 100;
 
   MessagingController({
     DateTime Function()? clock,
@@ -65,6 +68,8 @@ class MessagingController extends ChangeNotifier {
   String? _backendError;
   final Map<String, int> _olderMessagePage = <String, int>{};
   final Map<String, int> _threadLoadVersions = <String, int>{};
+  final Map<String, Future<void>> _muteWriteQueues = <String, Future<void>>{};
+  final Map<String, bool> _confirmedMutedByThread = <String, bool>{};
   final Set<String> _loadedRemoteThreads = <String>{};
   final Set<String> _hiddenRemoteThreadIds = <String>{};
   final Map<String, Map<String, Object?>> _productionThreadPreferences =
@@ -155,6 +160,8 @@ class MessagingController extends ChangeNotifier {
     _directoryError = null;
     _threads.clear();
     _threadLoadVersions.clear();
+    _muteWriteQueues.clear();
+    _confirmedMutedByThread.clear();
     _folders
       ..clear()
       ..addAll(_defaultFolders);
@@ -265,7 +272,8 @@ class MessagingController extends ChangeNotifier {
   }
 
   /// Refreshes the production thread index while preserving device-only
-  /// organization (archive, pin, mute and folders).
+  /// organization (archive, pin and folders). Mute always comes from the
+  /// participant-scoped server preference.
   Future<void> refreshThreads({bool silent = false}) async {
     final backend = _backend;
     if (backend == null || _sessionUserId == null || _isRefreshing) return;
@@ -295,6 +303,7 @@ class MessagingController extends ChangeNotifier {
       for (final remote in page.items) {
         final id = '${remote.id}';
         if (_hiddenRemoteThreadIds.contains(id)) continue;
+        _confirmedMutedByThread[id] = remote.notificationsMuted;
         final mapped = _applyProductionThreadPreference(
           _threadFromBackend(remote, overlay: existing[id]),
         );
@@ -538,6 +547,118 @@ class MessagingController extends ChangeNotifier {
     }
   }
 
+  /// Loads one complete device-local calendar day from the participant-scoped
+  /// server endpoint, independent of the normal newest-page timeline.
+  ///
+  /// The selected local day's half-open bounds are converted to UTC for the
+  /// API. Results are folded across bounded pages, merged into the timeline by
+  /// message id, and also returned so a calendar view can render them directly.
+  Future<List<MessagingMessage>> loadMessagesForLocalDay(
+    String threadId,
+    DateTime localDay,
+  ) async {
+    final selected = localDay.toLocal();
+    bool isSelectedDay(DateTime value) {
+      final local = value.toLocal();
+      return local.year == selected.year &&
+          local.month == selected.month &&
+          local.day == selected.day;
+    }
+
+    if (!isProduction) {
+      final thread = threadById(threadId);
+      if (thread == null) throw ArgumentError('Suhbat topilmadi.');
+      return List<MessagingMessage>.unmodifiable(
+        thread.messages.where((message) => isSelectedDay(message.sentAt)),
+      );
+    }
+
+    final backend = _backend;
+    if (backend == null || _sessionUserId == null) {
+      throw ArgumentError('Xabarlar sessiyasi topilmadi.');
+    }
+    if (_messagingUserId == null) {
+      await refreshDirectory();
+      if (_messagingUserId == null) {
+        throw ArgumentError(
+          _directoryError ?? 'Xabarlar foydalanuvchisi aniqlanmadi.',
+        );
+      }
+    }
+    if (threadById(threadId) == null) {
+      await refreshThreads(silent: true);
+    }
+    if (threadById(threadId) == null) {
+      throw ArgumentError('Suhbat topilmadi.');
+    }
+    final numericId = int.tryParse(threadId);
+    if (numericId == null) throw ArgumentError('Suhbat topilmadi.');
+
+    final lowerLocal = DateTime(selected.year, selected.month, selected.day);
+    final upperLocal = DateTime(
+      selected.year,
+      selected.month,
+      selected.day + 1,
+    );
+    final lowerUtc = lowerLocal.toUtc();
+    final upperUtc = upperLocal.toUtc();
+    final generation = _remoteGeneration;
+    final remote = <BackendMessage>[];
+    var requestedPage = 1;
+    var pageCount = 1;
+
+    try {
+      do {
+        final result = await backend.messages(
+          numericId,
+          page: requestedPage,
+          pageSize: _dayFilterPageSize,
+          createdAtGte: lowerUtc,
+          createdAtLt: upperUtc,
+        );
+        if (!_isCurrentRemoteGeneration(generation)) {
+          throw StateError('Messaging session changed.');
+        }
+        final page = _availableOrThrow(
+          result,
+          fallback: 'Bu sanadagi xabarlarni yuklab bo\u2018lmadi.',
+        );
+        final effectivePageSize = page.pageSize
+            .clamp(1, _dayFilterPageSize)
+            .toInt();
+        final maxPageCount =
+            (maxDayFilterMessages + effectivePageSize - 1) ~/ effectivePageSize;
+        if (page.total > maxDayFilterMessages || page.pages > maxPageCount) {
+          throw ArgumentError(
+            'Bu kunda $maxDayFilterMessages tadan ortiq xabar bor. '
+            'Mobil taqvim bir kunda eng ko\u2018pi bilan '
+            '$maxDayFilterMessages ta xabarni ko\u2018rsatadi.',
+          );
+        }
+        if (remote.length + page.items.length > maxDayFilterMessages) {
+          throw ArgumentError(
+            'Server bir kun uchun juda ko\u2018p xabar qaytardi.',
+          );
+        }
+        remote.addAll(page.items);
+        pageCount = page.pages.clamp(1, maxPageCount).toInt();
+        requestedPage++;
+      } while (requestedPage <= pageCount);
+
+      final messages = _chronologicalMessages(remote.map(_messageFromBackend));
+      _mergeRemoteMessageSlice(threadId, messages);
+      return List<MessagingMessage>.unmodifiable(messages);
+    } on ApiException catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) {
+        throw StateError('Messaging session changed.');
+      }
+      _backendError = error.message;
+      await _handleApiError(error);
+      notifyListeners();
+      throw ArgumentError(error.message);
+    }
+  }
+
   MessagingFolder createFolder(String rawName) {
     _ensureReady();
     final name = rawName.trim();
@@ -570,7 +691,114 @@ class MessagingController extends ChangeNotifier {
   }
 
   void toggleMuted(Iterable<String> ids) {
-    _updateMany(ids, (thread) => thread.copyWith(isMuted: !thread.isMuted));
+    final targets = ids.toList(growable: false);
+    for (final id in targets) {
+      final thread = threadById(id);
+      if (thread != null) unawaited(setMuted(id, !thread.isMuted));
+    }
+  }
+
+  Future<void> setMuted(String threadId, bool muted) async {
+    _ensureReady();
+    final original = threadById(threadId);
+    if (original == null) throw ArgumentError('Suhbat topilmadi.');
+    if (original.isMuted == muted) return;
+    _updateThread(threadId, (thread) => thread.copyWith(isMuted: muted));
+    final backend = _backend;
+    if (backend == null) return;
+    final numericId = int.tryParse(threadId);
+    if (numericId == null) {
+      _rollbackMuted(threadId, expected: muted, value: original.isMuted);
+      throw ArgumentError('Suhbat topilmadi.');
+    }
+    final generation = _remoteGeneration;
+    final preceding = _muteWriteQueues[threadId];
+    late final Future<void> operation;
+    operation = () async {
+      if (preceding != null) {
+        try {
+          await preceding;
+        } on Object {
+          // Each write handles its own rollback. A failed earlier intent must
+          // not prevent the user's newer intent from reaching the server.
+        }
+      }
+      if (!_isCurrentRemoteGeneration(generation)) return;
+      await _writeMutedPreference(
+        backend: backend,
+        numericId: numericId,
+        threadId: threadId,
+        muted: muted,
+        originalValue: original.isMuted,
+        generation: generation,
+      );
+    }();
+    _muteWriteQueues[threadId] = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_muteWriteQueues[threadId], operation)) {
+        _muteWriteQueues.remove(threadId);
+      }
+    }
+  }
+
+  Future<void> _writeMutedPreference({
+    required BackendWorkApi backend,
+    required int numericId,
+    required String threadId,
+    required bool muted,
+    required bool originalValue,
+    required int generation,
+  }) async {
+    try {
+      final result = await backend.setThreadNotificationsMuted(
+        numericId,
+        muted: muted,
+      );
+      if (!_isCurrentRemoteGeneration(generation)) return;
+      if (result.isUnavailable || result.value != muted) {
+        _rollbackMuted(
+          threadId,
+          expected: muted,
+          value: _confirmedMutedByThread[threadId] ?? originalValue,
+        );
+        _backendError =
+            result.error?.message ?? 'Bildirishnoma sozlamasi saqlanmadi.';
+        notifyListeners();
+      } else {
+        _confirmedMutedByThread[threadId] = muted;
+      }
+    } on ApiException catch (error) {
+      if (!_isCurrentRemoteGeneration(generation)) return;
+      _rollbackMuted(
+        threadId,
+        expected: muted,
+        value: _confirmedMutedByThread[threadId] ?? originalValue,
+      );
+      _backendError = error.message;
+      notifyListeners();
+      await _handleApiError(error);
+    } on Object {
+      if (!_isCurrentRemoteGeneration(generation)) return;
+      _rollbackMuted(
+        threadId,
+        expected: muted,
+        value: _confirmedMutedByThread[threadId] ?? originalValue,
+      );
+      _backendError = 'Bildirishnoma sozlamasi saqlanmadi.';
+      notifyListeners();
+    }
+  }
+
+  void _rollbackMuted(
+    String threadId, {
+    required bool expected,
+    required bool value,
+  }) {
+    final current = threadById(threadId);
+    if (current == null || current.isMuted != expected) return;
+    _updateThread(threadId, (thread) => thread.copyWith(isMuted: value));
   }
 
   void markRead(Iterable<String> ids, {bool read = true}) {
@@ -668,6 +896,7 @@ class MessagingController extends ChangeNotifier {
         );
       }
       final mapped = _threadFromBackend(result.value!);
+      _confirmedMutedByThread[mapped.id] = result.value!.notificationsMuted;
       _threads.add(mapped);
       _backendUnavailable = false;
       _backendError = null;
@@ -1003,6 +1232,8 @@ class MessagingController extends ChangeNotifier {
     _loadedRemoteThreads.clear();
     _olderMessagePage.clear();
     _threadLoadVersions.clear();
+    _muteWriteQueues.clear();
+    _confirmedMutedByThread.clear();
     _productionThreadPreferences.clear();
     _backendError = null;
     _backendUnavailable = false;
@@ -1212,7 +1443,9 @@ class MessagingController extends ChangeNotifier {
       messages: overlay?.messages ?? const <MessagingMessage>[],
       isGroup: others.length > 1,
       isPinned: overlay?.isPinned ?? false,
-      isMuted: overlay?.isMuted ?? false,
+      isMuted: _muteWriteQueues.containsKey('${value.id}')
+          ? overlay?.isMuted ?? value.notificationsMuted
+          : value.notificationsMuted,
       isArchived: overlay?.isArchived ?? false,
       isRead: value.unreadCount == 0,
       folderIds: overlay?.folderIds ?? const <String>{},
@@ -1319,12 +1552,16 @@ class MessagingController extends ChangeNotifier {
     final kind = attachment == null
         ? MessagingKind.text
         : _kindForAttachment(attachment);
+    final senderId = '${value.senderId}';
+    final senderContact = _contacts
+        .where((contact) => contact.id == senderId)
+        .firstOrNull;
     return MessagingMessage(
       id: '${value.id}',
-      senderId: '${value.senderId}',
-      senderName: '${value.senderId}' == currentUserId
+      senderId: senderId,
+      senderName: senderId == currentUserId
           ? currentUserName
-          : 'Xodim #${value.senderId}',
+          : senderContact?.name ?? 'Xodim #${value.senderId}',
       sentAt: (value.createdAt ?? _clock()).toLocal(),
       body: value.body,
       kind: kind,
@@ -1335,6 +1572,48 @@ class MessagingController extends ChangeNotifier {
       attachmentKeys: List<String>.unmodifiable(value.attachments),
       delivery: MessagingDelivery.delivered,
     );
+  }
+
+  List<MessagingMessage> _chronologicalMessages(
+    Iterable<MessagingMessage> values,
+  ) {
+    final byId = <String, MessagingMessage>{};
+    for (final message in values) {
+      byId[message.id] = message;
+    }
+    final result = byId.values.toList(growable: false);
+    result.sort((left, right) {
+      final timestamp = left.sentAt.compareTo(right.sentAt);
+      if (timestamp != 0) return timestamp;
+      final leftId = int.tryParse(left.id);
+      final rightId = int.tryParse(right.id);
+      if (leftId != null && rightId != null) return leftId.compareTo(rightId);
+      return left.id.compareTo(right.id);
+    });
+    return result;
+  }
+
+  void _mergeRemoteMessageSlice(
+    String threadId,
+    List<MessagingMessage> values,
+  ) {
+    final index = _threads.indexWhere((thread) => thread.id == threadId);
+    if (index < 0) return;
+    final current = _threads[index].messages;
+    final currentById = <String, MessagingMessage>{
+      for (final message in current) message.id: message,
+    };
+    final merged = _chronologicalMessages(<MessagingMessage>[
+      ...current,
+      for (final message in values)
+        message.copyWith(
+          reactions:
+              currentById[message.id]?.reactions ??
+              _storedReactions(threadId, message.id),
+        ),
+    ]);
+    _threads[index] = _threads[index].copyWith(messages: merged);
+    _changed();
   }
 
   void _replaceRemoteMessages(
@@ -1372,12 +1651,8 @@ class MessagingController extends ChangeNotifier {
     final combined = prepend
         ? <MessagingMessage>[...mapped, ...current]
         : <MessagingMessage>[...mapped, ...pending];
-    final deduplicated = <String, MessagingMessage>{};
-    for (final message in combined) {
-      deduplicated[message.id] = message;
-    }
     _threads[index] = _threads[index].copyWith(
-      messages: deduplicated.values.toList(growable: false),
+      messages: _chronologicalMessages(combined),
     );
     _changed();
   }
@@ -1421,7 +1696,9 @@ class MessagingController extends ChangeNotifier {
 
   String _attachmentFilename(String key) {
     final raw = key.split('/').last;
-    return Uri.decodeComponent(raw);
+    // Object-storage keys are opaque, not URI path components. A valid raw
+    // filename such as `100%photo.jpg` must never crash message hydration.
+    return raw;
   }
 
   T _availableOrThrow<T>(
@@ -1679,7 +1956,6 @@ class MessagingController extends ChangeNotifier {
     if (preference == null) return thread;
     return thread.copyWith(
       isPinned: preference['isPinned'] == true,
-      isMuted: preference['isMuted'] == true,
       isArchived: preference['isArchived'] == true,
       folderIds: _strings(preference['folderIds']).toSet(),
       messages: [

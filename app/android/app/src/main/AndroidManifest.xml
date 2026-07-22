@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Required by release builds for the StarForge REST and WebSocket APIs. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 13+ asks for this after a staff member signs in. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Voice notes request this at the moment the teacher starts recording. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
@@ -10,6 +12,15 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:usesCleartextTraffic="false">
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="starforge_messages" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_launcher_foreground" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/starforge_notification" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -18,7 +18,21 @@ void main() {
     test(
       'hydrates server threads and preserves device-only overlays',
       () async {
-        final transport = _RoutingTransport(_baseHandler);
+        var serverMuted = false;
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (method == 'GET' && path == '/api/v1/messaging/threads/') {
+            return _response(
+              data: [_threadJson(notificationsMuted: serverMuted)],
+              pagination: _page(),
+            );
+          }
+          if (method == 'PATCH' && path.endsWith('/preferences/')) {
+            serverMuted =
+                (body! as Map<String, Object?>)['notifications_muted']! as bool;
+            return _response(data: {'notifications_muted': serverMuted});
+          }
+          return _baseHandler(method, path, query, body);
+        });
         final controller = _controller(transport);
         addTearDown(controller.dispose);
 
@@ -44,7 +58,7 @@ void main() {
         expect(controller.contactById('5')?.kind, MessagingContactKind.student);
 
         controller.togglePinned(const ['10']);
-        controller.toggleMuted(const ['10']);
+        await controller.setMuted('10', true);
         controller.setArchived(const ['10'], true);
         controller.setFolder('10', 'folder-important', included: true);
         await controller.refreshThreads();
@@ -54,6 +68,99 @@ void main() {
         expect(refreshed.isMuted, isTrue);
         expect(refreshed.isArchived, isTrue);
         expect(refreshed.folderIds, contains('folder-important'));
+      },
+    );
+
+    test(
+      'refresh preserves optimistic mute while its write is pending',
+      () async {
+        var serverMuted = false;
+        final writeStarted = Completer<void>();
+        final releaseWrite = Completer<void>();
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (method == 'GET' && path == '/api/v1/messaging/threads/') {
+            return _response(
+              data: [_threadJson(notificationsMuted: serverMuted)],
+              pagination: _page(),
+            );
+          }
+          if (method == 'PATCH' && path.endsWith('/preferences/')) {
+            writeStarted.complete();
+            await releaseWrite.future;
+            serverMuted =
+                (body! as Map<String, Object?>)['notifications_muted']! as bool;
+            return _response(data: {'notifications_muted': serverMuted});
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+        await _initialize(controller);
+
+        final write = controller.setMuted('10', true);
+        await writeStarted.future;
+        await controller.refreshThreads();
+
+        expect(controller.threadById('10')!.isMuted, isTrue);
+        releaseWrite.complete();
+        await write;
+        expect(serverMuted, isTrue);
+        expect(controller.threadById('10')!.isMuted, isTrue);
+      },
+    );
+
+    test(
+      'serializes rapid mute toggles and preserves the last intent',
+      () async {
+        var serverMuted = false;
+        var activeWrites = 0;
+        var maximumActiveWrites = 0;
+        final writes = <bool>[];
+        final gates = <Completer<void>>[];
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (method == 'GET' && path == '/api/v1/messaging/threads/') {
+            return _response(
+              data: [_threadJson(notificationsMuted: serverMuted)],
+              pagination: _page(),
+            );
+          }
+          if (method == 'PATCH' && path.endsWith('/preferences/')) {
+            final muted =
+                (body! as Map<String, Object?>)['notifications_muted']! as bool;
+            writes.add(muted);
+            activeWrites++;
+            maximumActiveWrites = maximumActiveWrites < activeWrites
+                ? activeWrites
+                : maximumActiveWrites;
+            final gate = Completer<void>();
+            gates.add(gate);
+            await gate.future;
+            serverMuted = muted;
+            activeWrites--;
+            return _response(data: {'notifications_muted': serverMuted});
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+        await _initialize(controller);
+
+        final mute = controller.setMuted('10', true);
+        await Future<void>.delayed(Duration.zero);
+        final unmute = controller.setMuted('10', false);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(writes, [true]);
+        expect(controller.threadById('10')!.isMuted, isFalse);
+        gates.single.complete();
+        await Future<void>.delayed(Duration.zero);
+        expect(writes, [true, false]);
+        gates.last.complete();
+        await Future.wait([mute, unmute]);
+
+        expect(maximumActiveWrites, 1);
+        expect(serverMuted, isFalse);
+        expect(controller.threadById('10')!.isMuted, isFalse);
       },
     );
 
@@ -244,6 +351,129 @@ void main() {
         expect(controller.hasOlderMessages('10'), isFalse);
       },
     );
+
+    test(
+      'loads and merges every bounded server page for one local calendar day',
+      () async {
+        final requestedPages = <int>[];
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (path.endsWith('/messages/')) {
+            expect(query['page_size'], 100);
+            final lower = DateTime.parse(query['created_at_gte']! as String);
+            final upper = DateTime.parse(query['created_at_lt']! as String);
+            expect(lower.isUtc, isTrue);
+            expect(upper.isUtc, isTrue);
+            expect(upper.isAfter(lower), isTrue);
+            expect(
+              upper.difference(lower).inMinutes,
+              inInclusiveRange(23 * 60, 25 * 60),
+            );
+            final page = query['page']! as int;
+            requestedPages.add(page);
+            return page == 1
+                ? _response(
+                    data: [
+                      _messageJson(
+                        20,
+                        body: 'second',
+                        createdAt: lower
+                            .add(const Duration(hours: 2))
+                            .toIso8601String(),
+                      ),
+                      _messageJson(
+                        10,
+                        body: 'first',
+                        sender: 1,
+                        createdAt: lower
+                            .add(const Duration(hours: 1))
+                            .toIso8601String(),
+                      ),
+                    ],
+                    pagination: _page(
+                      page: 1,
+                      pages: 2,
+                      total: 3,
+                      hasNext: true,
+                    ),
+                  )
+                : _response(
+                    data: [
+                      _messageJson(
+                        30,
+                        body: 'third',
+                        createdAt: lower
+                            .add(const Duration(hours: 3))
+                            .toIso8601String(),
+                      ),
+                    ],
+                    pagination: _page(
+                      page: 2,
+                      pages: 2,
+                      total: 3,
+                      hasPrevious: true,
+                    ),
+                  );
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+        await _initialize(controller);
+
+        final messages = await controller.loadMessagesForLocalDay(
+          '10',
+          DateTime(2026, 7, 19),
+        );
+
+        expect(requestedPages, [1, 2]);
+        expect(messages.map((message) => message.id), ['10', '20', '30']);
+        expect(
+          controller.threadById('10')!.messages.map((message) => message.id),
+          ['10', '20', '30'],
+        );
+        expect(messages.first.senderName, 'Current Teacher');
+        expect(messages[1].senderName, 'Ali Teacher');
+      },
+    );
+
+    test(
+      'rejects a day whose result count exceeds the client safety cap',
+      () async {
+        var messageRequests = 0;
+        final transport = _RoutingTransport((method, path, query, body) async {
+          if (path.endsWith('/messages/')) {
+            messageRequests++;
+            return _response(
+              data: const <Object?>[],
+              pagination: _page(
+                pages: 6,
+                total: MessagingController.maxDayFilterMessages + 1,
+                hasNext: true,
+              ),
+            );
+          }
+          return _baseHandler(method, path, query, body);
+        });
+        final controller = _controller(transport);
+        addTearDown(controller.dispose);
+        await _initialize(controller);
+
+        await expectLater(
+          controller.loadMessagesForLocalDay('10', DateTime(2026, 7, 19)),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(messageRequests, 1);
+      },
+    );
+
+    test('message range API rejects partial bounds and invalid page sizes', () {
+      final api = BackendWorkApi(_RoutingTransport(_baseHandler));
+      expect(
+        () => api.messages(10, createdAtGte: DateTime.utc(2026, 7, 19)),
+        throwsArgumentError,
+      );
+      expect(() => api.messages(10, pageSize: 101), throwsArgumentError);
+    });
 
     test(
       'older overlapping thread load cannot replace newer messages',
@@ -505,7 +735,7 @@ void main() {
         final transport = _RoutingTransport((method, path, query, body) async {
           if (path.endsWith('/attachments/upload-url/')) {
             expect(body, {
-              'filename': 'board.png',
+              'filename': '100%photo.jpg',
               'content_type': 'image/png',
               'size_bytes': 3,
             });
@@ -513,7 +743,7 @@ void main() {
               data: {
                 'url': 'https://uploads.example.test/form',
                 'method': 'POST',
-                'key': 'tenant/messaging/1/grant/board.png',
+                'key': 'tenant/messaging/1/grant/100%photo.jpg',
                 'fields': {'policy': 'opaque-policy', 'x-meta': 'safe'},
               },
             );
@@ -524,7 +754,7 @@ void main() {
               data: _messageJson(
                 80,
                 sender: 1,
-                attachments: const ['tenant/messaging/1/grant/board.png'],
+                attachments: const ['tenant/messaging/1/grant/100%photo.jpg'],
               ),
             );
           }
@@ -540,7 +770,7 @@ void main() {
 
         final message = await controller.sendAttachment(
           threadId: '10',
-          filename: 'board.png',
+          filename: '100%photo.jpg',
           contentType: 'image/png',
           bytes: Uint8List.fromList(utf8.encode('abc')),
           kind: MessagingKind.image,
@@ -553,11 +783,14 @@ void main() {
           startsWith('multipart/form-data'),
         );
         expect(uploaded!.body, contains('opaque-policy'));
-        expect(uploaded!.body, contains('board.png'));
+        expect(uploaded!.body, contains('100%photo.jpg'));
         expect(sentBody, {
-          'attachments': ['tenant/messaging/1/grant/board.png'],
+          'attachments': ['tenant/messaging/1/grant/100%photo.jpg'],
         });
-        expect(message.attachmentKeys, ['tenant/messaging/1/grant/board.png']);
+        expect(message.attachmentKeys, [
+          'tenant/messaging/1/grant/100%photo.jpg',
+        ]);
+        expect(message.mediaLabel, '100%photo.jpg');
         expect(controller.uploadProgress, isNull);
       },
     );
@@ -759,11 +992,16 @@ Future<ApiResponse> _baseHandler(
       pagination: {..._page(), 'self_user_id': 1},
     );
   }
+  if (method == 'PATCH' && path.endsWith('/preferences/')) {
+    final muted =
+        (body! as Map<String, Object?>)['notifications_muted']! as bool;
+    return _response(data: {'notifications_muted': muted});
+  }
   if (path.endsWith('/read/')) return _response(data: {'status': 'ok'});
   throw StateError('Unhandled fake request: $method $path');
 }
 
-Map<String, Object?> _threadJson() => {
+Map<String, Object?> _threadJson({bool notificationsMuted = false}) => {
   'id': 10,
   'subject': 'Metodika',
   'created_by': 1,
@@ -772,6 +1010,7 @@ Map<String, Object?> _threadJson() => {
     {'user': 2},
   ],
   'unread_count': 2,
+  'notifications_muted': notificationsMuted,
   'last_message_at': '2026-07-19T10:00:00Z',
 };
 
@@ -780,13 +1019,14 @@ Map<String, Object?> _messageJson(
   String body = '',
   int sender = 2,
   List<String> attachments = const [],
+  String createdAt = '2026-07-19T10:00:00Z',
 }) => {
   'id': id,
   'thread': 10,
   'sender': sender,
   'body': body,
   'attachments': attachments,
-  'created_at': '2026-07-19T10:00:00Z',
+  'created_at': createdAt,
 };
 
 Map<String, Object?> _contactJson(
@@ -809,10 +1049,11 @@ Map<String, Object?> _contactJson(
 Map<String, Object?> _page({
   int page = 1,
   int pages = 1,
+  int? total,
   bool hasNext = false,
   bool hasPrevious = false,
 }) => {
-  'total': pages,
+  'total': total ?? pages,
   'page': page,
   'page_size': 100,
   'pages': pages,

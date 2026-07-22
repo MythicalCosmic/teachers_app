@@ -20,6 +20,7 @@ final class BackendNotificationController extends ChangeNotifier {
   final List<BackendNotificationPreference> _preferences =
       <BackendNotificationPreference>[];
   final Set<int> _realtimeDuringRefresh = <int>{};
+  final Set<int> _handledMessageNotificationIds = <int>{};
 
   StreamSubscription<RealtimeNotification>? _notificationSubscription;
   StreamSubscription<NotificationRealtimeStatus>? _statusSubscription;
@@ -100,6 +101,7 @@ final class BackendNotificationController extends ChangeNotifier {
         return;
       }
       final page = feed.value!;
+      final missedMessageThreads = _newMessageThreads(page.items);
       final concurrentRealtime = <BackendNotification>[
         for (final item in _items)
           if (_realtimeDuringRefresh.contains(item.id)) item,
@@ -130,6 +132,7 @@ final class BackendNotificationController extends ChangeNotifier {
       }
       _sortAndDedupe();
       _error = null;
+      await _refreshMissedMessageThreads(missedMessageThreads);
     } on ApiException catch (error) {
       if (!_isCurrent(generation)) return;
       _error = error.message;
@@ -349,6 +352,7 @@ final class BackendNotificationController extends ChangeNotifier {
     _feedUnavailable = false;
     _preferencesUnavailable = false;
     _realtimeDuringRefresh.clear();
+    _handledMessageNotificationIds.clear();
     notifyListeners();
     try {
       await _realtime.pause();
@@ -390,8 +394,45 @@ final class BackendNotificationController extends ChangeNotifier {
     if (realtime.eventType == 'message.received') {
       final rawThreadId = realtime.data['thread_id'];
       final callback = onMessageReceived;
-      if (callback != null) {
+      if (callback != null && _markMessageNotificationHandled(id)) {
         unawaited(callback(rawThreadId == null ? null : '$rawThreadId'));
+      }
+    }
+  }
+
+  Set<String?> _newMessageThreads(Iterable<BackendNotification> values) {
+    if (onMessageReceived == null) return const <String?>{};
+    final threads = <String?>{};
+    for (final item in values) {
+      if (item.eventType != 'message.received' ||
+          !_markMessageNotificationHandled(item.id)) {
+        continue;
+      }
+      final rawThreadId = item.data['thread_id'];
+      threads.add(rawThreadId == null ? null : '$rawThreadId');
+    }
+    return threads;
+  }
+
+  bool _markMessageNotificationHandled(int id) {
+    if (!_handledMessageNotificationIds.add(id)) return false;
+    if (_handledMessageNotificationIds.length > 1024) {
+      _handledMessageNotificationIds.remove(
+        _handledMessageNotificationIds.first,
+      );
+    }
+    return true;
+  }
+
+  Future<void> _refreshMissedMessageThreads(Set<String?> threadIds) async {
+    final callback = onMessageReceived;
+    if (callback == null || threadIds.isEmpty) return;
+    for (final threadId in threadIds) {
+      try {
+        await callback(threadId);
+      } on Object {
+        // The notification feed is still valid. Messaging owns its own retry
+        // state when refreshing the referenced conversation fails.
       }
     }
   }

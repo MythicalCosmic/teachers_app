@@ -23,11 +23,14 @@ final class StarforgeApi {
   StoredSession? _stored;
   String _locale = 'uz';
   bool _remembered = false;
+  int? _pushDeviceResourceId;
+  String? _authenticatedTenantSlug;
   Future<void> Function()? _onAuthenticationRequired;
 
   bool get hasSession => _stored != null;
   TenantConnection? get connection => _stored?.connection;
   String get deviceId => _stored?.deviceId ?? '';
+  String? get authenticatedTenantSlug => _authenticatedTenantSlug;
 
   /// Read only by in-process transports such as the notification WebSocket.
   /// Never place this value in a URL, diagnostic, or persisted UI model.
@@ -51,6 +54,8 @@ final class StarforgeApi {
       rethrow;
     }
     _stored = stored;
+    _pushDeviceResourceId = null;
+    _authenticatedTenantSlug = null;
     _remembered = true;
     try {
       final profile = await me();
@@ -177,6 +182,8 @@ final class StarforgeApi {
       deviceId: stableDeviceId,
     );
     _stored = authenticatingSession;
+    _pushDeviceResourceId = null;
+    _authenticatedTenantSlug = null;
     try {
       final profile = await me();
       final principalKind = apiString(profile['principal_kind']);
@@ -220,6 +227,7 @@ final class StarforgeApi {
   }
 
   Future<ApiJson> me() async {
+    final expectedSession = _requireSession();
     final response = await get('/api/v1/users/me/');
     if (response.data is! Map) {
       throw const ApiException(
@@ -227,7 +235,17 @@ final class StarforgeApi {
         code: 'invalid_response',
       );
     }
-    return Map<String, Object?>.from(response.data! as Map);
+    if (!identical(_stored, expectedSession)) {
+      throw const ApiException(
+        message: 'Sessiya profil yuklanayotganda o‘zgardi.',
+        code: 'session_changed',
+      );
+    }
+    final profile = Map<String, Object?>.from(response.data! as Map);
+    final tenantSlug = apiString(profile['tenant_slug']).trim();
+    _authenticatedTenantSlug =
+        RegExp(r'^[a-z0-9_-]{1,100}$').hasMatch(tenantSlug) ? tenantSlug : null;
+    return profile;
   }
 
   Future<ApiJson> updateMe(ApiJson changes) async {
@@ -290,6 +308,63 @@ final class StarforgeApi {
       deviceId: expectedSession.deviceId,
     );
     if (_remembered) await _vault.write(_stored!);
+  }
+
+  /// Registers (or refreshes) this installation's FCM token against the
+  /// authenticated tenant. The backend owns tenant isolation; only the stable
+  /// device id created before login is sent.
+  Future<void> registerPushToken(String token) async {
+    final expectedSession = _requireSession();
+    final normalized = token.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError.value(
+        token,
+        'token',
+        'Push token must not be empty.',
+      );
+    }
+    final response = await post(
+      '/api/v1/users/devices/',
+      body: {
+        'device_id': expectedSession.deviceId,
+        'platform': _platform,
+        'push_token': normalized,
+      },
+    );
+    if (!identical(_stored, expectedSession) || response.data is! Map) return;
+    final rawId = (response.data! as Map)['id'];
+    _pushDeviceResourceId = rawId is int
+        ? rawId
+        : int.tryParse(rawId?.toString() ?? '');
+  }
+
+  /// Revokes this installation without exposing its token. Used before local
+  /// credential deletion so a signed-out device cannot keep receiving staff
+  /// messages. A missing resource is already the desired state.
+  Future<void> revokeCurrentPushDevice() async {
+    final expectedSession = _requireSession();
+    var resourceId = _pushDeviceResourceId;
+    if (resourceId == null) {
+      final response = await get(
+        '/api/v1/users/devices/',
+        query: const {'page_size': 100},
+      );
+      if (!identical(_stored, expectedSession)) return;
+      for (final item in apiMaps(response.data)) {
+        if (apiString(item['device_id']) != expectedSession.deviceId) continue;
+        resourceId = item['id'] is int
+            ? item['id']! as int
+            : int.tryParse(item['id']?.toString() ?? '');
+        break;
+      }
+    }
+    if (resourceId == null || !identical(_stored, expectedSession)) return;
+    try {
+      await delete('/api/v1/users/devices/$resourceId/');
+    } on ApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+    }
+    if (identical(_stored, expectedSession)) _pushDeviceResourceId = null;
   }
 
   String _requireSecurePlatformBaseUrl() {
@@ -414,6 +489,14 @@ final class StarforgeApi {
 
   Future<void> signOut({bool remote = true}) async {
     final session = _stored;
+    if (remote && session != null) {
+      try {
+        await revokeCurrentPushDevice();
+      } on Object {
+        // Logout must remain available offline. The local FCM token is deleted
+        // separately and the backend token is invalidated by Firebase on send.
+      }
+    }
     await clearSession(expectedSession: session);
     if (remote && session != null) {
       try {
@@ -432,6 +515,8 @@ final class StarforgeApi {
   Future<void> clearSession({StoredSession? expectedSession}) async {
     if (expectedSession != null && !identical(_stored, expectedSession)) return;
     _stored = null;
+    _pushDeviceResourceId = null;
+    _authenticatedTenantSlug = null;
     _remembered = false;
     await _vault.clear();
   }

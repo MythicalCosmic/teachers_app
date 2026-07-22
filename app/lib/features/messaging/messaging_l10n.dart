@@ -26,8 +26,14 @@ final class MessagingL10n {
     if (message == null) return text('start_chat');
     return switch (message.kind) {
       MessagingKind.text => message.body,
-      MessagingKind.image => '📷 ${message.mediaLabel ?? text('image')}',
-      MessagingKind.video => '🎬 ${message.mediaLabel ?? text('video')}',
+      MessagingKind.image =>
+        message.body.trim().isEmpty
+            ? '📷 ${text('image')}'
+            : '📷 ${message.body.trim()}',
+      MessagingKind.video =>
+        message.body.trim().isEmpty
+            ? '🎬 ${text('video')}'
+            : '🎬 ${message.body.trim()}',
       MessagingKind.voice => '🎙 ${text('voice_message')}',
     };
   }
@@ -137,7 +143,7 @@ const _copy = <String, Map<String, String>>{
     'folder_work': 'Ish',
     'folder_important': 'Muhim',
     'device_local_organization':
-        'Jild, pin, mute va arxiv faqat shu qurilmada saqlanadi.',
+        'Jild, pin va arxiv shu qurilmada saqlanadi. Bildirishnoma ovozi server bilan xavfsiz sinxronlanadi.',
     'start_chat': 'Suhbatni boshlang',
     'chat': 'Suhbat',
     'chat_not_found': 'Suhbat topilmadi',
@@ -510,7 +516,7 @@ const _copy = <String, Map<String, String>>{
     'folder_work': 'Work',
     'folder_important': 'Important',
     'device_local_organization':
-        'Folders, pins, mute, and archive are stored on this device only.',
+        'Folders, pins, and archive stay on this device. Mute syncs securely with the server.',
     'start_chat': 'Start the conversation',
     'chat': 'Chat',
     'chat_not_found': 'Conversation not found',

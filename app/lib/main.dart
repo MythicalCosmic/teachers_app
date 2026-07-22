@@ -9,6 +9,7 @@ import 'app/app_state.dart';
 import 'data/models.dart';
 import 'data/api/starforge_api.dart';
 import 'features/connectivity/backend_reachability.dart';
+import 'features/notifications/push_notification_service.dart';
 import 'router.dart';
 import 'screens/groups/group_workspace_store.dart';
 import 'theme/sf_theme.dart';
@@ -17,6 +18,7 @@ import 'widgets/sf_connectivity_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerStarforgeBackgroundPushHandler();
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   final appState = await AppState.bootstrap(api: StarforgeApi());
   runApp(StarForgeStaffApp(appState: appState));
@@ -35,6 +37,7 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
     with WidgetsBindingObserver {
   late final _router = buildRouter(widget.appState);
   late final BackendReachabilityController _reachability;
+  PushNotificationService? _pushNotifications;
   bool _foreground = true;
   bool _recoveringFromOffline = false;
 
@@ -48,8 +51,27 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
         baseUrl: () => api?.connection?.baseUrl ?? api?.platformBaseUrl ?? '',
       ),
     )..addListener(_handleReachabilityChanged);
+    if (api != null) {
+      _pushNotifications = PushNotificationService(
+        registrar: StarforgePushDeviceRegistrar(api),
+        gateway: FirebasePushMessagingGateway(),
+        activeTenantSlug: () => api.authenticatedTenantSlug,
+        openThread: (threadId) {
+          final encoded = Uri.encodeQueryComponent(threadId);
+          _router.go('/messages/chat?thread=$encoded');
+        },
+        refreshThread: (threadId) => widget.appState.messagingController
+            .refreshForRealtime(threadId: threadId),
+      );
+      widget.appState.addListener(_syncPushSession);
+      _syncPushSession();
+    }
     WidgetsBinding.instance.addObserver(this);
     unawaited(_reachability.start());
+  }
+
+  void _syncPushSession() {
+    _pushNotifications?.syncAuthenticated(widget.appState.session != null);
   }
 
   void _handleReachabilityChanged() {
@@ -76,6 +98,7 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
         if (!_foreground && mounted) setState(() => _foreground = true);
         unawaited(_reachability.resume());
         if (!_reachability.blocksApp) widget.appState.resumeRealtime();
+        _pushNotifications?.refreshRegistration();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
@@ -89,6 +112,8 @@ class _StarForgeStaffAppState extends State<StarForgeStaffApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.appState.removeListener(_syncPushSession);
+    _pushNotifications?.dispose();
     _reachability
       ..removeListener(_handleReachabilityChanged)
       ..dispose();

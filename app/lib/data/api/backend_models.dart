@@ -501,6 +501,7 @@ final class BackendThread {
     required this.subject,
     required this.participants,
     required this.unreadCount,
+    this.notificationsMuted = false,
     this.branchId,
     this.createdBy,
     this.lastMessageAt,
@@ -515,6 +516,7 @@ final class BackendThread {
   final DateTime? createdAt;
   final List<BackendThreadParticipant> participants;
   final int unreadCount;
+  final bool notificationsMuted;
 
   factory BackendThread.fromJson(BackendJson json) => BackendThread(
     id: backendInt(json['id']),
@@ -528,6 +530,7 @@ final class BackendThread {
         BackendThreadParticipant.fromJson(item),
     ],
     unreadCount: backendInt(json['unread_count']),
+    notificationsMuted: backendBool(json['notifications_muted']),
   );
 }
 

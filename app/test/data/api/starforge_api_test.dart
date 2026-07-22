@@ -37,6 +37,7 @@ void main() {
                   'id': 91,
                   'full_name': 'Aziz Teacher',
                   'principal_kind': 'teacher',
+                  'tenant_slug': 'staff',
                 },
               }),
               _ => _jsonResponse(404, {
@@ -75,6 +76,8 @@ void main() {
       expect(identity.mustChangePassword, isTrue);
       expect(identity.profile['full_name'], 'Aziz Teacher');
       expect(api.hasSession, isTrue);
+      expect(api.connection?.slug, 'staff-tenant.example');
+      expect(api.authenticatedTenantSlug, 'staff');
       expect(vault.value?.accessToken, 'role-token');
     });
 
@@ -97,6 +100,54 @@ void main() {
       expect(vault.deviceId, isNotEmpty);
       expect(api.deviceId, vault.deviceId);
     });
+
+    test(
+      'legacy me without tenant slug signs in while push identity fails closed',
+      () async {
+        final vault = _RecordingVault();
+        final api = StarforgeApi(
+          platformBaseUrl: 'https://staff-tenant.example',
+          vault: vault,
+          client: ApiClient(
+            httpClient: MockClient((request) async {
+              if (request.url.path == '/api/v1/auth/role-login/') {
+                return _jsonResponse(200, {
+                  'success': true,
+                  'data': {'access': 'legacy-token', 'role': 'teacher'},
+                });
+              }
+              if (request.url.path == '/api/v1/users/me/') {
+                return _jsonResponse(200, {
+                  'success': true,
+                  'data': {
+                    'id': 1,
+                    'full_name': 'Legacy Teacher',
+                    'principal_kind': 'teacher',
+                  },
+                });
+              }
+              return _jsonResponse(404, {
+                'success': false,
+                'code': 'not_found',
+                'message': 'Unexpected route',
+              });
+            }),
+          ),
+        );
+
+        final identity = await api.signIn(
+          centerSlug: '',
+          username: 'teacher',
+          password: 'password',
+          remember: false,
+        );
+
+        expect(identity.principalKind, 'teacher');
+        expect(api.hasSession, isTrue);
+        expect(api.authenticatedTenantSlug, isNull);
+        expect(api.connection?.slug, 'staff-tenant.example');
+      },
+    );
 
     test(
       'remember true restores the session and its tenant connection',
@@ -131,6 +182,7 @@ void main() {
         expect(restored.connection.baseUrl, 'https://staff-tenant.example');
         expect(restored.principalKind, 'teacher');
         expect(restoredApi.hasSession, isTrue);
+        expect(restoredApi.authenticatedTenantSlug, 'staff');
       },
     );
 
@@ -287,6 +339,7 @@ void main() {
                       ? 'Teacher A'
                       : 'Teacher B',
                   'principal_kind': 'teacher',
+                  'tenant_slug': 'staff',
                 },
               });
             }
@@ -423,7 +476,7 @@ void main() {
 
     test('rejects and clears an insecure remembered tenant', () async {
       final vault = _RecordingVault()
-        ..value = const StoredSession(
+        ..value = StoredSession(
           accessToken: 'unsafe-token',
           connection: TenantConnection(
             slug: 'unsafe',
@@ -453,6 +506,134 @@ void main() {
       expect(requestCount, 0);
       expect(api.hasSession, isFalse);
     });
+
+    test(
+      'registers a push token and revokes its device before logout',
+      () async {
+        final requests = <http.Request>[];
+        final vault = _RecordingVault();
+        final api = StarforgeApi(
+          platformBaseUrl: 'https://staff-tenant.example',
+          vault: vault,
+          client: ApiClient(
+            httpClient: MockClient((request) async {
+              requests.add(request);
+              return switch ((request.method, request.url.path)) {
+                ('POST', '/api/v1/auth/role-login/') => _jsonResponse(200, {
+                  'success': true,
+                  'data': {'access': 'push-session', 'role': 'teacher'},
+                }),
+                ('GET', '/api/v1/users/me/') => _profileResponse(),
+                ('POST', '/api/v1/users/devices/') => _jsonResponse(201, {
+                  'success': true,
+                  'data': {'id': 73, 'device_id': vault.deviceId},
+                }),
+                ('DELETE', '/api/v1/users/devices/73/') => http.Response(
+                  '',
+                  204,
+                ),
+                ('POST', '/api/v1/auth/logout/') => http.Response('', 204),
+                _ => _jsonResponse(404, {
+                  'success': false,
+                  'code': 'not_found',
+                  'message': 'Unexpected route',
+                }),
+              };
+            }),
+          ),
+        );
+        await api.signIn(
+          centerSlug: '',
+          username: 'teacher',
+          password: 'password',
+          remember: true,
+        );
+
+        await api.registerPushToken(' real-fcm-token ');
+        await api.signOut();
+
+        final registration = requests.firstWhere(
+          (request) => request.url.path == '/api/v1/users/devices/',
+        );
+        expect(jsonDecode(registration.body), {
+          'device_id': vault.deviceId,
+          'platform': anyOf('android', 'ios', 'web'),
+          'push_token': 'real-fcm-token',
+        });
+        expect(
+          requests.map((request) => '${request.method} ${request.url.path}'),
+          containsAllInOrder([
+            'POST /api/v1/users/devices/',
+            'DELETE /api/v1/users/devices/73/',
+            'POST /api/v1/auth/logout/',
+          ]),
+        );
+        expect(api.hasSession, isFalse);
+      },
+    );
+
+    test(
+      'restored session finds and revokes its device before logout',
+      () async {
+        final connection = const TenantConnection(
+          slug: 'staff',
+          name: 'Staff tenant',
+          baseUrl: 'https://staff-tenant.example',
+          wsUrl: 'wss://staff-tenant.example/ws/notifications/',
+          locale: 'en',
+        );
+        final vault = _RecordingVault()
+          ..value = StoredSession(
+            accessToken: 'restored-token',
+            connection: connection,
+            deviceId: 'shared-phone',
+          );
+        final requests = <http.Request>[];
+        final api = StarforgeApi(
+          platformBaseUrl: connection.baseUrl,
+          vault: vault,
+          client: ApiClient(
+            httpClient: MockClient((request) async {
+              requests.add(request);
+              if (request.url.path == '/api/v1/users/me/') {
+                return _profileResponse();
+              }
+              if (request.url.path == '/api/v1/users/devices/') {
+                return _jsonResponse(200, {
+                  'success': true,
+                  'data': [
+                    {'id': 81, 'device_id': 'shared-phone'},
+                  ],
+                  'pagination': {'page': 1, 'page_size': 100, 'total': 1},
+                });
+              }
+              if (request.url.path == '/api/v1/users/devices/81/' ||
+                  request.url.path == '/api/v1/auth/logout/') {
+                return http.Response('', 204);
+              }
+              return _jsonResponse(404, {
+                'success': false,
+                'code': 'not_found',
+                'message': 'Unexpected route',
+              });
+            }),
+          ),
+        );
+        await api.restore();
+
+        await api.signOut();
+
+        expect(
+          requests.map((request) => '${request.method} ${request.url.path}'),
+          containsAllInOrder([
+            'GET /api/v1/users/devices/',
+            'DELETE /api/v1/users/devices/81/',
+            'POST /api/v1/auth/logout/',
+          ]),
+        );
+        expect(api.hasSession, isFalse);
+      },
+    );
   });
 }
 
@@ -531,6 +712,7 @@ http.Response _profileResponse() => _jsonResponse(200, {
     'id': 1,
     'full_name': 'Teacher Account',
     'principal_kind': 'teacher',
+    'tenant_slug': 'staff',
   },
 });
 

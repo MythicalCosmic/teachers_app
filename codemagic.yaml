@@ -17,6 +17,10 @@ workflows:
       flutter: "3.44.6"
       xcode: "26.4"
       cocoapods: default
+      # After creating this group in Codemagic, uncomment it to compile the
+      # owner-supplied Firebase values handled by the build script below.
+      # groups:
+      #   - firebase_credentials
 
     cache:
       cache_paths:
@@ -49,8 +53,63 @@ workflows:
       - name: Build unsigned iPhone release
         script: |
           set -euo pipefail
+
+          # Push remains optional for unsigned QA builds. When Firebase secrets
+          # are present, forward them explicitly: ordinary shell environment
+          # variables are not visible to Dart's String.fromEnvironment.
+          firebase_defines=()
+          firebase_plist=""
+          if [[ -n "${FIREBASE_IOS_CONFIG_BASE64:-}" ]]; then
+            firebase_plist="$(mktemp)"
+            trap 'rm -f "$firebase_plist"' EXIT
+            printf '%s' "$FIREBASE_IOS_CONFIG_BASE64" | /usr/bin/base64 -D > "$firebase_plist"
+            /usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' "$firebase_plist" >/dev/null
+            firebase_api_key="$(/usr/libexec/PlistBuddy -c 'Print :API_KEY' "$firebase_plist")"
+            firebase_app_id="$(/usr/libexec/PlistBuddy -c 'Print :GOOGLE_APP_ID' "$firebase_plist")"
+            firebase_sender_id="$(/usr/libexec/PlistBuddy -c 'Print :GCM_SENDER_ID' "$firebase_plist")"
+            firebase_project_id="$(/usr/libexec/PlistBuddy -c 'Print :PROJECT_ID' "$firebase_plist")"
+            firebase_storage_bucket="$(/usr/libexec/PlistBuddy -c 'Print :STORAGE_BUCKET' "$firebase_plist" 2>/dev/null || true)"
+            firebase_bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :BUNDLE_ID' "$firebase_plist")"
+          else
+            firebase_api_key="${FIREBASE_API_KEY:-}"
+            firebase_app_id="${FIREBASE_APP_ID:-}"
+            firebase_sender_id="${FIREBASE_MESSAGING_SENDER_ID:-}"
+            firebase_project_id="${FIREBASE_PROJECT_ID:-}"
+            firebase_storage_bucket="${FIREBASE_STORAGE_BUCKET:-}"
+            firebase_bundle_id="${FIREBASE_IOS_BUNDLE_ID:-uz.starforge.starforgeEdu}"
+          fi
+
+          firebase_present=0
+          for value in "$firebase_api_key" "$firebase_app_id" "$firebase_sender_id" "$firebase_project_id"; do
+            [[ -n "$value" ]] && firebase_present=$((firebase_present + 1))
+          done
+          if [[ "$firebase_present" -ne 0 && "$firebase_present" -ne 4 ]]; then
+            echo "Firebase push configuration is incomplete; provide all four required values or none." >&2
+            exit 1
+          fi
+          if [[ "$firebase_present" -eq 4 ]]; then
+            if [[ "$firebase_bundle_id" != "uz.starforge.starforgeEdu" ]]; then
+              echo "Firebase iOS bundle id does not match uz.starforge.starforgeEdu." >&2
+              exit 1
+            fi
+            firebase_defines+=(
+              "--dart-define=FIREBASE_API_KEY=$firebase_api_key"
+              "--dart-define=FIREBASE_APP_ID=$firebase_app_id"
+              "--dart-define=FIREBASE_MESSAGING_SENDER_ID=$firebase_sender_id"
+              "--dart-define=FIREBASE_PROJECT_ID=$firebase_project_id"
+              "--dart-define=FIREBASE_IOS_BUNDLE_ID=$firebase_bundle_id"
+            )
+            if [[ -n "$firebase_storage_bucket" ]]; then
+              firebase_defines+=("--dart-define=FIREBASE_STORAGE_BUCKET=$firebase_storage_bucket")
+            fi
+            echo "Firebase client configuration enabled for this build."
+          else
+            echo "Firebase client configuration absent; building with push safely disabled."
+          fi
+
           flutter build ios --release --no-codesign \
-            --build-number="${PROJECT_BUILD_NUMBER:-1}"
+            --build-number="${PROJECT_BUILD_NUMBER:-1}" \
+            "${firebase_defines[@]}"
 
       - name: Package and verify 3uTools artifacts
         script: |

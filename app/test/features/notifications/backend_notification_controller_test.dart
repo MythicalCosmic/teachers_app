@@ -320,6 +320,49 @@ void main() {
       expect(controller.unreadCount, 5);
       expect(transport.feedReads, greaterThanOrEqualTo(2));
     });
+
+    test(
+      'REST resume refreshes only newly missed message threads once',
+      () async {
+        final socket = _FakeSocket();
+        final transport = _NotificationTransport();
+        final controller = _controller(transport, socket);
+        addTearDown(controller.dispose);
+        final refreshed = <String?>[];
+        controller.onMessageReceived = (threadId) async {
+          refreshed.add(threadId);
+        };
+        await controller.start();
+        expect(refreshed, ['10']);
+
+        transport.feedGate = Completer<ApiResponse>();
+        final refresh = controller.refresh();
+        transport.feedGate!.complete(
+          _response(
+            data: [
+              _notification(2),
+              {
+                ..._notification(8),
+                'event_type': 'message.received',
+                'data': {'thread_id': 77},
+              },
+              {
+                ..._notification(9),
+                'event_type': 'message.received',
+                'data': {'thread_id': 77},
+              },
+            ],
+            pagination: const {'next': null, 'previous': null},
+          ),
+        );
+        await refresh;
+        expect(refreshed, ['10', '77']);
+
+        transport.feedGate = null;
+        await controller.refresh();
+        expect(refreshed, ['10', '77']);
+      },
+    );
   });
 }
 

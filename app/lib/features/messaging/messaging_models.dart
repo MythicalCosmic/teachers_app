@@ -74,8 +74,10 @@ class MessagingMessage {
 
   String get preview => switch (kind) {
     MessagingKind.text => body,
-    MessagingKind.image => '📷 ${mediaLabel ?? 'Rasm'}',
-    MessagingKind.video => '🎬 ${mediaLabel ?? 'Video'}',
+    MessagingKind.image =>
+      body.trim().isEmpty ? '📷 Rasm' : '📷 ${body.trim()}',
+    MessagingKind.video =>
+      body.trim().isEmpty ? '🎬 Video' : '🎬 ${body.trim()}',
     MessagingKind.voice => '🎙 Ovozli xabar',
   };
 

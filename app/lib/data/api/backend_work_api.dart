@@ -148,11 +148,29 @@ final class BackendWorkApi {
   Future<BackendModuleResult<BackendPage<BackendMessage>>> messages(
     int threadId, {
     int page = 1,
-  }) => _page(
-    '/api/v1/messaging/threads/$threadId/messages/',
-    BackendMessage.fromJson,
-    query: {'page': page},
-  );
+    int? pageSize,
+    DateTime? createdAtGte,
+    DateTime? createdAtLt,
+  }) {
+    if ((createdAtGte == null) != (createdAtLt == null)) {
+      throw ArgumentError(
+        'createdAtGte and createdAtLt must be provided together.',
+      );
+    }
+    if (pageSize != null && (pageSize < 1 || pageSize > 100)) {
+      throw ArgumentError.value(pageSize, 'pageSize', 'Must be from 1 to 100.');
+    }
+    return _page(
+      '/api/v1/messaging/threads/$threadId/messages/',
+      BackendMessage.fromJson,
+      query: {
+        'page': page,
+        'page_size': ?pageSize,
+        'created_at_gte': ?createdAtGte?.toUtc().toIso8601String(),
+        'created_at_lt': ?createdAtLt?.toUtc().toIso8601String(),
+      },
+    );
+  }
 
   Future<BackendModuleResult<BackendMessage>> sendMessage(
     int threadId, {
@@ -172,6 +190,17 @@ final class BackendWorkApi {
   Future<BackendModuleResult<bool>> markThreadRead(int threadId) => _module(
     transport.post('/api/v1/messaging/threads/$threadId/read/'),
     (response) => backendString(backendMap(response.data)['status']) == 'ok',
+  );
+
+  Future<BackendModuleResult<bool>> setThreadNotificationsMuted(
+    int threadId, {
+    required bool muted,
+  }) => _module(
+    transport.patch(
+      '/api/v1/messaging/threads/$threadId/preferences/',
+      body: {'notifications_muted': muted},
+    ),
+    (response) => backendBool(backendMap(response.data)['notifications_muted']),
   );
 
   Future<BackendModuleResult<BackendUploadGrant>> messageUploadGrant({

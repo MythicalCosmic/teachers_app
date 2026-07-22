@@ -25,6 +25,7 @@ import '../widgets/sf_form_controls.dart';
 import '../widgets/sf_icons.dart';
 import '../widgets/sf_scaffold.dart';
 import '../widgets/sf_search_field.dart';
+import '../widgets/sf_star.dart';
 import '../widgets/sf_state_view.dart';
 import '../widgets/sf_toast.dart';
 
@@ -54,6 +55,12 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _searchRouteConsumed = false;
   bool _sending = false;
   bool _recordingStarting = false;
+  bool _showJumpToLatest = false;
+  bool _dateFilterLoading = false;
+  DateTime? _selectedDate;
+  List<MessagingMessage>? _dateMessages;
+  String? _timelineThreadId;
+  int _timelineMessageCount = 0;
   String? _markedReadThread;
   String? _requestedRemoteThread;
   MessagingController? _activeController;
@@ -65,6 +72,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _voiceCapture = widget.voiceCapture ?? Mp3VoiceNoteCapture();
+    _scroll.addListener(_handleTimelineScroll);
   }
 
   @override
@@ -81,7 +89,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   MessagingThread? _thread(BuildContext context) {
     final requested = GoRouterState.of(context).uri.queryParameters['thread'];
-    return _controller.threadById(requested) ?? _controller.threads.firstOrNull;
+    if (requested != null && requested.trim().isNotEmpty) {
+      return _controller.threadById(requested);
+    }
+    return _controller.threads.firstOrNull;
   }
 
   void _markRead(MessagingThread thread) {
@@ -144,6 +155,199 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     });
+  }
+
+  void _handleTimelineScroll() {
+    if (!_scroll.hasClients) return;
+    final distance = _scroll.position.maxScrollExtent - _scroll.position.pixels;
+    final show = distance > 180;
+    if (show == _showJumpToLatest || !mounted) return;
+    setState(() => _showJumpToLatest = show);
+  }
+
+  void _syncTimeline(MessagingThread thread) {
+    final changedThread = _timelineThreadId != thread.id;
+    final addedMessage = thread.messages.length > _timelineMessageCount;
+    final shouldFollowLatest =
+        changedThread ||
+        (addedMessage && !_showJumpToLatest && _selectedDate == null);
+    if (changedThread) {
+      _timelineThreadId = thread.id;
+      _selectedDate = null;
+      _dateMessages = null;
+      _dateFilterLoading = false;
+      _showJumpToLatest = false;
+    }
+    _timelineMessageCount = thread.messages.length;
+    if (shouldFollowLatest) _scrollToEnd();
+  }
+
+  Future<void> _pickTimelineDate(MessagingThread thread) async {
+    if (_dateFilterLoading ||
+        (!_controller.isProduction && thread.messages.isEmpty)) {
+      return;
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    late final DateTime first;
+    late final DateTime last;
+    if (_controller.isProduction) {
+      // The normal timeline only contains its newest page. Do not make that
+      // partial page the calendar's artificial history boundary.
+      first = DateTime(2000, 1, 1);
+      last = today;
+    } else {
+      final dates = thread.messages.map((message) => message.sentAt.toLocal());
+      first = dates.reduce((a, b) => a.isBefore(b) ? a : b);
+      last = dates.reduce((a, b) => a.isAfter(b) ? a : b);
+    }
+    final preferred =
+        _selectedDate ?? (_controller.isProduction ? today : last);
+    final initial = preferred.isBefore(first)
+        ? first
+        : preferred.isAfter(last)
+        ? last
+        : preferred;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(first.year, first.month, first.day),
+      lastDate: DateTime(last.year, last.month, last.day),
+      helpText: _timelineCopy(
+        context,
+        uz: 'Xabarlar sanasini tanlang',
+        ru: '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0430\u0442\u0443 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439',
+        en: 'Choose message date',
+      ),
+    );
+    if (picked == null || !mounted) return;
+    if (!_controller.isProduction) {
+      setState(() {
+        _selectedDate = picked;
+        _dateMessages = thread.messages
+            .where((message) => _sameDay(message.sentAt, picked))
+            .toList(growable: false);
+      });
+      _jumpToTimelineStart();
+      return;
+    }
+
+    setState(() => _dateFilterLoading = true);
+    try {
+      final messages = await _controller.loadMessagesForLocalDay(
+        thread.id,
+        picked,
+      );
+      if (!mounted || _timelineThreadId != thread.id) return;
+      setState(() {
+        _selectedDate = picked;
+        _dateMessages = messages;
+        _dateFilterLoading = false;
+      });
+      _jumpToTimelineStart();
+    } on Object catch (error) {
+      if (!mounted || _timelineThreadId != thread.id) return;
+      setState(() => _dateFilterLoading = false);
+      _showError(MessagingL10n.of(context).error(error));
+    }
+  }
+
+  void _jumpToTimelineStart() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.minScrollExtent);
+    });
+  }
+
+  Future<void> _clearTimelineDate() async {
+    if (_dateFilterLoading) return;
+    final thread = _thread(context);
+    if (_controller.isProduction && thread != null) {
+      setState(() => _dateFilterLoading = true);
+      try {
+        await _controller.loadThreadMessages(thread.id, refresh: true);
+        if (!mounted || _timelineThreadId != thread.id) return;
+        if (_controller.backendUnavailable ||
+            _controller.backendError != null) {
+          throw ArgumentError(
+            _controller.backendError ??
+                _timelineCopy(
+                  context,
+                  uz: 'Eng yangi xabarlarni yuklab bo\u2018lmadi.',
+                  ru: '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043d\u043e\u0432\u0435\u0439\u0448\u0438\u0435 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f.',
+                  en: 'Could not load the latest messages.',
+                ),
+          );
+        }
+      } on Object catch (error) {
+        if (!mounted || _timelineThreadId != thread.id) return;
+        setState(() => _dateFilterLoading = false);
+        _showError(MessagingL10n.of(context).error(error));
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectedDate = null;
+      _dateMessages = null;
+      _dateFilterLoading = false;
+    });
+    _scrollToEnd();
+  }
+
+  Future<void> _refreshTimeline(MessagingThread thread) async {
+    final selected = _selectedDate;
+    if (selected == null) {
+      if (_controller.isProduction) {
+        await _controller.loadThreadMessages(thread.id, refresh: true);
+        if (mounted &&
+            (_controller.backendUnavailable ||
+                _controller.backendError != null)) {
+          _showError(
+            _controller.backendError ??
+                _timelineCopy(
+                  context,
+                  uz: 'Xabarlarni yangilab bo\u2018lmadi.',
+                  ru: '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f.',
+                  en: 'Could not refresh messages.',
+                ),
+          );
+        }
+      }
+      return;
+    }
+    if (!_controller.isProduction) {
+      if (!mounted) return;
+      setState(() {
+        _dateMessages = thread.messages
+            .where((message) => _sameDay(message.sentAt, selected))
+            .toList(growable: false);
+      });
+      return;
+    }
+    if (_dateFilterLoading) return;
+    setState(() => _dateFilterLoading = true);
+    try {
+      final messages = await _controller.loadMessagesForLocalDay(
+        thread.id,
+        selected,
+      );
+      if (!mounted ||
+          _timelineThreadId != thread.id ||
+          _selectedDate != selected) {
+        return;
+      }
+      setState(() => _dateMessages = messages);
+    } on Object catch (error) {
+      if (mounted && _timelineThreadId == thread.id) {
+        _showError(MessagingL10n.of(context).error(error));
+      }
+    } finally {
+      if (mounted &&
+          _timelineThreadId == thread.id &&
+          _selectedDate == selected) {
+        setState(() => _dateFilterLoading = false);
+      }
+    }
   }
 
   Future<void> _startRecording() async {
@@ -297,15 +501,22 @@ class _ChatScreenState extends State<ChatScreen> {
         if (thread == null) return _missingChat(context);
         _ensureRemoteMessages(thread);
         _markRead(thread);
+        _syncTimeline(thread);
         final normalized = _search.text.trim().toLowerCase();
-        final messages = normalized.isEmpty
+        final timelineMessages = _selectedDate == null
             ? thread.messages
-            : thread.messages
+            : (_dateMessages ?? const <MessagingMessage>[]);
+        final searchedMessages = normalized.isEmpty
+            ? timelineMessages
+            : timelineMessages
                   .where(
                     (message) =>
                         message.preview.toLowerCase().contains(normalized),
                   )
                   .toList(growable: false);
+        final messages = searchedMessages;
+        final showOlderMessages =
+            _selectedDate == null && _controller.hasOlderMessages(thread.id);
 
         return SfScaffold(
           dismissKeyboardOnTap: false,
@@ -313,6 +524,7 @@ class _ChatScreenState extends State<ChatScreen> {
           top: _buildHeader(context, thread),
           body: Stack(
             children: [
+              const Positioned.fill(child: _ChatStarBackdrop()),
               if (_controller.isProduction &&
                   !_controller.isThreadLoaded(thread.id) &&
                   thread.messages.isEmpty)
@@ -337,28 +549,34 @@ class _ChatScreenState extends State<ChatScreen> {
               else if (messages.isEmpty)
                 SfEmptyState(
                   title: m.text('message_not_found'),
-                  message: m.text('change_search'),
+                  message: _selectedDate == null
+                      ? m.text('change_search')
+                      : _timelineCopy(
+                          context,
+                          uz: 'Bu sanada xabar yo\u2018q. Boshqa sanani tanlang yoki filtrni tozalang.',
+                          ru: '\u0412 \u044d\u0442\u0443 \u0434\u0430\u0442\u0443 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439 \u043d\u0435\u0442. \u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u0443\u044e \u0434\u0430\u0442\u0443 \u0438\u043b\u0438 \u0441\u0431\u0440\u043e\u0441\u044c\u0442\u0435 \u0444\u0438\u043b\u044c\u0442\u0440.',
+                          en: 'No messages on this date. Choose another date or clear the filter.',
+                        ),
                   icon: SfIcons.search,
                 )
               else
                 RefreshIndicator(
-                  onRefresh: _controller.isProduction
-                      ? () => _controller.loadThreadMessages(
-                          thread.id,
-                          refresh: true,
-                        )
-                      : () async {},
+                  onRefresh: () => _refreshTimeline(thread),
                   child: ListView.builder(
+                    key: const ValueKey('chat-timeline'),
                     controller: _scroll,
                     physics: const AlwaysScrollableScrollPhysics(),
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 22),
-                    itemCount:
-                        messages.length +
-                        (_controller.hasOlderMessages(thread.id) ? 1 : 0),
+                    padding: EdgeInsets.fromLTRB(
+                      12,
+                      _selectedDate == null ? 12 : 64,
+                      12,
+                      22,
+                    ),
+                    itemCount: messages.length + (showOlderMessages ? 1 : 0),
                     itemBuilder: (context, rawIndex) {
-                      final hasOlder = _controller.hasOlderMessages(thread.id);
+                      final hasOlder = showOlderMessages;
                       if (hasOlder && rawIndex == 0) {
                         return Center(
                           child: Padding(
@@ -384,7 +602,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       }
                       final index = rawIndex - (hasOlder ? 1 : 0);
                       final message = messages[index];
-                      final mine = message.senderId == session.userId;
+                      final mine =
+                          message.senderId == _controller.currentUserId;
                       final previous = index == 0 ? null : messages[index - 1];
                       final showDay =
                           previous == null ||
@@ -409,6 +628,11 @@ class _ChatScreenState extends State<ChatScreen> {
                                       message.attachmentKeys.isNotEmpty
                                   ? () => _voiceSourceUri(thread, message)
                                   : null,
+                              resolveMediaSource:
+                                  !message.isDemoMedia &&
+                                      message.attachmentKeys.isNotEmpty
+                                  ? () => _attachmentSourceUri(thread, message)
+                                  : null,
                               onReact: (emoji) => _controller.react(
                                 thread.id,
                                 message.id,
@@ -422,6 +646,43 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
                 ),
+              if (_selectedDate != null)
+                Positioned(
+                  top: 8,
+                  left: 12,
+                  right: 12,
+                  child: _ActiveDateFilter(
+                    date: _selectedDate!,
+                    loading: _dateFilterLoading,
+                    onClear: () => unawaited(_clearTimelineDate()),
+                  ),
+                ),
+              Positioned(
+                right: 14,
+                bottom: _selectedMessages.isNotEmpty ? 76 : 14,
+                child: AnimatedSwitcher(
+                  duration: SfMotion.resolve(
+                    context,
+                    const Duration(milliseconds: 180),
+                    enabled: !app.settings.reducedMotion,
+                  ),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(scale: animation, child: child),
+                  ),
+                  child:
+                      !_dateFilterLoading &&
+                          _showJumpToLatest &&
+                          messages.isNotEmpty
+                      ? _JumpToLatestButton(
+                          key: const ValueKey('chat-jump-to-latest'),
+                          onPressed: _selectedDate == null
+                              ? _scrollToEnd
+                              : () => unawaited(_clearTimelineDate()),
+                        )
+                      : const SizedBox.shrink(key: ValueKey('chat-at-latest')),
+                ),
+              ),
               if (_selectedMessages.isNotEmpty)
                 Positioned(
                   left: 12,
@@ -508,7 +769,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return _ChatHeader(
       thread: thread,
       subtitle: _controller.isProduction
-          ? 'Server suhbati Â· mute va reaksiyalar qurilmada'
+          ? 'Server suhbati · bildirishnomalar sinxronlangan'
           : thread.contact.isOnline
           ? m.text('online_now')
           : thread.isMuted
@@ -518,6 +779,12 @@ class _ChatScreenState extends State<ChatScreen> {
           : m.text('staff_chat'),
       onBack: () => context.pop(),
       onSearch: () => setState(() => _searchMode = true),
+      calendarLoading: _dateFilterLoading,
+      onCalendar:
+          _dateFilterLoading ||
+              (!_controller.isProduction && thread.messages.isEmpty)
+          ? null
+          : () => unawaited(_pickTimelineDate(thread)),
       onProfile: () => context.push(
         '/messages/contact?thread=${Uri.encodeQueryComponent(thread.id)}',
       ),
@@ -846,22 +1113,13 @@ class _ChatScreenState extends State<ChatScreen> {
             child: SafeArea(
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          message.mediaLabel ?? 'Rasm',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: m.text('close'),
-                        onPressed: () => Navigator.pop(dialogContext),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      tooltip: m.text('close'),
+                      onPressed: () => Navigator.pop(dialogContext),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
                   ),
                   Expanded(
                     child: InteractiveViewer(
@@ -871,6 +1129,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: Image.network(
                           url,
                           fit: BoxFit.contain,
+                          // Bound native image decoding. A malicious or simply
+                          // enormous image must not allocate its full pixel
+                          // buffer just to fit a phone-sized viewer.
+                          cacheWidth: 2048,
+                          cacheHeight: 2048,
+                          filterQuality: FilterQuality.high,
                           loadingBuilder: (context, child, progress) =>
                               progress == null
                               ? child
@@ -923,13 +1187,14 @@ class _ChatScreenState extends State<ChatScreen> {
                         ],
                         if (message.kind == MessagingKind.voice)
                           _VoicePlayer(message: message, wide: true)
-                        else ...[
+                        else if (message.kind == MessagingKind.image)
                           Icon(
-                            message.kind == MessagingKind.image
-                                ? Icons.image_rounded
-                                : Icons.play_circle_fill_rounded,
+                            Icons.image_rounded,
                             size: 96,
-                          ),
+                            color: SfTheme.colorsOf(context).primary,
+                          )
+                        else ...[
+                          Icon(Icons.play_circle_fill_rounded, size: 96),
                           const SizedBox(height: 18),
                           Text(
                             message.mediaLabel ?? m.preview(message),
@@ -971,6 +1236,24 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<Uri?> _attachmentSourceUri(
+    MessagingThread thread,
+    MessagingMessage message,
+  ) async {
+    if (message.attachmentKeys.isEmpty) return null;
+    try {
+      final url = await _controller.attachmentDownloadUrl(
+        thread.id,
+        message.attachmentKeys.first,
+      );
+      return Uri.tryParse(url);
+    } on Object {
+      // Inline media owns its quiet error/retry state. Avoid surfacing signed
+      // URLs in logs or repeatedly opening a toast while the timeline rebuilds.
+      return null;
+    }
+  }
+
   void _showError(String message) {
     SfToast.show(context, message: message, tone: SfToastTone.error);
   }
@@ -1000,8 +1283,165 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  static bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  static bool _sameDay(DateTime a, DateTime b) {
+    final localA = a.toLocal();
+    final localB = b.toLocal();
+    return localA.year == localB.year &&
+        localA.month == localB.month &&
+        localA.day == localB.day;
+  }
+}
+
+String _timelineCopy(
+  BuildContext context, {
+  required String uz,
+  required String ru,
+  required String en,
+}) => switch (Localizations.maybeLocaleOf(context)?.languageCode) {
+  'ru' => ru,
+  'en' => en,
+  _ => uz,
+};
+
+class _ChatStarBackdrop extends StatelessWidget {
+  const _ChatStarBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return IgnorePointer(
+      key: const ValueKey('chat-star-background'),
+      child: ClipRect(
+        child: Stack(
+          children: [
+            Positioned(
+              right: -82,
+              top: -54,
+              child: Opacity(
+                opacity: 0.065,
+                child: SfStar(size: 280, color: c.primary),
+              ),
+            ),
+            Positioned(
+              left: -58,
+              bottom: 32,
+              child: Opacity(
+                opacity: 0.045,
+                child: SfStar(size: 205, color: c.accent),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveDateFilter extends StatelessWidget {
+  const _ActiveDateFilter({
+    required this.date,
+    required this.loading,
+    required this.onClear,
+  });
+
+  final DateTime date;
+  final bool loading;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    final label = MaterialLocalizations.of(context).formatMediumDate(date);
+    return Center(
+      child: Material(
+        key: const ValueKey('chat-active-date-filter'),
+        color: c.surface.withValues(alpha: 0.96),
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: loading ? null : onClear,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 5, 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.event_rounded, size: 16, color: c.primary),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: SfType.ui(
+                    size: 11.5,
+                    weight: FontWeight.w800,
+                    color: c.ink,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                if (loading)
+                  Padding(
+                    padding: const EdgeInsets.all(7),
+                    child: SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: c.primary,
+                      ),
+                    ),
+                  )
+                else
+                  IconButton(
+                    key: const ValueKey('chat-clear-date-filter'),
+                    tooltip: _timelineCopy(
+                      context,
+                      uz: 'Sana filtrini tozalash',
+                      ru: '\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u0444\u0438\u043b\u044c\u0442\u0440 \u0434\u0430\u0442\u044b',
+                      en: 'Clear date filter',
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onPressed: onClear,
+                    icon: const Icon(Icons.close_rounded, size: 17),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _JumpToLatestButton extends StatelessWidget {
+  const _JumpToLatestButton({super.key, required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Material(
+      color: c.surface,
+      elevation: 7,
+      shadowColor: Colors.black.withValues(alpha: 0.18),
+      shape: CircleBorder(side: BorderSide(color: c.border)),
+      child: IconButton(
+        tooltip: _timelineCopy(
+          context,
+          uz: 'Eng yangi xabarga o\u2018tish',
+          ru: '\u041a \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u043c\u0443 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044e',
+          en: 'Jump to latest message',
+        ),
+        onPressed: onPressed,
+        color: c.primary,
+        icon: const Icon(Icons.keyboard_double_arrow_down_rounded),
+      ),
+    );
+  }
 }
 
 class _ChatHeader extends StatelessWidget {
@@ -1010,6 +1450,8 @@ class _ChatHeader extends StatelessWidget {
     required this.subtitle,
     required this.onBack,
     required this.onSearch,
+    required this.calendarLoading,
+    required this.onCalendar,
     required this.onProfile,
   });
 
@@ -1017,6 +1459,8 @@ class _ChatHeader extends StatelessWidget {
   final String subtitle;
   final VoidCallback onBack;
   final VoidCallback onSearch;
+  final bool calendarLoading;
+  final VoidCallback? onCalendar;
   final VoidCallback onProfile;
 
   @override
@@ -1085,6 +1529,31 @@ class _ChatHeader extends StatelessWidget {
                 tooltip: m.text('search_in_chat'),
                 onPressed: onSearch,
                 icon: const Icon(Icons.search_rounded),
+              ),
+              IconButton(
+                key: const ValueKey('chat-date-filter-button'),
+                tooltip: _timelineCopy(
+                  context,
+                  uz: 'Sana bo\u2018yicha xabarlar',
+                  ru: '\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f \u043f\u043e \u0434\u0430\u0442\u0435',
+                  en: 'Messages by date',
+                ),
+                onPressed: onCalendar,
+                icon: calendarLoading
+                    ? SizedBox.square(
+                        dimension: 19,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: c.primary,
+                          semanticsLabel: _timelineCopy(
+                            context,
+                            uz: 'Sana xabarlari yuklanmoqda',
+                            ru: '\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u044e\u0442\u0441\u044f \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f \u0437\u0430 \u0434\u0430\u0442\u0443',
+                            en: 'Loading messages for date',
+                          ),
+                        ),
+                      )
+                    : const Icon(Icons.calendar_month_rounded),
               ),
               IconButton(
                 tooltip: m.text('profile'),
@@ -1505,6 +1974,7 @@ class _MessageBubble extends StatelessWidget {
     required this.onLongPress,
     required this.onReact,
     this.resolveVoiceSource,
+    this.resolveMediaSource,
   });
 
   final MessagingMessage message;
@@ -1514,20 +1984,27 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback onLongPress;
   final ValueChanged<String> onReact;
   final Future<Uri?> Function()? resolveVoiceSource;
+  final Future<Uri?> Function()? resolveMediaSource;
 
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
     final m = MessagingL10n.of(context);
+    final semanticPreview = message.kind == MessagingKind.image
+        ? message.body.trim().isEmpty
+              ? m.text('image')
+              : '${m.text('image')}. ${message.body.trim()}'
+        : m.preview(message);
     final maxWidth = (MediaQuery.sizeOf(context).width * 0.76).clamp(
       220.0,
       390.0,
     );
     return Semantics(
       label:
-          '${message.senderName}. ${m.preview(message)}. ${SfFormatters.time(message.sentAt)}',
+          '${message.senderName}. $semanticPreview. ${SfFormatters.time(message.sentAt)}',
       selected: selected,
       child: Align(
+        key: ValueKey('chat-message-${mine ? 'mine' : 'theirs'}-${message.id}'),
         alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
           onTap: onTap,
@@ -1590,6 +2067,7 @@ class _MessageBubble extends StatelessWidget {
                   message: message,
                   mine: mine && !selected,
                   resolveVoiceSource: resolveVoiceSource,
+                  resolveMediaSource: resolveMediaSource,
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 5, 3, 1),
@@ -1646,11 +2124,13 @@ class _MessageContent extends StatelessWidget {
     required this.message,
     required this.mine,
     this.resolveVoiceSource,
+    this.resolveMediaSource,
   });
 
   final MessagingMessage message;
   final bool mine;
   final Future<Uri?> Function()? resolveVoiceSource;
+  final Future<Uri?> Function()? resolveMediaSource;
 
   @override
   Widget build(BuildContext context) {
@@ -1666,33 +2146,28 @@ class _MessageContent extends StatelessWidget {
       case MessagingKind.image:
         return _DemoMediaFrame(
           isDemo: message.isDemoMedia,
-          child: Container(
-            width: 230,
-            height: 145,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [c.accentSoft, c.primarySoft],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _InlineImage(
+                messageId: message.id,
+                resolveSource: resolveMediaSource,
               ),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.image_rounded, size: 44, color: c.primary),
-                const SizedBox(height: 8),
-                Text(
-                  message.mediaLabel ?? m.text('image'),
-                  textAlign: TextAlign.center,
-                  style: SfType.ui(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    color: c.primaryInk,
+              if (message.body.trim().isNotEmpty) ...[
+                const SizedBox(height: 7),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Text(
+                    message.body.trim(),
+                    style: SfType.ui(
+                      size: 13.5,
+                      color: foreground,
+                      height: 1.42,
+                    ),
                   ),
                 ),
               ],
-            ),
+            ],
           ),
         );
       case MessagingKind.video:
@@ -1721,7 +2196,9 @@ class _MessageContent extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          message.mediaLabel ?? m.text('video'),
+                          message.isDemoMedia
+                              ? (message.mediaLabel ?? m.text('video'))
+                              : m.text('video'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: SfType.ui(size: 11, color: c.surface),
@@ -1750,6 +2227,147 @@ class _MessageContent extends StatelessWidget {
           ),
         );
     }
+  }
+}
+
+class _InlineImage extends StatefulWidget {
+  const _InlineImage({required this.messageId, this.resolveSource});
+
+  final String messageId;
+  final Future<Uri?> Function()? resolveSource;
+
+  @override
+  State<_InlineImage> createState() => _InlineImageState();
+}
+
+class _InlineImageState extends State<_InlineImage> {
+  Future<Uri?>? _source;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.messageId != widget.messageId ||
+        (oldWidget.resolveSource == null) != (widget.resolveSource == null)) {
+      _reload();
+    }
+  }
+
+  void _reload() {
+    _source = widget.resolveSource?.call();
+  }
+
+  void _retry() => setState(_reload);
+
+  @override
+  Widget build(BuildContext context) {
+    final resolver = widget.resolveSource;
+    if (resolver == null) return const _InlineImagePlaceholder();
+    return FutureBuilder<Uri?>(
+      future: _source,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const _InlineImagePlaceholder(loading: true);
+        }
+        final uri = snapshot.data;
+        if (snapshot.hasError ||
+            uri == null ||
+            (uri.scheme != 'https' && uri.scheme != 'http')) {
+          return _InlineImageError(onRetry: _retry);
+        }
+        return ClipRRect(
+          key: ValueKey('chat-inline-image-${widget.messageId}'),
+          borderRadius: BorderRadius.circular(15),
+          child: Image.network(
+            uri.toString(),
+            width: 220,
+            height: 148,
+            fit: BoxFit.cover,
+            // Three physical pixels per logical pixel keeps thumbnails crisp
+            // without decoding enormous uploads at their source dimensions.
+            cacheWidth: 660,
+            cacheHeight: 444,
+            filterQuality: FilterQuality.medium,
+            frameBuilder: (context, child, frame, synchronouslyLoaded) =>
+                synchronouslyLoaded || frame != null
+                ? child
+                : const _InlineImagePlaceholder(loading: true),
+            errorBuilder: (_, _, _) => _InlineImageError(onRetry: _retry),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _InlineImagePlaceholder extends StatelessWidget {
+  const _InlineImagePlaceholder({this.loading = false});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Container(
+      key: ValueKey(loading ? 'chat-image-loading' : 'chat-image-preview'),
+      width: 220,
+      height: 148,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [c.accentSoft, c.primarySoft],
+        ),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      alignment: Alignment.center,
+      child: loading
+          ? SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: c.primary,
+              ),
+            )
+          : Icon(Icons.image_rounded, size: 46, color: c.primary),
+    );
+  }
+}
+
+class _InlineImageError extends StatelessWidget {
+  const _InlineImageError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SfTheme.colorsOf(context);
+    return Container(
+      key: const ValueKey('chat-image-error'),
+      width: 220,
+      height: 148,
+      decoration: BoxDecoration(
+        color: c.surface2,
+        border: Border.all(color: c.border),
+        borderRadius: BorderRadius.circular(15),
+      ),
+      alignment: Alignment.center,
+      child: IconButton.filledTonal(
+        tooltip: _timelineCopy(
+          context,
+          uz: 'Rasmni qayta yuklash',
+          ru: '\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0443 \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u044f',
+          en: 'Retry image',
+        ),
+        onPressed: onRetry,
+        icon: const Icon(Icons.refresh_rounded),
+      ),
+    );
   }
 }
 
@@ -2001,7 +2619,27 @@ class _DayDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = SfTheme.colorsOf(context);
+    final local = date.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(local.year, local.month, local.day);
+    final label = day == today
+        ? _timelineCopy(
+            context,
+            uz: 'Bugun',
+            ru: '\u0421\u0435\u0433\u043e\u0434\u043d\u044f',
+            en: 'Today',
+          )
+        : day == today.subtract(const Duration(days: 1))
+        ? _timelineCopy(
+            context,
+            uz: 'Kecha',
+            ru: '\u0412\u0447\u0435\u0440\u0430',
+            en: 'Yesterday',
+          )
+        : MaterialLocalizations.of(context).formatMediumDate(local);
     return Padding(
+      key: ValueKey('chat-day-${local.year}-${local.month}-${local.day}'),
       padding: const EdgeInsets.only(bottom: 14),
       child: Center(
         child: DecoratedBox(
@@ -2013,8 +2651,12 @@ class _DayDivider extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
             child: Text(
-              '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}',
-              style: SfType.mono(size: 9, color: c.muted),
+              label,
+              style: SfType.ui(
+                size: 10,
+                weight: FontWeight.w800,
+                color: c.muted,
+              ),
             ),
           ),
         ),

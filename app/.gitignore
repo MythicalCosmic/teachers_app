@@ -45,5 +45,10 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Project-specific Firebase client files are supplied by the owner/CI. They are
+# environment configuration and must never be committed to the application repo.
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist
+
 # FVM Version Cache
 .fvm/

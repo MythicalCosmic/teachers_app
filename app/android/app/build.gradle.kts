@@ -4,6 +4,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Firebase's generated Android resources are available only when the owner
+// supplies the real project file. Keeping the plugin conditional means local
+// QA/unsigned builds remain installable without committing Firebase config.
+if (file("google-services.json").isFile) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
 val releaseStorePassword = System.getenv("ANDROID_STORE_PASSWORD")

@@ -25,6 +25,44 @@ app, compiles the ARM64 iPhone release, creates both an unsigned IPA and a
 Both files are written directly to Codemagic's `$CM_EXPORT_DIR`; the workflow
 fails if either artifact is missing or empty.
 
+## Push-notification configuration
+
+The unsigned workflow can compile the Firebase client configuration, but it
+cannot grant Apple's Push Notifications entitlement. In Codemagic, first
+create an application variable group named `firebase_credentials`, then
+uncomment that group under `environment` in `codemagic.yaml`. Put **one**
+secret variable named `FIREBASE_IOS_CONFIG_BASE64` in that group. Its value is
+the base64 encoding of the real `GoogleService-Info.plist` for bundle identifier
+`uz.starforge.starforgeEdu`. The workflow validates the bundle identifier and
+passes the values to Flutter as compile-time Dart defines. As an alternative,
+put all of these secure variables in the same imported group:
+
+- `FIREBASE_API_KEY`
+- `FIREBASE_APP_ID`
+- `FIREBASE_MESSAGING_SENDER_ID`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_STORAGE_BUCKET` (optional)
+- `FIREBASE_IOS_BUNDLE_ID` (defaults to the app bundle identifier)
+
+A partial configuration deliberately fails the build; no configuration keeps
+the app installable with push reported as unavailable.
+
+Real background push also requires the backend deployment to mount a Firebase
+Admin service-account JSON, set `FCM_CREDENTIALS_FILE` to that mounted path,
+and enable `PUSH_NOTIFICATIONS_ENABLED`. Never place either Firebase file in
+Git.
+
+Most importantly, an unsigned IPA re-signed through the free Apple ID/3uTools
+path does **not** obtain an APNs-capable provisioning profile. Background push
+on iPhone therefore requires a normal signed build with an App ID and
+provisioning profile that allow Push Notifications, the APNs key uploaded to
+Firebase, `STARFORGE_PUSH_ENTITLEMENTS=Runner/PushNotifications.entitlements`,
+and the matching `APS_ENVIRONMENT` (`development` or `production`). Firebase's
+[Flutter setup guide](https://firebase.google.com/docs/flutter/setup) and
+[FCM Apple setup guide](https://firebase.google.com/docs/cloud-messaging/flutter/get-started)
+cover the owner-side Firebase/APNs steps. Codemagic also documents how YAML
+workflows [import environment-variable groups](https://docs.codemagic.io/yaml-basic-configuration/configuring-environment-variables/).
+
 ## Sign and install with a free Apple ID
 
 1. Connect the target iPhone to 3uTools so its UDID is selected correctly.
