@@ -9,6 +9,14 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # Native iOS dependency resolution can materialize Flutter plugin sources in
+  # build/ios/SourcePackages. Those files belong to third-party packages (and
+  # include their own tests/dev dependencies), so only app-owned source should
+  # participate in this package's analysis.
+  exclude:
+    - build/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

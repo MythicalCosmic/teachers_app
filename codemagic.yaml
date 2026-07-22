@@ -38,17 +38,17 @@ workflows:
       - name: Resolve Flutter dependencies
         script: flutter pub get
 
-      - name: Install native iOS dependencies
-        script: find ios -name Podfile -execdir pod install \;
-
       - name: Check formatting
         script: dart format --output=none --set-exit-if-changed lib test tool
 
       - name: Analyze app
-        script: flutter analyze
+        script: flutter analyze --no-pub
 
       - name: Run tests
         script: flutter test --reporter expanded
+
+      - name: Install native iOS dependencies
+        script: find ios -name Podfile -execdir pod install \;
 
       - name: Build unsigned iPhone release
         script: |
