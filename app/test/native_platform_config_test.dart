@@ -57,7 +57,8 @@ void main() {
 
     expect(infoPlist, contains('staff conversation'));
     expect(infoPlist, contains('voice message'));
-    expect(infoPlist, contains('remote-notification'));
+    expect(infoPlist, contains('<string>fetch</string>'));
+    expect(infoPlist, contains('<string>remote-notification</string>'));
   });
 
   test(
